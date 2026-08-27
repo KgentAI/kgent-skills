@@ -9,7 +9,8 @@ This repository contains the design specifications and skill definitions for pac
 ## Contents
 
 - `specs/` - Design specifications and architecture documents
-  - [2026-08-26-kgent-packaging-design.md](specs/2026-08-26-kgent-packaging-design.md) - Core architecture and design principles (v1.4)
+  - [2026-08-26-kgent-packaging-design.md](specs/2026-08-26-kgent-packaging-design.md) - Core architecture and design principles (v1.4.1)
+  - [2026-08-26-kgent-packaging-acceptance.md](specs/2026-08-26-kgent-packaging-acceptance.md) - Executable acceptance specification (old-coder): failure model, scenarios, invariants, adversarial pass
 
 ## Key Design Principles
 

@@ -3,7 +3,11 @@
 **Date**: 2026-08-26
 **Last Revised**: 2026-08-26 (v1.1 — security/UX/consistency review applied)
 **Status**: Draft
-**Version**: 1.4
+**Version**: 1.4.1
+
+## Changes in v1.4.1
+
+- Added cross-references to the companion executable acceptance specification ([2026-08-26-kgent-packaging-acceptance.md](2026-08-26-kgent-packaging-acceptance.md)), authored per the old-coder methodology: Tier-3 calibration, failure model, 50 executable scenarios (S1–S50), 14 negative constraints (N1–N14), 7 property invariants (P1–P7), adversarial pass, and authorized setup plan. No design semantics changed.
 
 ## Changes in v1.4
 
@@ -1339,6 +1343,8 @@ Each new backend starts as `trust_zone: external` until explicitly reclassified 
 ---
 
 ## 11. Success Criteria (Measurable)
+
+These criteria are operationalized as executable acceptance scenarios in the companion acceptance spec ([2026-08-26-kgent-packaging-acceptance.md](2026-08-26-kgent-packaging-acceptance.md)): each criterion below maps to named scenarios (S-ids), negative constraints (N-ids), and gauntlet layers there. Implementation is gated on approval of that spec.
 
 1. **Zero wrong writes**: in the e2e test suite, no write executes without a recorded confirmation matching the executed targets (`journal.confirmation` present and consistent). Target: 0 violations.
 2. **Zero silent failures**: every backend failure/timeout surfaces in user-visible output; measured by fault-injection tests across search and write paths.
