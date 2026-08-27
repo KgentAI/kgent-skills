@@ -1,9 +1,25 @@
 # kgent Service Packaging Design Spec
 
 **Date**: 2026-08-26
-**Last Revised**: 2026-08-26 (v1.1 — security/UX/consistency review applied)
+**Last Revised**: 2026-08-27 (v1.5 — PR #1 review applied)
 **Status**: Draft
-**Version**: 1.4.1
+**Version**: 1.5
+
+## Changes in v1.5
+
+PR #1 review applied (11 reviewer comments). Design semantics that changed:
+
+- **Initial backend scope**: Lark/Feishu, DingTalk, and WeCom (all with official CLIs) are the initial-phase backends; the kgent-hosted backend lands in a later phase (the `kgent` CLI itself is still built in Phase 1 to power kgent skill setup). Confluence moves to future extensions (§1.3, §9, §10.1).
+- **`vector_search` → `document_search`**: the capability is document search; "vector" is only the semantic sub-mode (§2.1, §3.1–§3.3, §8.3).
+- **Lazy authentication**: discovery never prompts for credentials; auth is established lazily at first invocation (§2.2, §2.4).
+- **`kgent doctor`**: config + environment health check command, non-interactive (§2.6, §12).
+- **Snippet-level deduplication + conflict resolution**: duplication detection covers content snippets, not just whole documents; conflicting search results are surfaced with a configurable resolution strategy (link / correct / archive / comment-owner) (§2.1, §6.5, §7.5).
+- **Journal confidentiality guard**: with `journal.encrypt: false`, confidential-tier snapshots and secrets are never persisted to the journal (§6.7).
+- **Archive is platform-native**: archiving is the source platform's own archive operation, not a cross-backend move to kgent (§3.1, §4.3, §6.8, §6.9).
+- **Complex query decomposition**: compound queries decompose into sub-queries, fanned out in parallel (§7.4).
+- **Router form factor + LLM boundary**: the router is an in-process library and is deterministic; LLM assistance lives in the skill layer (§1.4).
+- **CLI primitives vs. skills**: the CLI exposes primitive operations; the judgment-heavy `store` workflow is skill-orchestrated (§1.2, §12).
+- **Full config schema reference**: routing-mode behavior table (§4.3) and complete config schema (Appendix C).
 
 ## Changes in v1.4.1
 
@@ -55,11 +71,11 @@ This revision applies the security, UX, and consistency review. Major changes:
 
 ## Executive Summary
 
-This document defines the architecture for packaging the kgent knowledge management service through three interface layers: **MCP tools**, **CLI**, and **Skills**. The system supports **federated multi-backend operations** across multiple platforms (Lark, DingTalk, Confluence, kgent-hosted) with intelligent routing, capability-aware fallbacks, and human-in-the-loop orchestration.
+This document defines the architecture for packaging the kgent knowledge management service through three interface layers: **MCP tools**, **CLI**, and **Skills**. The system supports **federated multi-backend operations** across multiple platforms (Lark/Feishu, DingTalk, WeCom — all with official CLIs; kgent-hosted in a later phase, §1.3) with intelligent routing, capability-aware fallbacks, and human-in-the-loop orchestration.
 
 ### Key Design Principles
 
-1. **Federated Multi-Backend**: Operations can target multiple platforms simultaneously
+1. **Federated Multi-Backend**: Operations can target multiple platforms simultaneously. Initial phase: Lark/Feishu, DingTalk, WeCom (official CLIs); kgent-hosted later (§1.3)
 2. **Capability-Based Composition**: Skills orchestrate via capability interfaces, backends are swappable
 3. **Self-Disambiguation, Never Auto-Execute**: Gather context and resolve ambiguity automatically for *reading and proposing*; writes are never executed without an explicit user confirmation (§5.6)
 4. **Update-First Bias**: Always *propose* updating existing knowledge over creating new (§6.1)
@@ -99,15 +115,15 @@ This document defines the architecture for packaging the kgent knowledge managem
 ┌─────────────────────────────────────────────────────────┐
 │              Backend Implementation Layer                │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
-│  │ lark-cli │  │dingtalk- │  │confluence│  │kgent-  │ │
-│  │ (skills) │  │   cli    │  │   -cli   │  │  cli   │ │
+│  │ lark-cli │  │dingtalk- │  │ wecom-   │  │kgent-  │ │
+│  │          │  │   cli    │  │  cli     │  │  cli   │ │
 │  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
 └─────────────────────────────────────────────────────────┘
                  │
                  ▼
 ┌─────────────────────────────────────────────────────────┐
 │                  External Platforms                      │
-│  Lark    DingTalk    Confluence    kgent-hosted         │
+│  Lark/Feishu  DingTalk  WeCom  kgent-hosted (later)     │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -143,6 +159,25 @@ This document defines the architecture for packaging the kgent knowledge managem
 | Error propagation | structured error object | exit code + parsed stderr | JSON-RPC error |
 | Auth source | skill's own session | CLI's own config/keychain | API key from OS secret store (§2.4) |
 
+### 1.3 Initial Backend Scope
+
+**Initial phase backends** (all have official CLIs, integrated via `type: cli` adapters):
+
+- **Lark / Feishu** (same platform family, regional variants)
+- **DingTalk**
+- **WeCom** (WeChat Work)
+
+The **kgent-hosted backend** is supported in a **later phase**; however, the `kgent` CLI itself is developed in the initial phase because it powers kgent skill setup (`kgent setup`, discovery, config, doctor). Confluence, Notion, Google Docs, and SharePoint are future extensions (§10.1).
+
+### 1.4 Router Form Factor and LLM Boundary
+
+**The router is an in-process library**, not a separate server and not a shell script:
+
+- It ships as a Python package embedded in the `kgent` CLI process and imported by skills/MCP tools. There is **no network hop** between the skills layer and the router — skills call capability interfaces that the router implements locally.
+- **The router is deterministic.** Routing precedence (§4.1), policy enforcement (approval §3.4, sensitivity §2.5, journal §6.7, audit §8.4), deduplication, and ranking (§7.3) are pure code — **the router never invokes an LLM**.
+- **Smart routing's LLM assistance lives in the skill layer.** Content-type and sensitivity classification (§4.3, §6.3), query decomposition (§7.4), and conflict detection (§7.5) are computed by skills (or the CLI's skill-backed `store` workflow), then passed to the router as *inputs*. The router validates and enforces; it never reasons.
+- Skills may call the router's deterministic `resolve_backends()` and policy checks directly; classification results always appear in the write proposal and are user-correctable (§5.6).
+
 ---
 
 ## 2. Configuration System
@@ -159,7 +194,7 @@ version: 1
 
 # Global routing settings
 defaults:
-  routing_mode: configured  # explicit | configured | smart
+  routing_mode: configured  # explicit | configured | smart (behaviors: §4.3; full schema: Appendix C)
   default_backends: [lark, kgent]
   approval_ttl_hours: 24    # platform approval expiry (§3.4)
   timeouts:
@@ -170,10 +205,10 @@ defaults:
 
 # Backend configurations
 backends:
-  lark:
+  lark:            # Lark / Feishu (same platform family)
     enabled: true
-    type: skill  # skill | cli | mcp (see §1.2 adapter semantics)
-    skill_name: lark-doc
+    type: cli      # skill | cli | mcp (see §1.2 adapter semantics)
+    cli_name: lark-cli
 
     # Trust zone for data-leakage policy (§2.5)
     trust_zone: internal   # internal | external
@@ -189,12 +224,14 @@ backends:
           - update
           - delete
           - list
+          - archive        # platform-native archive (§6.8)
+          - unarchive
 
-      vector_search:
+      document_search:
         supported: true
         features:
           search_by_keywords: true
-          search_by_semantics: true
+          search_by_semantics: true   # "semantic" == vector similarity
           search_hybrid: true
         limits:
           max_results: 100
@@ -234,8 +271,10 @@ backends:
           - read
           - update
           - delete
+          - archive
+          - unarchive
 
-      vector_search:
+      document_search:
         supported: true
         features:
           search_by_keywords: true
@@ -256,8 +295,45 @@ backends:
       - external_docs
     priority: 2
 
-  kgent:
+  wecom:
     enabled: true
+    type: cli
+    cli_name: wecom-cli
+    trust_zone: external
+
+    capabilities:
+      document_storage:
+        supported: true
+        features:
+          - create
+          - read
+          - update
+          - delete
+          - archive
+          - unarchive
+
+      document_search:
+        supported: true
+        features:
+          search_by_keywords: true
+          search_by_semantics: false
+          search_hybrid: false
+        fallback:
+          search_by_semantics: search_by_keywords
+        limits:
+          max_results: 50
+        defaults:
+          similarity_threshold: 0.6
+
+      approval_flow:
+        supported: false
+
+    content_types:
+      - external_docs
+    priority: 3
+
+  kgent:
+    enabled: false       # future phase (§1.3)
     type: mcp
     mcp_url: https://kgent.example.com/mcp
     # TLS verification is mandatory; server identity pinned on first
@@ -273,8 +349,10 @@ backends:
           - update
           - delete
           - list
+          - archive
+          - unarchive
 
-      vector_search:
+      document_search:
         supported: true
         features:
           search_by_keywords: true
@@ -293,8 +371,8 @@ backends:
           - execute_approved
 
     content_types:
-      - archived_docs
-    priority: 3
+      - research_papers
+    priority: 9
 
 # Smart routing rules (when routing_mode: smart).
 # Precedence with content_type_mapping and default_backends: §4.1.
@@ -306,14 +384,15 @@ routing_rules:
 
   - match:
       content_type: external_docs
-    backends: [dingtalk, kgent]
+    backends: [dingtalk, wecom]
 
-  # `older_than` applies ONLY to archive/migration operations
-  # (`kgent archive`), never at store time (§4.3)
+  # `older_than` applies ONLY to archive selection (`kgent archive`),
+  # never at store time (§4.3). Archiving is platform-native (§6.8):
+  # matched documents are archived on their own source backend, so no
+  # `backends` target is set here.
   - match:
       operation: archive
       older_than: 90d
-    backends: [kgent]
 
   - default: [lark]
 
@@ -321,15 +400,22 @@ routing_rules:
 # Each content type resolves to exactly ONE write target (no replicas — v1.2).
 content_type_mapping:
   meeting_notes: lark
-  api_docs: confluence
   team_wiki: lark
-  research_papers: kgent
+  external_docs: dingtalk
+  research_papers: kgent    # future phase (§1.3)
   default: lark
+
+# Conflict resolution (§7.5): when search results contradict each other,
+# kgent surfaces the conflict and recommends a resolution strategy.
+conflict_resolution:
+  enabled: true
+  strategies: [link, comment, archive, correct]   # preference order
+  require_confirmation: true                       # never act without a confirmed proposal (§5.6)
 
 # Write journal (§6.7)
 journal:
   retention_days: 30
-  encrypt: false            # opt-in encryption at rest (§6.7)
+  encrypt: false            # opt-in encryption at rest; confidential snapshots require it (§6.7)
 
 # Audit log (§8.4)
 audit:
@@ -346,12 +432,12 @@ The `kgent-setup` skill automatically detects available backends and their capab
 **Detection Process:**
 
 1. **Discover available skills**
-   - Scan `~/.claude/skills/` for `lark-*`, `dingtalk-*`, etc.
+   - Scan `~/.claude/skills/` for `lark-*`, `dingtalk-*`, `wecom-*`, etc.
    - Read skill *manifest metadata* (not arbitrary doc prose) to extract capabilities
    - Probe with read-only operations only
 
 2. **Discover available CLIs**
-   - Check PATH for `kgent-cli`, `dingtalk-cli`, `confluence-cli`
+   - Check PATH for `lark-cli`, `dingtalk-cli`, `wecom-cli`
    - Run `--version` to verify installation
    - Query a structured `capabilities`/`--describe` output if available; otherwise mark capabilities as *unverified* rather than parsing help text
    - Probe with read-only operations only
@@ -367,10 +453,9 @@ The `kgent-setup` skill automatically detects available backends and their capab
    - User reviews and enables desired backends
    - Detected capabilities are stored in a separate **cache file** (`~/.kgent/capabilities.cache.yaml`), not in the user config; the config holds only user overrides (§3.5)
 
-5. **Validate authentication**
-   - For each enabled backend, test auth at runtime
-   - Prompt user to authenticate if needed
-   - Store credentials in the OS secret store (§2.4) — never in config files
+5. **Defer authentication (no prompts during discovery)**
+   - Discovery never authenticates and never prompts for credentials.
+   - Credentials are established lazily, at the first invocation that needs them (CLI call or API) (§2.4), and stored in the OS secret store — never in config files.
 
 **Setup Output Example:**
 
@@ -379,36 +464,40 @@ $ kgent-setup
 
 🔍 Detecting available backends (read-only probes)...
 
-✅ Found Lark skill (lark-doc)
+✅ Found Lark CLI (lark-cli v2.0.1)
    Capabilities (verified):
-   - document_storage: ✅ (create, read, update, delete, list)
-   - vector_search: ✅ (keyword ✅, semantic ✅, hybrid ✅)
+   - document_storage: ✅ (create, read, update, delete, list, archive, unarchive)
+   - document_search: ✅ (keyword ✅, semantic ✅, hybrid ✅)
    - approval_flow: ✅ (request, check, execute)
-   Auth: ✅ authenticated (alice@company.com) [keychain]
+   Auth: deferred (checked on first use)
 
 ✅ Found DingTalk CLI (dingtalk-cli v1.2.3)
    Capabilities (verified):
-   - document_storage: ✅ (create, read, update, delete)
-   - vector_search: ⚠️ (keyword ✅, semantic ❌, hybrid ❌)
+   - document_storage: ✅ (create, read, update, delete, archive, unarchive)
+   - document_search: ⚠️ (keyword ✅, semantic ❌, hybrid ❌)
      → Semantic search will fallback to keyword search
    - approval_flow: ❌ not available
-   Auth: ✅ authenticated [keychain]
+   Auth: deferred (checked on first use)
 
-❌ Confluence CLI not found
-   → Install from: https://confluence.com/cli
+✅ Found WeCom CLI (wecom-cli v1.0.4)
+   Capabilities (verified):
+   - document_storage: ✅ (create, read, update, delete, archive, unarchive)
+   - document_search: ⚠️ (keyword ✅, semantic ❌, hybrid ❌)
+   - approval_flow: ❌ not available
+   Auth: deferred (checked on first use)
 
 ✅ Found kgent MCP server (https://kgent.example.com/mcp)
    TLS: ✅ verified, identity pinned
    Capabilities (verified):
-   - document_storage: ✅ (create, read, update, delete, list)
-   - vector_search: ✅ (keyword ✅, semantic ✅, hybrid ✅)
+   - document_storage: ✅ (create, read, update, delete, list, archive, unarchive)
+   - document_search: ✅ (keyword ✅, semantic ✅, hybrid ✅)
    - approval_flow: ✅ (request, check, execute)
-   Auth: ✅ authenticated [OS secret store]
+   Auth: deferred (checked on first use)
 
 📝 Generated config: ~/.kgent/config.yaml
-   - 3 backends detected, 2 authenticated
+   - 4 backends detected (kgent-hosted: future phase, §1.3)
    - Capabilities cached to ~/.kgent/capabilities.cache.yaml
-   - Please review and enable desired backends
+   - Auth deferred to first use; please review and enable desired backends
 
 🎯 Configure content routing?
    - [1] Use smart routing (recommended)
@@ -438,9 +527,10 @@ Any forbidden key in a project-local config is rejected with an error naming the
 ### 2.4 Secrets and Credential Management
 
 - Credentials (OAuth tokens, MCP API keys) are stored in the **OS secret store** (macOS Keychain / Windows Credential Manager / libsecret on Linux). Config files contain **no secrets and no auth status fields**.
-- Auth state is runtime-only: `kgent auth status` queries each backend live. Stale-state failure modes surface as actionable errors (`confluence-cli auth` hint), never as silent success.
+- Auth state is runtime-only: `kgent auth status` queries each backend live. Stale-state failure modes surface as actionable errors (`wecom-cli auth` hint), never as silent success.
 - Tokens are requested with the **minimum scopes** needed for declared capabilities (e.g., read scopes for search-only backends).
 - The router re-checks auth lazily before writes; an expired token aborts that backend's write and is reported per-backend (§8.2) — it never silently falls back to a different backend for a write without user confirmation (§8.3).
+- **Discovery never authenticates.** `kgent setup` runs read-only probes and defers all auth to first invocation (§2.2); `kgent auth login` is the only interactive path that prompts for credentials.
 - **Fallback when no OS secret store exists** (e.g., headless Linux): credentials go to an encrypted file (`~/.kgent/credentials.enc`, 0600, machine-local key). kgent warns prominently at startup and on every `auth` use that the fallback is active. Plaintext storage is never an option — if encryption is also unavailable, auth setup fails closed with instructions.
 
 ### 2.5 Sensitivity Tiers and Data-Leakage Policy
@@ -464,11 +554,12 @@ sensitivity_floors:
   research_papers: internal
 ```
 
-### 2.6 Config Versioning and Migration
+### 2.6 Config Versioning, Validation, and `kgent doctor`
 
 - `version` is required and validated. Unknown future versions are rejected with a pointer to `kgent config migrate`.
 - `kgent config migrate` upgrades older versions in place, writing a timestamped backup (`config.yaml.bak-<ts>`) first.
 - Schema validation errors name the exact key and expected type.
+- **`kgent doctor`** validates the full config file and the local environment, non-interactively: schema + version, forbidden project-local keys (§2.3), trust records, backend declarations (zone/floor/capability consistency), capability-cache freshness (§3.5), and backend reachability via read-only probes. It performs **no writes and no auth prompts** (§2.2) and reports findings with exit codes (0 healthy, 1 findings). This is the first thing to run when routing or writes misbehave.
 
 ---
 
@@ -488,10 +579,14 @@ All identifiers exchanged with the router are **canonical document URIs** (§3.6
 - delete_document(doc_uri: str, approval_token: str | None,
                   idempotency_key: str,
                   expected_version: str | None) → success   # §3.9
+- archive_document(doc_uri: str, approval_token: str | None,
+                   idempotency_key: str) → success          # platform-native archive (§6.8)
+- unarchive_document(doc_uri: str, approval_token: str | None,
+                     idempotency_key: str) → success        # restore from platform archive (§6.8)
 - list_documents(filters: FilterSpec, limit: int) → list[DocumentMetadata]
 ```
 
-**vector_search:**
+**document_search:**
 ```python
 # Keyword search (exact/partial text match)
 - search_by_keywords(
@@ -508,7 +603,7 @@ All identifiers exchanged with the router are **canonical document URIs** (§3.6
     top_k: int = 10,
     similarity_threshold: float | None = None
     # None → backend's own calibrated default from
-    # capabilities.vector_search.defaults.similarity_threshold.
+    # capabilities.document_search.defaults.similarity_threshold.
     # Thresholds are backend-specific and never compared across backends.
   ) → list[SearchResult]
 
@@ -544,7 +639,7 @@ capabilities:
     supported: true
     features: [create, read, update, delete, list]
 
-  vector_search:
+  document_search:
     supported: true
     features:
       search_by_keywords: true
@@ -566,7 +661,7 @@ async def search_knowledge(query, mode="hybrid", backends="all"):
     results = []
 
     for backend in targets:
-        caps = backend.capabilities.vector_search
+        caps = backend.capabilities.document_search
 
         actual_mode = mode
         # Uniform fallback: config overrides, then built-in chain
@@ -744,7 +839,7 @@ Default when omitted: `all_configured` for writes, `all_enabled` for searches.
 
 ```bash
 kgent store --backends lark,dingtalk --title "X" --file body.md
-kgent search --backends kgent --query "Z"
+kgent search --backends lark --query "Z"
 ```
 
 **Configured (default)** — uses precedence step 3 then 4:
@@ -755,7 +850,15 @@ kgent store --title "X" --file body.md
 
 **Smart** — precedence step 2: rules match on *operation, declared content_type, and tags*.
 
-Note on `older_than`: rules with `older_than` apply only to `kgent archive` operations (moving existing documents), never to `store`, since age is unknowable for new content. Age is measured from `metadata.updated_at` (last activity), not `created_at` — an old document that was recently edited is still active and not eligible for archiving. `analyze_content_type()` is LLM-assisted and therefore **best-effort**: the inferred `content_type` and `sensitivity` are always shown in the write proposal (§5.6) and can be corrected before confirming. A misclassification can be caught at confirmation time; nothing routes on classification alone without that checkpoint.
+**Routing-mode behavior summary:**
+
+| Mode | Selection path (§4.1) | Needs classification? | Typical use |
+|---|---|---|---|
+| `explicit` | step 1 only (`--backends`) | no | scripts, one-off targets |
+| `configured` | step 3 then 4 (mapping → defaults) | no (content_type from user/metadata) | deterministic day-to-day writes |
+| `smart` | step 2 (rules), then 3/4 fallback | yes (LLM-assisted, shown in proposal) | assistant-driven routing |
+
+Note on `older_than`: rules with `older_than` apply only to `kgent archive` — which archives documents on their **own source platform** (§6.8) — never to `store`, since age is unknowable for new content. Age is measured from `metadata.updated_at` (last activity), not `created_at` — an old document that was recently edited is still active and not eligible for archiving. `analyze_content_type()` is LLM-assisted and therefore **best-effort**: the inferred `content_type` and `sensitivity` are always shown in the write proposal (§5.6) and can be corrected before confirming. A misclassification can be caught at confirmation time; nothing routes on classification alone without that checkpoint.
 
 ### 4.4 No Replicas (v1.2)
 
@@ -982,11 +1085,11 @@ async def handle_create(content):
 **Strategy: best-effort with journaling and repair** (transactional rollback is infeasible across third-party APIs; instead, failures are journaled and repaired by `kgent sync`, §6.6):
 
 ```bash
-$ kgent store --backends lark,dingtalk,confluence --title "X" --file body.md
+$ kgent store --backends lark,dingtalk,wecom --title "X" --file body.md
 ✅ Stored to Lark:      kgent://lark/docxABC123
 ✅ Stored to DingTalk:  kgent://dingtalk/d_456
-❌ Failed on Confluence: Authentication expired
-   → Run `confluence-cli auth` to re-authenticate
+❌ Failed on WeCom: Authentication expired
+   → Run `wecom-cli auth` to re-authenticate
    → Repair: `kgent sync --repair op-20260826-01`
 (op id: op-20260826-01 — journaled for retry/undo)
 ```
@@ -1001,6 +1104,7 @@ Two layers:
 
 1. **Exact fingerprint** (hash of normalized title+content) stored in backend metadata and in `~/.kgent/idmap.json`; catches byte-identical copies and powers `also_available_in`.
 2. **Near-duplicate detection** for everything else: title-similarity (edit distance/embedding) + structural similarity, run at search-aggregation time (§7.2) and in update-first lookups (§6.1). Near-duplicate clusters are shown grouped with per-member provenance; no automatic merging — merging is always a confirmed user action.
+3. **Snippet-level duplication**: duplication is not limited to whole documents — two documents (or two passages within documents) can duplicate each other only in part. Snippet-level matching compares content fragments (paragraphs/sections) in addition to whole-document fingerprints, so a copy-pasted section is flagged as related even when the surrounding documents differ. Snippet matches are shown as "overlapping content" in the proposal, never auto-merged.
 
 No global similarity threshold: matching decisions are per-backend calibrated or rank-based, and cluster boundaries are shown to the user in proposals.
 
@@ -1028,29 +1132,26 @@ Every executed write appends to `~/.kgent/journal/` (NDJSON, append-only):
 
 - Snapshots of pre-update/pre-delete content are kept locally (default retention 30 days, configurable) to support undo.
 - Journal and snapshot files are created **0600** (user-only). Entries carry `schema_version` for forward migration. In fact, the entire `~/.kgent` directory is created **0700** and all files within it (journal, snapshots, idmap, capability cache, trusted.json, config) **0600** — local state protection is directory-wide, not per-file.
-- **Encryption at rest is opt-in**: `journal.encrypt: true` encrypts snapshots with a key held in the OS secret store (§2.4). Default is `false` (favoring recoverability); kgent states plainly in proposals when unencrypted snapshots contain `confidential`-tier content.
+- **Encryption at rest is opt-in**: `journal.encrypt: true` encrypts snapshots with a key held in the OS secret store (§2.4). Default is `false` (favoring recoverability).
+- **Confidentiality guard**: when `journal.encrypt: false`, `confidential`-tier snapshot bodies and any secret/credential material are **never persisted** to the journal. The write is still journaled, but the entry omits the `snapshot.content_before` body (metadata only), undo of confidential content is unavailable, and the proposal states this and recommends enabling encryption. Secrets never enter the journal regardless of the encryption setting.
 - `kgent undo <op-id>` restores the snapshotted state on every target of that operation (best-effort across backends, with the same per-backend reporting as §6.4).
 - Journal entries also drive `kgent sync` (§6.6) and feed the audit log (§8.4).
 
-### 6.8 DELETE Flow (Archive-First)
+### 6.8 DELETE Flow (Archive-First, Platform-Native)
 
-Delete was previously unspecified; it is now first-class, and **archive-first: if an archive target is available, the delete proposal always recommends archiving over hard deletion.**
+Delete is first-class, and **archive-first: archiving is the source platform's own archive operation — the document stays on its platform, in an archived state.** It is **not** a cross-backend move to kgent.
 
-**Archive availability.** An archive target is *available* for a document when all hold:
-
-1. `routing_rules` matches `operation: archive` for this document (§4.3), or a valid backend declares `archived_docs` in its `content_types`;
-2. that target is a different backend than the document's source;
-3. the target satisfies the document's sensitivity zone (§2.5).
+**Archive availability.** Archiving is *available* for a document when its source backend supports `archive_document` (§3.1). A backend without archive support (or with no archive/trash concept) offers hard delete only.
 
 ```python
 async def handle_delete(doc_uri):
     doc = await read_document(doc_uri)
-    archive_target = resolve_archive_target(doc_uri)   # None if unavailable
+    can_archive = backend_supports(doc.backend, "archive_document")
 
     return propose_delete(
         target=doc_uri,
-        archive_recommended=archive_target,  # shown as recommended option when present
-        snapshot=True,                       # content snapshotted pre-delete (§6.7)
+        archive_recommended=can_archive,  # recommended option when supported
+        snapshot=True,                    # content snapshotted pre-delete (§6.7)
         approval=approval_required(doc_uri), # §3.4 gate
     )
 ```
@@ -1061,36 +1162,38 @@ $ kgent delete kgent://lark/docxAAA
 ┌─────────────────────────────────────────────────┐
 │ Delete "API Design Guidelines v1" (Lark)?       │
 │                                                 │
-│ [a] Archive to kgent (RECOMMENDED)              │
-│     Moves it to kgent-hosted, then removes      │
-│     it from Lark                                │
+│ [a] Archive on Lark (RECOMMENDED)               │
+│     Marks it archived on Lark (kept on-platform,│
+│     recoverable via kgent unarchive)            │
 │ [b] Hard delete from Lark                       │
 │ [c] Cancel                                      │
 └─────────────────────────────────────────────────┘
 ```
 
-**Archive is a move, journaled as one operation.** Option [a] (or `kgent archive` directly) executes two legs under a single op id: (1) write the content to the archive backend, (2) delete the source — the delete leg runs **only after the archive write succeeds**, so a failed archive never loses the document. Both legs are journaled (§6.7); `kgent undo <op-id>` restores the source document and removes the archived copy. The archived copy includes the source's native-format export for lossless restore (§6.9).
+**Archive is a single platform operation, journaled.** Option [a] (or `kgent archive` directly) invokes the source backend's native `archive_document` under one op id. `kgent undo <op-id>` reverses it via `unarchive_document`, restoring the document to active state on the same platform. Both directions are journaled (§6.7) and audited (§8.4).
 
 ```bash
 kgent delete kgent://lark/docxAAA            # proposal recommends archive when available
-kgent archive kgent://lark/docxAAA           # direct move; same confirmation + journaling
-kgent undo <op-id>                           # restore from snapshot
+kgent archive kgent://lark/docxAAA           # direct archive; same confirmation + journaling
+kgent unarchive kgent://lark/docxAAA         # explicit restore to active
+kgent undo <op-id>                           # reverse the archive via journal
 ```
 
-- When no archive target is available (none configured, only candidate is the source backend itself, or rejected by zone rules), the proposal falls back to plain hard delete and states why archive was not offered.
+- When the source backend has no archive support, the proposal falls back to plain hard delete and states why archive was not offered.
+- **Bulk archive**: `kgent archive --older-than 90d` selects documents whose `updated_at` is older than the age (§4.3) and archives each on its own source backend; the batch proposal lists every item (§12 rule 8).
 - Deleting near-duplicate copies that exist on other backends is never implicit: they are listed in the proposal as "similar documents elsewhere" and deleting any of them requires its own confirmation.
-- Deletes are always confirmed (§5.6), snapshotted (§6.7), and audited (§8.4).
+- Deletes and archives are always confirmed (§5.6), snapshotted (§6.7), and audited (§8.4).
 - Platform-side trash/retention behavior of each backend is surfaced in the proposal where known ("Lark moves this to trash for 30 days").
-- **Undo safety**: `kgent undo` of an archive operation first verifies the archived copy is unchanged (fingerprint matches what the archive leg wrote). If the copy was edited after archiving, undo aborts for that leg and asks the user to choose — keep the edited archive, or force-restore. Post-archive edits are never silently deleted.
+- **Undo safety**: `kgent undo` of an archive first verifies the archived document is unchanged (fingerprint matches what the archive recorded). If it was edited while archived, undo aborts for that document and asks the user to choose — keep the edited archived version, or force-restore. Post-archive edits are never silently discarded.
 
 ### 6.9 Content Representation & Fidelity
 
-Cross-backend moves (archive §6.8, fan-out §6.4) change formats; fidelity loss is declared, never silent:
+Cross-backend fan-out (§6.4) changes formats; fidelity loss is declared, never silent:
 
 - **Canonical format**: kgent's interchange format is Markdown body + `DocumentMetadata` sidecar (§3.8). Adapters convert native ↔ canonical at the boundary; `kgent read` returns canonical by default, `--native` fetches the backend-native format.
 - **Fidelity classes**: each adapter declares `fidelity: lossless | lossy` per direction (e.g., lark → canonical is lossy for embeds, votes, comment threads).
-- **Warn on lossy paths**: when a write/archive traverses a lossy conversion, the proposal lists what will degrade ("3 elements have no Markdown equivalent: vote block, diagram, comment thread") and requires confirmation like any other write.
-- **Native blob preservation**: archive moves store the source's native export alongside the canonical Markdown, so `kgent undo` to the same backend type restores losslessly (§6.8). The blob counts against size limits (§3.7).
+- **Warn on lossy paths**: when a write/fan-out traverses a lossy conversion, the proposal lists what will degrade ("3 elements have no Markdown equivalent: vote block, diagram, comment thread") and requires confirmation like any other write.
+- **Fan-out fidelity**: multi-backend fan-out (§6.4) still converts native ↔ canonical across backends; lossy directions are warned and confirmed. Platform-native archive (§6.8) never converts — the document stays in its native format on its own platform, so archive/undo is inherently lossless.
 - **Never fabricate, never silently drop**: conversions must not invent content; unsupported elements become explicit placeholders (`[unsupported: vote block]`) that the user sees in the proposal diff.
 
 ---
@@ -1177,6 +1280,37 @@ def rank(results_per_backend, top_k, k=60):
     return ranked[:top_k]
 ```
 
+### 7.4 Complex Query Decomposition
+
+A compound query ("what changed in the onboarding policy and where is it referenced?") is decomposed into simpler sub-queries by the skill layer (LLM-assisted), each answerable by a single backend search:
+
+```python
+sub_queries = decompose_query(query)          # skill layer, LLM-assisted
+# e.g. ["onboarding policy changes", "onboarding policy references"]
+
+# Sub-queries fan out in parallel for speed; each respects §7.1 timeouts
+results_by_subquery = await asyncio.gather(*[
+    search_knowledge(sub, backends=backends, mode=mode)
+    for sub in sub_queries
+])
+```
+
+- Decomposition happens **only for queries that are genuinely compound**; simple queries are searched as-is.
+- Each sub-query result set is ranked independently (§7.3) and returned grouped by sub-query so the skill can answer each part and cite sources; no cross-sub-query fusion that would obscure provenance.
+- Decomposition is shown to the user ("searching 3 sub-queries: …") — transparent, never hidden.
+
+### 7.5 Conflict Detection and Resolution
+
+Search results — including snippet-level matches (§6.5) — can contradict each other (two documents stating different current owners, duplicated-but-diverged copies, stale vs. fresh versions). kgent **surfaces the conflict and asks for a resolution decision**; it never silently picks one.
+
+- **Detection**: during aggregation (§7.2), the skill compares results and flags contradictions: same fingerprint with different content (diverged), overlapping snippets with conflicting facts, or `stale` results contradicting live ones (§8.6).
+- **Recommendation**: for each conflict, kgent recommends a resolution strategy, in config preference order (§2.1 `conflict_resolution.strategies`):
+  - `link` — cross-reference the documents instead of choosing one;
+  - `correct` — propose an update to reconcile them (goes through the write proposal §5.6);
+  - `archive` — propose archiving the superseded copy (§6.8);
+  - `comment` — leave a comment for the document owner on the platform.
+- **Always confirmed**: no resolution action executes without a user-confirmed proposal (§5.6); `conflict_resolution.require_confirmation: true` is the default and may not be disabled silently.
+
 ---
 
 ## 8. Error Handling
@@ -1197,12 +1331,12 @@ def rank(results_per_backend, top_k, k=60):
 ### 8.2 Error Reporting
 
 ```bash
-$ kgent store --backends lark,dingtalk,confluence --title "X" --file body.md
+$ kgent store --backends lark,dingtalk,wecom --title "X" --file body.md
 
 ✅ Stored to Lark:      kgent://lark/docxABC123
 ✅ Stored to DingTalk:  kgent://dingtalk/d_456
-❌ Failed on Confluence: Authentication expired
-   → Run `confluence-cli auth` to re-authenticate
+❌ Failed on WeCom: Authentication expired
+   → Run `wecom-cli auth` to re-authenticate
    → Repair: `kgent sync --repair op-20260826-01`
 (op id: op-20260826-01)
 ```
@@ -1213,11 +1347,11 @@ $ kgent store --backends lark,dingtalk,confluence --title "X" --file body.md
 fallback_chains:
   document_storage:
     preferred: lark
-    fallbacks: [dingtalk, confluence, kgent]
+    fallbacks: [dingtalk, wecom]
 
-  vector_search:
-    preferred: kgent
-    fallbacks: [lark]
+  document_search:
+    preferred: lark
+    fallbacks: [dingtalk]
 ```
 
 - **Searches**: fallbacks engage automatically on failure/timeout.
@@ -1244,7 +1378,7 @@ Append-only `~/.kgent/audit.ndjson` records, for every operation:
 - MCP endpoints require TLS with certificate verification; server identity (cert SPKI pin) is recorded on first verified connection and mismatch aborts with a clear warning (no silent TOFU downgrade).
 - CLI adapters invoke subprocesses with **argv arrays only** — no shell interpolation. Titles, content, and user-supplied strings are passed as discrete arguments; adapters validate argument shape before exec.
 - Config parsing rejects unknown top-level keys (typo/injection defense) unless `version` indicates a newer schema.
-- Backend query languages (Confluence CQL, Lark search syntax, filter DSLs) are built with parameterization/escaping only — raw interpolation of user query strings is forbidden.
+- Backend query languages (Lark/DingTalk/WeCom search syntax, filter DSLs) are built with parameterization/escaping only — raw interpolation of user query strings is forbidden.
 
 ### 8.6 Read-Path Staleness
 
@@ -1261,19 +1395,20 @@ Search indexes lie: documents get deleted or moved externally, and permissions g
 
 ### Phase 1: Core Infrastructure
 
-1. **Capability Router Layer**
+1. **Capability Router Layer** (in-process library, §1.4)
    - Capability interfaces with canonical URIs (§3.6) and core data schemas (§3.8)
    - Backend registry, config loading + trust model (§2.3)
    - Single routing precedence chain (§4.1)
    - Policy enforcement points: approval gate (§3.4), sensitivity rules (§2.5), write journal (§6.7), audit log (§8.4), optimistic concurrency (§3.9)
 
-2. **Backend Adapters**
-   - kgent-cli adapter (primary), lark-cli adapter (via lark-doc skill)
+2. **Backend Adapters** (initial phase, §1.3)
+   - `lark-cli`, `dingtalk-cli`, `wecom-cli` adapters (official CLIs)
    - Adapter contract incl. argv safety, timeouts, error normalization (§1.2, §8.5), fidelity classes (§6.9)
+   - kgent-hosted MCP adapter in a later phase
 
 3. **Configuration System**
-   - Schema + validation + migration (§2.6)
-   - OS secret store integration (§2.4)
+   - Schema + validation + migration + `kgent doctor` (§2.6)
+   - OS secret store integration + lazy auth (§2.4)
    - Read-only auto-discovery + capability cache (§2.2, §3.5)
 
 ### Phase 2: Skills Layer
@@ -1287,6 +1422,8 @@ Search indexes lie: documents get deleted or moved externally, and permissions g
 5. **Question Answering Skill**
    - Multi-backend search with timeouts/streaming (§7.1)
    - RRF ranking + near-duplicate clustering (§7.2, §7.3)
+   - Complex query decomposition (§7.4)
+   - Conflict detection & resolution (§7.5)
    - Untrusted-content wrapping (§5.5)
 
 6. **Wiki Setup Skill**
@@ -1301,10 +1438,10 @@ Search indexes lie: documents get deleted or moved externally, and permissions g
    - User preference learning (proposal-level only; never changes enforcement)
 
 8. **Deduplication & Repair**
-   - Fingerprint index + near-duplicate detection (§6.5)
+   - Fingerprint index + near-duplicate + snippet-level detection (§6.5)
    - `kgent sync` repair workflows (§6.6)
    - Undo via write journal (§6.7)
-   - Content fidelity conversion + native-blob preservation (§6.9)
+   - Content fidelity conversion for fan-out (§6.9)
 
 9. **Monitoring & Observability**
    - Audit log tooling (§8.4)
@@ -1320,6 +1457,7 @@ Search indexes lie: documents get deleted or moved externally, and permissions g
 
 Easy to add new backends by implementing capability interfaces:
 
+- **Confluence**: `confluence-cli` adapter
 - **Notion**: `notion-cli` adapter
 - **Google Docs**: `gdocs-cli` adapter
 - **SharePoint**: `sharepoint-cli` adapter
@@ -1355,7 +1493,7 @@ These criteria are operationalized as executable acceptance scenarios in the com
 7. **Modularity**: adding a new backend requires only an adapter + capability cache entry; verified by a conformance test suite run against every adapter.
 8. **Security regression**: config-injection test suite (forbidden project-local keys, untrusted dirs, malicious skill_name/mcp_url overrides) passes on every build.
 9. **Zero stale overwrites**: concurrent-edit fault injection yields 0 silent clobbers — every version conflict surfaces as a re-read proposal (§3.9).
-10. **Zero archive data loss**: archive-move fault injection (kill mid-move, fail the archive write) never loses content; source deletes only after a verified archive write (§6.8).
+10. **Zero archive data loss**: platform-native archive fault injection (fail the archive op mid-flight) never loses content — a failed archive leaves the document active, and hard delete is only ever proposed separately (§6.8).
 11. **No silent fidelity loss**: every lossy cross-backend conversion is warned and confirmed in the proposal (§6.9); measured across the adapter conformance suite.
 
 ---
@@ -1365,6 +1503,19 @@ These criteria are operationalized as executable acceptance scenarios in the com
 All commands support a common flag set; behaviors below are normative.
 
 ```bash
+# Primitive operations (one capability call each; skills orchestrate the
+# judgment-heavy workflows — §1.2, §1.4)
+kgent create  [--title T] (--file F | --stdin | --content C)
+              [--backends SEL] [--content-type CT] [--sensitivity S]
+              [--dry-run] [--yes] [--json]
+
+kgent update  <doc-uri> [--file F | --stdin | --content C]
+              [--expected-version V] [--yes] [--json]
+
+# `store` is the skill-backed convenience command: it performs the
+# update-first search ("does this knowledge already exist?"), then proposes
+# create or update (§6.1). It runs the same workflow as the
+# knowledge-storage skill, exposed for interactive/scripted CLI use.
 kgent store   [--title T] (--file F | --stdin | --content C)
               [--backends SEL] [--content-type CT] [--sensitivity S]
               [--routing explicit|configured|smart]
@@ -1375,17 +1526,21 @@ kgent search  --query Q [--backends SEL] [--mode keyword|semantic|hybrid]
 
 kgent read    <doc-uri> [--native] [--json]
 kgent delete  <doc-uri> [--yes] [--json]
-kgent archive <doc-uri|--older-than 90d> [--backends SEL] [--json]
-              # --older-than measured on updated_at (§4.3)
+kgent archive <doc-uri|--older-than 90d> [--json]
+              # platform-native archive (§6.8); --older-than measured on updated_at (§4.3)
+kgent unarchive <doc-uri> [--json]     # restore an archived doc to active (§6.8)
 
 kgent sync    --status | --repair <op-id> | --repair-all
 kgent undo    <op-id>
 kgent audit   [--since 7d] [--op read|write|delete] [--json]
 kgent auth    status | login <backend> | logout <backend>
-kgent setup   [--read-only]          # §2.2 discovery, read-only guaranteed
+kgent setup   [--read-only]          # §2.2 discovery, read-only, no auth prompts
 kgent trust   [--revoke]             # §2.3 project-config trust
+kgent doctor  [--json]               # config + environment health check (§2.6)
 kgent config  validate | migrate | show-effective [--json]
 ```
+
+**Primitive vs. skill.** The CLI exposes *primitive* operations (create/update/read/search/delete/archive/unarchive/undo/sync/audit/auth/doctor/config/setup/trust) that map 1:1 to capability calls. `kgent store` is the one *judgment-heavy* convenience command: deciding "does this knowledge already exist?" requires agent judgment, so `store` runs the same workflow as the knowledge-storage skill (search → update-first proposal → confirm, §6.1) and is a thin CLI entry point into it. Skills perform the orchestration and invoke primitives (§1.4).
 
 **Rules:**
 
@@ -1395,15 +1550,15 @@ kgent config  validate | migrate | show-effective [--json]
 4. **`--json`**: stable machine-readable output (schema-versioned) for every command; success/failure is also reflected in exit codes (0 = ok, 2 = partial success, 1 = failure, 3 = rejected by policy, 4 = version conflict §3.9).
 5. **Doc URIs**: all commands accepting documents take canonical URIs (§3.6); bare native IDs are rejected with a hint, not guessed.
 6. **Idempotency**: `store`/`update`/`delete` accept `--op-id` to reuse an existing operation id (safe retries, §6.6); omitted → new op id generated and printed.
-7. **Archive-first delete**: `kgent delete` always presents archive as the recommended option when an archive target is available (§6.8); hard delete remains an explicit choice. `kgent archive` performs the same confirmed, journaled move directly.
+7. **Archive-first delete**: `kgent delete` always presents archive as the recommended option when the source backend supports native archiving (§6.8); hard delete remains an explicit choice. `kgent archive` performs the same confirmed, journaled platform-native archive directly.
 8. **Batch operations & cancellation**: multi-document operations (`kgent archive --older-than`, any bulk selector) show one batch proposal — count, per-document targets, total size — and one confirmation covers the batch; `--dry-run` lists every item; each item is individually journaled and undoable. Interrupting a running operation aborts unstarted legs; completed legs stay journaled (`status: partial`) and are inspectable via `kgent sync --status` — nothing is silently rolled back (§6.4).
 
 ---
 
 ## Appendix A: Glossary
 
-- **Backend**: A platform or service that provides knowledge management capabilities (Lark, DingTalk, Confluence, kgent-hosted)
-- **Capability**: A specific feature or operation (document_storage, vector_search, approval_flow)
+- **Backend**: A platform or service that provides knowledge management capabilities (Lark/Feishu, DingTalk, WeCom initially; kgent-hosted later)
+- **Capability**: A specific feature or operation (document_storage, document_search, approval_flow)
 - **Skill**: An orchestration layer that coordinates complex workflows using capabilities
 - **Router**: Middleware that routes operations to appropriate backends and *enforces* policy gates (approval, sensitivity, journaling, audit)
 - **Routing Mode**: How backends are selected (explicit, configured, smart) — single precedence chain, §4.1
@@ -1412,6 +1567,7 @@ kgent config  validate | migrate | show-effective [--json]
 - **Trust Zone**: Backend classification (`internal`/`external`) used by the data-leakage policy (§2.5)
 - **Proposal**: A fully-specified, user-confirmable plan for a write operation; the mandatory precursor to execution
 - **Canonical Format**: Markdown body + `DocumentMetadata` sidecar — kgent's interchange representation; adapters convert native ↔ canonical at boundaries (§6.9)
+- **Archive**: The source platform's native archive operation — a document is marked archived and kept on-platform, reversible via `kgent unarchive` (§6.8)
 - **Optimistic Concurrency**: `expected_version` checks ensuring updates never clobber external edits; conflicts re-propose instead (§3.9)
 - **Approval TTL**: Approvals expire (`expires_at`); expired approvals are treated as rejected (§3.4)
 
@@ -1425,18 +1581,18 @@ kgent config  validate | migrate | show-effective [--json]
 version: 1
 defaults:
   routing_mode: configured
-  default_backends: [kgent]
+  default_backends: [lark]
 
 backends:
-  kgent:
+  lark:
     enabled: true
-    type: mcp
-    mcp_url: https://kgent.example.com/mcp   # TLS required (§8.5)
+    type: cli
+    cli_name: lark-cli
     trust_zone: internal
     capabilities:
       document_storage:
         supported: true
-      vector_search:
+      document_search:
         supported: true
     # No auth block: credentials live in the OS secret store (§2.4)
 ```
@@ -1451,12 +1607,12 @@ defaults:
 backends:
   lark:
     enabled: true
-    type: skill
-    skill_name: lark-doc
+    type: cli
+    cli_name: lark-cli
     trust_zone: internal
     capabilities:
       document_storage: {supported: true}
-      vector_search:
+      document_search:
         supported: true
         features:
           search_by_keywords: true
@@ -1464,15 +1620,15 @@ backends:
           search_hybrid: true
     content_types: [internal_docs, meeting_notes]
 
-  kgent:
+  dingtalk:
     enabled: true
-    type: mcp
-    mcp_url: https://kgent.example.com/mcp
-    trust_zone: internal
+    type: cli
+    cli_name: dingtalk-cli
+    trust_zone: external
     capabilities:
       document_storage: {supported: true}
-      vector_search: {supported: true}
-    content_types: [archived_docs]
+      document_search: {supported: true}
+    content_types: [external_docs]
 
 routing_rules:
   - match:
@@ -1480,16 +1636,92 @@ routing_rules:
     backends: [lark]
 
   - match:
-      operation: archive       # older_than rules: archive ops only (§4.3)
+      operation: archive       # platform-native archive selection (§4.3, §6.8)
       older_than: 90d
-    backends: [kgent]
 
-  - default: [lark, kgent]
+  - default: [lark, dingtalk]
 
 audit:
   enabled: true
   redact_queries: true
 ```
+
+---
+
+## Appendix C: Complete Configuration Schema Reference
+
+Full schema for `version: 1`. Type, default, and allowed values. Unknown top-level keys are rejected (§2.3, §8.5); future `version` values are rejected with a migrate hint (§2.6).
+
+### Top level
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `version` | int | required | must be `1`; future versions rejected (§2.6) |
+| `defaults` | object | — | global defaults |
+| `backends` | object (name → backend) | required | backend declarations |
+| `routing_rules` | list | `[]` | smart-routing rules (§4.3) |
+| `content_type_mapping` | object | `{}` | configured-mode mapping (§4.1) |
+| `sensitivity_floors` | object | `{}` | per-content_type minimum tier (§2.5) |
+| `fallback_chains` | object | `{}` | failure fallbacks (§8.3) |
+| `conflict_resolution` | object | see below | conflict handling (§7.5) |
+| `journal` | object | see below | write journal (§6.7) |
+| `audit` | object | see below | audit log (§8.4) |
+
+### `defaults`
+
+| Key | Type | Default | Allowed |
+|---|---|---|---|
+| `routing_mode` | string | `configured` | `explicit` \| `configured` \| `smart` (§4.3) |
+| `default_backends` | list[string] | `[]` | enabled backend names (§4.2 grammar) |
+| `approval_ttl_hours` | int | 24 | > 0 (§3.4) |
+| `timeouts.search_seconds` | int | 10 | > 0 (§7.1) |
+| `timeouts.write_seconds` | int | 30 | > 0 |
+| `concurrency.max_parallel_backends` | int | 4 | ≥ 1 (§7.1) |
+
+### `backends.<name>`
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `false` | disabled backends are never selected |
+| `type` | string | required | `skill` \| `cli` \| `mcp` (§1.2) |
+| `skill_name` / `cli_name` / `mcp_url` | string | per type | target-selection fields; forbidden in project-local config (§2.3) |
+| `trust_zone` | string | `external` | `internal` \| `external`; new backends default external (§10.1) |
+| `capabilities` | object | runtime-detected | overrides only narrow detection (§3.5) |
+| `content_types` | list[string] | `[]` | declared document kinds |
+| `priority` | int | — | ranking tiebreaker only (§7.3) |
+
+`capabilities` sub-objects: `document_storage` (features incl. `archive`/`unarchive`, §3.1), `document_search` (features `search_by_keywords`/`search_by_semantics`/`search_hybrid`, `fallback` sibling, `limits`, `defaults`, §3.2), `approval_flow` (§3.4). `fallback` is a sibling of `features`, never nested (§3.2).
+
+### `journal`
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `retention_days` | int | 30 | snapshot retention (§6.7) |
+| `encrypt` | bool | `false` | confidential snapshots require `true` (§6.7) |
+
+### `audit`
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `true` | §8.4 |
+| `path` | string | `~/.kgent/audit.ndjson` | §8.4 |
+| `redact_queries` | bool | `true` | opt-out with warning (§8.4) |
+
+### `conflict_resolution`
+
+| Key | Type | Default | Notes |
+|---|---|---|---|
+| `enabled` | bool | `true` | §7.5 |
+| `strategies` | list[string] | `[link, comment, archive, correct]` | preference order; values from §7.5 |
+| `require_confirmation` | bool | `true` | resolution always via confirmed proposal (§5.6) |
+
+### Routing-mode behavior
+
+| Mode | Selection path (§4.1) | Needs classification? | Typical use |
+|---|---|---|---|
+| `explicit` | step 1 only (`--backends`) | no | scripts, one-off targets |
+| `configured` | step 3 then 4 (mapping → defaults) | no | deterministic day-to-day writes |
+| `smart` | step 2 (rules), then 3/4 fallback | yes (LLM-assisted, shown in proposal) | assistant-driven routing |
 
 ---
 

@@ -1,9 +1,9 @@
 # kgent Packaging — Executable Acceptance Specification
 
 **Date**: 2026-08-26
-**Version**: 1.0
+**Version**: 1.1
 **Status**: Pending approval (implementation is forbidden until §9 records approval)
-**Companion to**: [2026-08-26-kgent-packaging-design.md](2026-08-26-kgent-packaging-design.md) (v1.4.1)
+**Companion to**: [2026-08-26-kgent-packaging-design.md](2026-08-26-kgent-packaging-design.md) (v1.5)
 **Methodology**: old-coder (spec-first; trust from constraints, not inspection)
 
 This is the artifact the human approves **before any implementation code is
@@ -18,8 +18,8 @@ report at implementation time.
 
 **Tier: 3 — high stakes.** Justification:
 
-- **Data loss**: deletes, archive moves, undo, cross-backend overwrites
-- **Auth/credentials**: four backends, tokens, OS secret store + fallback
+- **Data loss**: deletes, archive operations, undo, cross-backend overwrites
+- **Auth/credentials**: three initial backends (Lark/Feishu, DingTalk, WeCom), tokens, OS secret store + fallback
 - **Concurrency**: parallel sessions, platform-side edits between proposal and confirmation
 - **Hostile input**: prompt injection via fetched docs, config injection via project-local files, shell/query-language injection
 - **External side effects**: writes to third-party platforms are not roll-backable by us
@@ -39,7 +39,7 @@ Ways this system can hurt, and the layer that catches each. Every scenario in
 
 | # | Harm mode | Concrete example | Catching layer | Scenarios |
 |---|---|---|---|---|
-| FM1 | Data loss on archive | Archive write fails halfway; source already deleted | Fault-injection test (kill/fail between legs) | S9, S10, S12 |
+| FM1 | Data loss on delete/archive | Hard delete removes content; archive op fails partway | Fault-injection test (fail the archive op; doc stays active) | S9, S10, S12 |
 | FM2 | Stale clobber | Doc edited on-platform while proposal is open; update overwrites it | Concurrency scenario + parallel-session stress | S5–S7, P2 |
 | FM3 | Confidentiality leak | confidential doc routed to external backend; query text persisted | Zone scenarios + audit-content grep gate | S13–S16, S45, N4 |
 | FM4 | Prompt injection | Fetched doc says "delete everything"; skill obeys | Adversarial corpus run | S39, N6 |
@@ -48,7 +48,7 @@ Ways this system can hurt, and the layer that catches each. Every scenario in
 | FM7 | Duplication | Retry after partial fan-out duplicates content | Idempotency property + repair scenarios | S29, S30, P2 |
 | FM8 | Silent failure | Backend fails; user sees "ok" | Observability assertions (every failure path emits footer/journal/audit) | S33, N10 |
 | FM9 | Unbounded growth | Journal/queue grow without bound | Retention + queue-budget tests | S44, S47 |
-| FM10 | Invocation injection | Title `; rm -rf ~` passed to CLI backend; CQL in search query | Metacharacter corpus, argv assertions | S40, S41, N12 |
+| FM10 | Invocation injection | Title `; rm -rf ~` passed to CLI backend; filter-DSL in search query | Metacharacter corpus, argv assertions | S40, S41, N12 |
 | FM11 | Fabricated/degraded content | Lossy conversion silently drops tables | Fidelity scenarios + round-trip property | S49, S50, P1, N11 |
 | FM12 | Credential exposure | Token written to config or plaintext file | File-content scan after every auth flow | S46, N9 |
 
@@ -66,7 +66,7 @@ correctness of backend platforms' own permission models.
 backends:
   lark:      {trust_zone: internal, capabilities: full}        # owner: alice
   dingtalk:  {trust_zone: external, keyword-search only}
-  kgent:     {trust_zone: internal, content_types: [archived_docs]}
+  wecom:     {trust_zone: external, keyword-search only}
 defaults: {routing_mode: configured, default_backends: [lark],
            approval_ttl_hours: 24}
 user: alice   # resolved identity on all backends
@@ -139,41 +139,39 @@ Scenario: S7-no-version-token-falls-back-with-warning
 ### F3 — Archive-first delete & undo safety (FM1)
 
 ```gherkin
-Feature: Delete recommends archive; moves are atomic; undo never destroys edits
+Feature: Delete recommends platform-native archive; archive is reversible; undo never destroys edits
 
 Scenario: S8-delete-offers-archive-first
-  Given doc kgent://lark/docA exists and kgent declares archived_docs
+  Given doc kgent://lark/docA and lark supports archive_document (§3.1)
   When  I run `kgent delete kgent://lark/docA`
-  Then  the proposal lists "[a] Archive to kgent" marked RECOMMENDED
+  Then  the proposal lists "[a] Archive on Lark" marked RECOMMENDED
         before "[b] Hard delete"
 
-Scenario: S9-archive-write-failure-keeps-source
+Scenario: S9-archive-failure-keeps-doc-active
   Given doc kgent://lark/docA
-  And   the kgent backend write is fault-injected to fail
+  And   lark's archive_document call is fault-injected to fail
   When  I confirm the archive option
-  Then  the source doc still exists on lark, unmodified
-  And   the journal op has status == "failed" and the failed leg named
+  Then  docA remains in active (unarchived) state on lark
+  And   the journal op has status == "failed" naming the archive leg
   And   exit code is 2
 
-Scenario: S10-successful-archive-is-one-op-two-legs
+Scenario: S10-successful-archive-is-one-platform-op
   Given doc kgent://lark/docA
-  When  I confirm the archive option and both backends succeed
-  Then  exactly one op id covers both legs
-  And   the source is deleted from lark only AFTER the kgent write is verified
-  And   the archived copy includes the native-format blob
+  When  I confirm the archive option and lark's archive_document succeeds
+  Then  exactly one op id covers the operation (a single platform leg)
+  And   docA is archived on lark (kept on-platform, not moved)
+  And   `kgent unarchive` or `kgent undo` can restore it
 
 Scenario: S11-undo-unchanged-archive-restores
-  Given an archive op O moved docA lark→kgent, archived copy unmodified since
+  Given an archive op O archived docA on lark, unmodified since archiving
   When  I run `kgent undo O`
-  Then  docA exists on lark with identical content and metadata
-  And   the kgent archived copy is deleted
+  Then  docA is unarchived on lark with identical content and metadata
 
 Scenario: S12-undo-edited-archive-refuses
-  Given an archive op O moved docA lark→kgent
-  And   the kgent copy was edited after archiving (fingerprint differs)
+  Given an archive op O archived docA on lark
+  And   docA was edited while archived (fingerprint differs)
   When  I run `kgent undo O`
-  Then  the kgent copy is NOT deleted
-  And   the source is NOT recreated automatically
+  Then  the archived doc is NOT unarchived automatically
   And   I am asked to choose keep-edited-archive | force-restore
 ```
 
@@ -230,9 +228,9 @@ Scenario: S18-forbidden-key-rejected-by-name
   And   exit code is 1
 
 Scenario: S19-trusted-routing-overrides-work
-  Given a TRUSTED project config with routing_rules for meeting_notes → [kgent]
+  Given a TRUSTED project config with routing_rules for meeting_notes → [dingtalk]
   When  I store a meeting_notes document in that directory
-  Then  the write targets kgent (project rule beats global mapping)
+  Then  the write targets dingtalk (project rule beats global mapping)
 
 Scenario: S20-unknown-top-level-key-rejected
   Given a config containing top-level key "hook_cmd"
@@ -285,9 +283,9 @@ Scenario: S27-unknown-ownership-fails-closed
   Then  the approval is denied (fail closed)
 
 Scenario: S28-fanout-per-target-approvals
-  Given a fan-out update to lark (gated) and kgent (gated)
+  Given a fan-out update to lark (gated) and wecom (gated)
   Then  exactly two approval requests are created, one per target
-  And   rejecting only the kgent approval fails only the kgent leg
+  And   rejecting only the wecom approval fails only the wecom leg
   And   the lark leg proceeds; op status is "partial"; exit code 2
 ```
 
@@ -304,7 +302,7 @@ Scenario: S29-retry-does-not-duplicate-succeeded-legs
   And   no document with O's fingerprint exists twice on any backend
 
 Scenario: S30-repair-only-failed-legs
-  Given op O with legs {lark: ok, dingtalk: failed, kgent: ok}
+  Given op O with legs {lark: ok, dingtalk: failed, wecom: ok}
   When  I run `kgent sync --status`
   Then  output lists exactly one failed leg (dingtalk) with op id O
 ```
@@ -315,12 +313,12 @@ Scenario: S30-repair-only-failed-legs
 Feature: Bounded, comparable, honest search results
 
 Scenario: S31-topk-is-a-total
-  Given 4 enabled backends each returning 10 results
+  Given 3 enabled backends each returning 10 results
   When  I search with --top-k 10
   Then  the final result list has exactly 10 entries
 
 Scenario: S32-per-backend-clamp
-  Given backend kgent with limits.max_results == 200 and dingtalk == 50
+  Given backend lark with limits.max_results == 200 and dingtalk == 50
   When  I search with --top-k 100
   Then  dingtalk is queried with fetch size 50 and its result metadata
         records the clamp
@@ -390,7 +388,7 @@ Scenario: S40-shell-metacharacters-in-title
 
 Scenario: S41-query-language-injection-escaped
   Given query 'title ~ "%" AND creator != currentUser()'
-  When  searching a CQL-based backend
+  When  searching a query-language backend (filter DSL)
   Then  the adapter sends an escaped/parameterized query
   And   the raw string never appears unescaped in the request
 
@@ -428,6 +426,20 @@ Scenario: S46-no-keychain-encrypted-fallback-with-warning
   And   a warning "encrypted-file fallback active" is printed at startup and on auth use
   And   if encryption is also unavailable, auth setup fails (exit code 1)
         and no credential file of any kind is written
+
+Scenario: S51-confidential-snapshot-omitted-when-unencrypted
+  Given journal.encrypt == false
+  And   content classified "confidential"
+  When  I confirm a write of that content
+  Then  the journal entry has NO snapshot.content_before body
+  And   the proposal stated "undo unavailable: enable journal.encrypt"
+  And   `kgent undo <op-id>` reports undo unavailable for this op
+
+Scenario: S52-secrets-never-in-journal
+  Given journal.encrypt is either true or false
+  And   any auth or write operation
+  Then  no journal entry, snapshot, or audit line contains a token or
+        credential value (file-content scan)
 ```
 
 ### F12 — Rate limits, size, fidelity (FM9, FM11)
@@ -453,14 +465,64 @@ Scenario: S48-oversize-preflight-reject
 
 Scenario: S49-lossy-conversion-warned
   Given a Lark doc containing a vote block with no markdown equivalent
-  When  I archive it to kgent
+  When  I fan out a copy to DingTalk (lossy native→canonical conversion)
   Then  the proposal lists "vote block" under degraded elements
   And   confirmation is required before proceeding
 
-Scenario: S50-native-blob-roundtrip (see also P1)
-  Given docA archived lark→kgent with native blob preserved
-  When  I undo and restore to lark
+Scenario: S50-native-roundtrip (see also P1)
+  Given a document archived and later unarchived on Lark (platform-native, §6.8)
+  When  I undo the archive
   Then  the restored doc is byte-equivalent in native format to the original
+        (no conversion occurs on a platform-native archive)
+```
+
+### F13 — Discovery & config health (FM3, FM5)
+
+```gherkin
+Feature: Discovery is read-only and lazy; config health is checkable
+
+Scenario: S53-setup-does-not-prompt-for-auth
+  Given a fresh machine with no stored credentials
+  When  I run `kgent setup`
+  Then  zero auth prompts appear (no credentials requested during discovery)
+  And   the report shows "Auth: deferred (checked on first use)" for every backend
+  And   the first actual write/search invocation is what triggers lazy auth
+
+Scenario: S54-doctor-validates-config
+  Given a config with a forbidden project-local key backends.lark.skill_name
+  When  I run `kgent doctor`
+  Then  it reports the finding naming "backends.lark.skill_name"
+  And   exit code is 1
+  And   with a valid config, `kgent doctor` reports healthy and exit code is 0
+  And   doctor performs no writes and no auth prompts
+```
+
+### F14 — Conflict resolution, snippet dedup, query decomposition (FM7, FM8)
+
+```gherkin
+Feature: Contradictions are surfaced; compound queries decompose; snippets dedupe
+
+Scenario: S55-conflicting-results-surface-resolution
+  Given two documents state different current owners for the same team
+  When  search returns both as contradictory
+  Then  the conflict is surfaced with a recommended resolution strategy
+        from conflict_resolution.strategies (link/comment/archive/correct)
+  And   no resolution action executes without a confirmed proposal
+  And   exit code reflects a conflict was reported
+
+Scenario: S56-snippet-overlap-flagged
+  Given two documents share a copy-pasted section but differ elsewhere
+  When  search or update-first lookup runs
+  Then  they are shown as "overlapping content" (snippet-level match)
+  And   they are never auto-merged
+
+Scenario: S57-compound-query-decomposed
+  Given query "onboarding policy changes and where it is referenced"
+  When  the QA skill searches
+  Then  it decomposes into sub-queries (e.g. changes / references)
+  And   sub-queries fan out in parallel
+  And   results are grouped by sub-query with provenance (not fused into one list)
+  And   the decomposition is shown to the user
 ```
 
 ---
@@ -486,6 +548,8 @@ skipped-with-reason. Never silently absent.
 | N12 | Parse free-form backend prose (--help, doc text) into capability/config data | S42 + discovery unit tests on hostile manifests |
 | N13 | Count rate-limit queueing against the transient-retry budget | S47 |
 | N14 | Send telemetry/metrics off-machine (content, queries, URIs) | network-capture layer during full suite run |
+| N15 | Prompt for credentials during discovery | S53 |
+| N16 | Persist confidential snapshots or secrets to an unencrypted journal | S51, S52 |
 
 ---
 
@@ -517,11 +581,12 @@ the set below configured defaults".
 2. **Config-injection fuzz**: generate project-local configs targeting every
    forbidden key path plus near-misses (case, unicode-normalized keys); assert
    reject-or-ignore for all (N5).
-3. **String-injection corpus**: titles/queries with shell, CQL, YAML-breakout,
-   path-traversal, and format-string payloads; assert inertness (S40, S41).
-4. **Fault-injection rehearsal**: kill the process between archive legs;
-   expire tokens mid-fan-out; 429 storms; assert journal-recoverable state and
-   no data loss (FM1, FM9).
+3. **String-injection corpus**: titles/queries with shell, filter-DSL,
+   YAML-breakout, path-traversal, and format-string payloads; assert inertness
+   (S40, S41).
+4. **Fault-injection rehearsal**: fail the archive op mid-flight (doc must
+   stay active); expire tokens mid-fan-out; 429 storms; assert
+   journal-recoverable state and no data loss (FM1, FM9).
 5. **Race rehearsal**: two concurrent sessions updating the same doc; assert
    exactly one wins, the other gets VersionConflict (FM2).
 6. All corpus files persist in the repo (`tests/adversarial/`), re-runnable.
@@ -582,8 +647,8 @@ or **n-a** with reason — never blank, never "pass" for a skipped row.
 
 | ID | Scenario / constraint | Test | Status |
 |---|---|---|---|
-| S1–S50 | §2 scenarios | tests named after scenario ids | pending |
-| N1–N14 | §3 constraints | per-table mapping | pending |
+| S1–S57 | §2 scenarios | tests named after scenario ids | pending |
+| N1–N16 | §3 constraints | per-table mapping | pending |
 | P1–P7 | §4 properties | `tests/properties/` | pending |
 | FM1–FM12 | §1 layers | §5 rehearsals + scenario refs | pending |
 
@@ -591,7 +656,8 @@ or **n-a** with reason — never blank, never "pass" for a skipped row.
 
 ## 8. Honest Notes (append-only during implementation)
 
-- (none yet — spec authored from design v1.4.1; no implementation exists)
+- v1.1 aligned with design v1.5 (PR #1 review): platform-native archive; three initial backends (Lark/Feishu, DingTalk, WeCom); lazy auth; `kgent doctor`; snippet-level dedup; conflict resolution; query decomposition; journal confidentiality guard.
+- No implementation exists; all rows remain pending.
 
 ---
 
