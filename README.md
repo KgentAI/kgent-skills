@@ -9,7 +9,7 @@ This repository contains the design specifications and skill definitions for pac
 ## Contents
 
 - `specs/` - Design specifications and architecture documents
-  - [2026-08-26-kgent-packaging-design.md](specs/2026-08-26-kgent-packaging-design.md) - Core architecture and design principles (v1.3)
+  - [2026-08-26-kgent-packaging-design.md](specs/2026-08-26-kgent-packaging-design.md) - Core architecture and design principles (v1.4)
 
 ## Key Design Principles
 
@@ -36,7 +36,7 @@ Backend Implementations (Lark, DingTalk, Confluence, kgent)
 
 ## Status
 
-🚧 **Early Design Phase** - This repository is in active development.
+📐 **Spec reviewed (v1.4)** — the design spec has completed security, UX, and consistency review passes; implementation is pending. See `specs/`.
 
 ## License
 

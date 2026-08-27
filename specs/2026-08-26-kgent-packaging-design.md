@@ -3,7 +3,18 @@
 **Date**: 2026-08-26
 **Last Revised**: 2026-08-26 (v1.1 — security/UX/consistency review applied)
 **Status**: Draft
-**Version**: 1.3
+**Version**: 1.4
+
+## Changes in v1.4
+
+Post-review sweep — residual gaps found in v1.3, now closed:
+
+- **`older_than` age basis**: measured on `updated_at` (last activity), not `created_at` (§4.3, §12).
+- **Undo safety for archives**: undo verifies the archived copy is unchanged before deleting it; post-archive edits are never silently lost (§6.8).
+- **Whole-`~/.kgent` protection**: 0700 dir / 0600 files for all local state, not just journal/audit (§6.7).
+- **Approver policy**: resolved platform identities; self-approval allowed by default only for documents the requester owns (§3.4).
+- **Metrics privacy**: observability is local-only (§9).
+- **Exit code 4** for version conflicts (§12).
 
 ## Changes in v1.3
 
@@ -590,6 +601,7 @@ Approval is **enforced by the router, not advisory**:
 5. Backends without approval flow fall back to the standard user-confirmation proposal (§5.6); the proposal states that no platform-side approval exists.
 6. **Approvals expire.** Every approval carries `expires_at` (default: `defaults.approval_ttl_hours`). An expired approval is treated as rejected — the write does not execute and a fresh approval must be requested with user confirmation.
 7. **Fan-out writes are approved per target.** A multi-backend write (§6.4) touching several gated backends creates one approval per target; the proposal lists all of them. `--yes` (§12) never bypasses platform approvals — it bypasses only kgent's interactive confirmation.
+8. **Approver policy.** Approvers must be resolved platform identities (resolved through the backend's directory, never free text passed through verbatim). **Self-approval** — the requester also approving — is allowed by default **only when the target document is owned by the requester** (`DocumentMetadata.owner`, §3.8); for shared documents owned by others, self-approval is denied and at least one other approver is required. If ownership cannot be determined, the router fails closed (self-approval denied). Backends may tighten or loosen this via `approval.self_approval: deny | owned_only | always` (default `owned_only`).
 
 ### 3.5 Runtime Capability Verification
 
@@ -739,7 +751,7 @@ kgent store --title "X" --file body.md
 
 **Smart** — precedence step 2: rules match on *operation, declared content_type, and tags*.
 
-Note on `older_than`: rules with `older_than` apply only to `kgent archive` operations (moving existing documents), never to `store`, since age is unknowable for new content. `analyze_content_type()` is LLM-assisted and therefore **best-effort**: the inferred `content_type` and `sensitivity` are always shown in the write proposal (§5.6) and can be corrected before confirming. A misclassification can be caught at confirmation time; nothing routes on classification alone without that checkpoint.
+Note on `older_than`: rules with `older_than` apply only to `kgent archive` operations (moving existing documents), never to `store`, since age is unknowable for new content. Age is measured from `metadata.updated_at` (last activity), not `created_at` — an old document that was recently edited is still active and not eligible for archiving. `analyze_content_type()` is LLM-assisted and therefore **best-effort**: the inferred `content_type` and `sensitivity` are always shown in the write proposal (§5.6) and can be corrected before confirming. A misclassification can be caught at confirmation time; nothing routes on classification alone without that checkpoint.
 
 ### 4.4 No Replicas (v1.2)
 
@@ -1011,7 +1023,7 @@ Every executed write appends to `~/.kgent/journal/` (NDJSON, append-only):
 ```
 
 - Snapshots of pre-update/pre-delete content are kept locally (default retention 30 days, configurable) to support undo.
-- Journal and snapshot files are created **0600** (user-only). Entries carry `schema_version` for forward migration.
+- Journal and snapshot files are created **0600** (user-only). Entries carry `schema_version` for forward migration. In fact, the entire `~/.kgent` directory is created **0700** and all files within it (journal, snapshots, idmap, capability cache, trusted.json, config) **0600** — local state protection is directory-wide, not per-file.
 - **Encryption at rest is opt-in**: `journal.encrypt: true` encrypts snapshots with a key held in the OS secret store (§2.4). Default is `false` (favoring recoverability); kgent states plainly in proposals when unencrypted snapshots contain `confidential`-tier content.
 - `kgent undo <op-id>` restores the snapshotted state on every target of that operation (best-effort across backends, with the same per-backend reporting as §6.4).
 - Journal entries also drive `kgent sync` (§6.6) and feed the audit log (§8.4).
@@ -1065,6 +1077,7 @@ kgent undo <op-id>                           # restore from snapshot
 - Deleting near-duplicate copies that exist on other backends is never implicit: they are listed in the proposal as "similar documents elsewhere" and deleting any of them requires its own confirmation.
 - Deletes are always confirmed (§5.6), snapshotted (§6.7), and audited (§8.4).
 - Platform-side trash/retention behavior of each backend is surfaced in the proposal where known ("Lark moves this to trash for 30 days").
+- **Undo safety**: `kgent undo` of an archive operation first verifies the archived copy is unchanged (fingerprint matches what the archive leg wrote). If the copy was edited after archiving, undo aborts for that leg and asks the user to choose — keep the edited archive, or force-restore. Post-archive edits are never silently deleted.
 
 ### 6.9 Content Representation & Fidelity
 
@@ -1293,6 +1306,7 @@ Search indexes lie: documents get deleted or moved externally, and permissions g
    - Audit log tooling (§8.4)
    - Backend health checks, capability-cache staleness reports
    - Performance metrics (p95 per-backend latency, partial-result rates)
+   - Privacy guarantee: metrics are local-only — no content, queries, or document URIs leave the machine
 
 ---
 
@@ -1356,6 +1370,7 @@ kgent search  --query Q [--backends SEL] [--mode keyword|semantic|hybrid]
 kgent read    <doc-uri> [--native] [--json]
 kgent delete  <doc-uri> [--yes] [--json]
 kgent archive <doc-uri|--older-than 90d> [--backends SEL] [--json]
+              # --older-than measured on updated_at (§4.3)
 
 kgent sync    --status | --repair <op-id> | --repair-all
 kgent undo    <op-id>
@@ -1371,7 +1386,7 @@ kgent config  validate | migrate | show-effective [--json]
 1. **Content input**: long content goes via `--file` or `--stdin`; `--content` exists but is not required for any flow. Nothing ever requires shell-quoting large bodies.
 2. **`--dry-run`**: resolves routing, runs duplicate/update-first lookup, and prints the exact proposal that would be shown — then exits without any write or journal entry.
 3. **`--yes`**: bypasses interactive confirmation ONLY when combined with explicit `--backends` and fully-specified content; ignored (with warning) in interactive/TTY sessions invoked through skills. It never bypasses platform approval gates (§3.4). Every `--yes` write is still journaled and audited with `confirmation: "--yes"`.
-4. **`--json`**: stable machine-readable output (schema-versioned) for every command; success/failure is also reflected in exit codes (0 = ok, 2 = partial success, 1 = failure, 3 = rejected by policy).
+4. **`--json`**: stable machine-readable output (schema-versioned) for every command; success/failure is also reflected in exit codes (0 = ok, 2 = partial success, 1 = failure, 3 = rejected by policy, 4 = version conflict §3.9).
 5. **Doc URIs**: all commands accepting documents take canonical URIs (§3.6); bare native IDs are rejected with a hint, not guessed.
 6. **Idempotency**: `store`/`update`/`delete` accept `--op-id` to reuse an existing operation id (safe retries, §6.6); omitted → new op id generated and printed.
 7. **Archive-first delete**: `kgent delete` always presents archive as the recommended option when an archive target is available (§6.8); hard delete remains an explicit choice. `kgent archive` performs the same confirmed, journaled move directly.
@@ -1390,6 +1405,9 @@ kgent config  validate | migrate | show-effective [--json]
 - **Write Journal**: Append-only local record of executed writes, enabling `kgent sync`, `kgent undo`, and audit
 - **Trust Zone**: Backend classification (`internal`/`external`) used by the data-leakage policy (§2.5)
 - **Proposal**: A fully-specified, user-confirmable plan for a write operation; the mandatory precursor to execution
+- **Canonical Format**: Markdown body + `DocumentMetadata` sidecar — kgent's interchange representation; adapters convert native ↔ canonical at boundaries (§6.9)
+- **Optimistic Concurrency**: `expected_version` checks ensuring updates never clobber external edits; conflicts re-propose instead (§3.9)
+- **Approval TTL**: Approvals expire (`expires_at`); expired approvals are treated as rejected (§3.4)
 
 ---
 
