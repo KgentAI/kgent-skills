@@ -536,8 +536,8 @@ skipped-with-reason. Never silently absent.
 |---|---|---|
 | N1 | Execute a write without a recorded confirmation matching the executed targets | S1–S4 + journal invariant test |
 | N2 | Overwrite a document on version conflict | S6 + concurrency stress |
-| N3 | Delete an archive source before the archive write is verified | S9, S10 + kill-between-legs fault injection |
-| N4 | Write confidential-tier content to external-zone backends (incl. fallbacks and replicas-of-any-kind) | S13 + fallback-chain zone recheck test |
+| N3 | Hard-delete a document whose archive op failed or is unverified | S9, S10 + archive-failure fault injection |
+| N4 | Write confidential-tier content to external-zone backends (incl. fallbacks and explicit fan-out) | S13 + fallback-chain zone recheck test |
 | N5 | Honor skill_name/cli_name/mcp_url/type/auth/enabled-new/trust-zone-downgrade from project-local config | S18 + forbidden-key fuzz (all key paths) |
 | N6 | Treat fetched backend content as instructions | S39 + adversarial corpus (§5) |
 | N7 | Execute gated writes without a valid, unexpired, correctly-bound approval token | S22–S24 |
