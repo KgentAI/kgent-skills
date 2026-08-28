@@ -90,9 +90,7 @@ def decompose_query(
 
     raw = decomposer(query)
     if not isinstance(raw, list):
-        raise TypeError(
-            f"decomposer must return list[str], got {type(raw).__name__}"
-        )
+        raise TypeError(f"decomposer must return list[str], got {type(raw).__name__}")
     cleaned = _clean_sub_queries(raw)
     if not cleaned:
         # Nothing usable from the injected decomposer → deterministic

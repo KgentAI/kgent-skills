@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from kgent.adapters.base import RetryBudget
 from kgent.errors import PolicyError
 from kgent.router.preflight import preflight_size, reject_preflight
 from tests.conftest import _full_caps, _kw_caps
@@ -99,3 +100,52 @@ def test_s48_rejection_is_exit_3_before_any_proposal():
         reject_preflight(violations)
     assert excinfo.value.exit_code == 3
     assert "lark" in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# S47 — rate-limit queueing is budgeted, NOT retried (N13, §8.1)
+# ---------------------------------------------------------------------------
+
+
+def test_s47_retry_after_queued_not_retried():
+    """A 429 with Retry-After is queued; the transient budget stays untouched."""
+    budget = RetryBudget(retries=3)
+    assert budget.on_rate_limit(retry_after=1, operation_timeout=30) is True  # queues 1s
+    assert budget.transient_attempts == 0  # NOT counted against the 3-attempt budget
+    assert budget.rate_limit_queued == 1.0  # one second of queueing booked
+
+
+def test_s47_rate_limit_queue_accumulates_and_fails_at_timeout():
+    budget = RetryBudget(retries=3)
+    assert budget.on_rate_limit(retry_after=10, operation_timeout=25) is True  # 10 queued
+    assert budget.on_rate_limit(retry_after=10, operation_timeout=25) is True  # 20 queued
+    # next one would exceed the operation timeout -> surfaced as failure, not queued
+    assert budget.on_rate_limit(retry_after=10, operation_timeout=25) is False
+    assert budget.rate_limit_queued == 20.0  # un-queued wait is not double-counted
+    assert budget.transient_attempts == 0  # still never counted (N13)
+
+
+def test_s47_transient_budget_exhausts_independently():
+    budget = RetryBudget(retries=3)
+    assert budget.on_transient_error() is True
+    assert budget.on_transient_error() is True
+    assert budget.on_transient_error() is True
+    assert budget.transient_attempts == 3
+    assert budget.on_transient_error() is False  # budget exhausted -> callers fail
+
+    # rate-limit queueing still works after transient exhaustion, and vice-versa:
+    # the two budgets never interact (S47, N13)
+    assert budget.on_rate_limit(retry_after=1, operation_timeout=30) is True
+    assert budget.rate_limit_queued == 1.0
+    assert budget.transient_attempts == 3
+
+
+def test_s47_transient_backoff_is_exponential():
+    budget = RetryBudget(retries=5)
+    assert budget.backoff_delay() == 0.0  # no retry yet -> no wait
+    budget.on_transient_error()
+    assert budget.backoff_delay() == pytest.approx(0.25)
+    budget.on_transient_error()
+    assert budget.backoff_delay() == pytest.approx(0.5)
+    budget.on_transient_error()
+    assert budget.backoff_delay() == pytest.approx(1.0)
