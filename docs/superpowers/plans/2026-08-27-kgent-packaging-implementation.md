@@ -940,7 +940,7 @@ def test_s53_setup_does_not_prompt_for_auth(tmp_home, monkeypatch):
 **Interfaces:**
 - Produces: `resolve_backends(config, *, selection: str | None, operation: str, content_type: str | None, metadata: dict | None) -> list[str]` implementing §4.1 (explicit > smart rules > content-type mapping > defaults) and §4.2 grammar (`all`/`all_enabled`/`all_configured`/explicit list; unknown name → `ConfigError`).
 
-- [ ] **Step 1: Write failing tests (precedence order + grammar)**
+- [x] **Step 1: Write failing tests (precedence order + grammar)**
 
 ```python
 import pytest
@@ -968,10 +968,10 @@ def test_all_is_alias_of_all_enabled():
 
 (Use a local `_config(...)` builder returning a `Config` with `backends = {lark: enabled, dingtalk: enabled, wecom: disabled}` and the `capability` needed for the operation satisfied by all enabled.)
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `resolve_backends`** per the four-step chain; for `smart`, evaluate `routing_rules` in order on `operation`+`content_type`+`tags` (first match wins), then fall to mapping then defaults. `all_enabled` = enabled backends with the required capability.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: single routing precedence chain (§4.1–§4.3)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `resolve_backends`** per the four-step chain; for `smart`, evaluate `routing_rules` in order on `operation`+`content_type`+`tags` (first match wins), then fall to mapping then defaults. `all_enabled` = enabled backends with the required capability.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: single routing precedence chain (§4.1–§4.3)`
 
 ### Task 4.2: `resolve_intent` → `RoutingIntent` + adapter preference (§1.5, S58, S59)
 
