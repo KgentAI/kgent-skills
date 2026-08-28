@@ -1212,11 +1212,11 @@ def test_s45_queries_redacted_by_default(test_world):
   - `self_approval_allowed(doc_owner, requester, policy) -> tuple[bool, str]` (S25–S27; default `owned_only`, fail-closed on unknown owner)
   - `fanout_approvals(targets) -> list[Approval]` (one per gated target, S28)
 
-- [ ] **Step 1: Write failing tests for S22–S28** (each scenario's exact assertion from acceptance §2 F6).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `approval.py`** — HMAC binding keyed on `(doc_uri, operation, fingerprint)`; `expires_at = requested_at + TTL`.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: approval gates + binding + TTL + approver policy (S22–S28)`
+- [x] **Step 1: Write failing tests for S22–S28** (each scenario's exact assertion from acceptance §2 F6).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `approval.py`** — HMAC binding keyed on `(doc_uri, operation, fingerprint)`; `expires_at = requested_at + TTL`.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: approval gates + binding + TTL + approver policy (S22–S28)`
 
 ---
 
