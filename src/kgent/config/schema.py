@@ -55,19 +55,30 @@ _BACKEND_DEFAULTS: dict[str, Any] = {
     "priority": None,
 }
 
-_DEFAULT_CONFLICT_RESOLUTION: dict[str, Any] = {
-    "enabled": True,
-    "strategies": ["link", "comment", "archive", "correct"],
-    "require_confirmation": True,
-}
 
-_DEFAULT_JOURNAL: dict[str, Any] = {"retention_days": 30, "encrypt": False}
+def _default_conflict_resolution() -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "strategies": ["link", "comment", "archive", "correct"],
+        "require_confirmation": True,
+    }
 
-_DEFAULT_AUDIT: dict[str, Any] = {
-    "enabled": True,
-    "path": "~/.kgent/audit.ndjson",
-    "redact_queries": True,
-}
+
+def _default_journal() -> dict[str, Any]:
+    return {"retention_days": 30, "encrypt": False}
+
+
+def _default_audit() -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "path": "~/.kgent/audit.ndjson",
+        "redact_queries": True,
+    }
+
+
+_DEFAULT_CONFLICT_RESOLUTION = _default_conflict_resolution()
+_DEFAULT_JOURNAL = _default_journal()
+_DEFAULT_AUDIT = _default_audit()
 
 
 @dataclass
@@ -76,14 +87,14 @@ class Config:
 
     version: int
     defaults: dict[str, object]
-    backends: dict[str, dict]  # type: ignore[type-arg]
-    routing_rules: list[dict] = field(default_factory=list)  # type: ignore[type-arg]
+    backends: dict[str, dict[str, Any]]
+    routing_rules: list[dict[str, Any]] = field(default_factory=list)
     content_type_mapping: dict[str, str] = field(default_factory=dict)
     sensitivity_floors: dict[str, str] = field(default_factory=dict)
     fallback_chains: dict[str, object] = field(default_factory=dict)
-    conflict_resolution: dict[str, object] = field(default_factory=dict)
-    journal: dict[str, object] = field(default_factory=dict)
-    audit: dict[str, object] = field(default_factory=dict)
+    conflict_resolution: dict[str, object] = field(default_factory=_default_conflict_resolution)
+    journal: dict[str, object] = field(default_factory=_default_journal)
+    audit: dict[str, object] = field(default_factory=_default_audit)
 
 
 def load_config_dict(raw: dict[Any, Any]) -> Config:
