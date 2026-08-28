@@ -651,7 +651,7 @@ def test_rejects_noncanonical(bad):
 **Interfaces:**
 - Produces: `normalize(title: str, content: str) -> str` (deterministic, whitespace-normalized), `content_fingerprint(title: str, content: str) -> str` (sha256 hex of normalized), `fingerprints_equal(fp1: str | None, fp2: str | None) -> bool`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 from kgent.fingerprint import normalize, content_fingerprint
@@ -673,10 +673,10 @@ def test_different_content_different_fingerprint():
     assert content_fingerprint("T", "a") != content_fingerprint("T", "b")
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement with `hashlib.sha256(normalize(...).encode()).hexdigest()`; `normalize` = `f"{title}\x1f{content}".lower()` then collapse all whitespace runs to single spaces and strip.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: content fingerprint + normalization (§6.5)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement with `hashlib.sha256(normalize(...).encode()).hexdigest()`; `normalize` = `f"{title}\x1f{content}".lower()` then collapse all whitespace runs to single spaces and strip.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: content fingerprint + normalization (§6.5)`
 
 ---
 
