@@ -836,7 +836,7 @@ def test_s54_doctor_healthy(tmp_home):
   - `BUILTIN_FALLBACK = {"hybrid": "semantic", "semantic": "keyword"}`.
   - `resolve_mode(decl, requested: str) -> str | None` implementing §3.3 uniform fallback (config first, then built-in chain).
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 from kgent.capabilities.declaration import CapabilityDeclaration, resolve_mode, BUILTIN_FALLBACK
@@ -859,10 +859,10 @@ def test_unsupported_returns_none():
     assert resolve_mode(decl, "hybrid") is None
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** protocols + `resolve_mode` (loop: while not supported, map through decl.fallback then BUILTIN_FALLBACK; return None if stuck; return requested if already supported).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: capability interface + fallback resolution (§3.1–§3.3)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** protocols + `resolve_mode` (loop: while not supported, map through decl.fallback then BUILTIN_FALLBACK; return None if stuck; return requested if already supported).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: capability interface + fallback resolution (§3.1–§3.3)`
 
 ### Task 3.2: Capability cache + effective intersection (§3.5)
 
