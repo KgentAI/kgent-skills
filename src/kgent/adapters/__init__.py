@@ -9,15 +9,28 @@ via :func:`kgent.adapters.cli_adapter.run_cli` under the wire protocol v1
 canonical URIs ↔ native IDs only at the boundary (§3.6). Adapter preference
 per §1.5 (skill > CLI) is resolved by the router — ``lark-doc`` is a
 resolve-level label, not a separate invocation.
+
+Fidelity declarations and lossy-conversion warnings (§6.9, S49/N11/P1) live in
+:mod:`~kgent.adapters.fidelity` and are re-exported here for convenience.
 """
 
 from kgent.adapters.base import Adapter, RetryBudget, escape_query
 from kgent.adapters.cli_adapter import CliCapabilityAdapter, SubprocessResult, run_cli
 from kgent.adapters.dingtalk import DingTalkAdapter
+from kgent.adapters.fidelity import (
+    FIDELITY_REGISTRY,
+    declare_lossy,
+    declared_lossy,
+    from_canonical,
+    is_lossy,
+    lossy_warning_snippet,
+    to_canonical,
+)
 from kgent.adapters.lark import LarkAdapter
 from kgent.adapters.wecom import WeComAdapter
 
 __all__ = [
+    "FIDELITY_REGISTRY",
     "Adapter",
     "CliCapabilityAdapter",
     "DingTalkAdapter",
@@ -25,6 +38,12 @@ __all__ = [
     "RetryBudget",
     "SubprocessResult",
     "WeComAdapter",
+    "declare_lossy",
+    "declared_lossy",
     "escape_query",
+    "from_canonical",
+    "is_lossy",
+    "lossy_warning_snippet",
     "run_cli",
+    "to_canonical",
 ]

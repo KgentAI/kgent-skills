@@ -11,6 +11,15 @@ from __future__ import annotations
 import pytest
 
 from kgent.adapters.base import RetryBudget
+from kgent.adapters.fidelity import (
+    FIDELITY_REGISTRY,
+    declare_lossy,
+    declared_lossy,
+    from_canonical,
+    is_lossy,
+    lossy_warning_snippet,
+    to_canonical,
+)
 from kgent.errors import PolicyError
 from kgent.router.preflight import preflight_size, reject_preflight
 from tests.conftest import _full_caps, _kw_caps
@@ -149,3 +158,105 @@ def test_s47_transient_backoff_is_exponential():
     assert budget.backoff_delay() == pytest.approx(0.5)
     budget.on_transient_error()
     assert budget.backoff_delay() == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# S49 — lossy conversion is declared and warned, never silent (N11, §6.9)
+# ---------------------------------------------------------------------------
+
+
+def test_s49_registry_declares_lark_lossy_dir_and_degraded_elements():
+    """§6.9/Context: lark declares both directions lossy with vote block etc."""
+    decl = declared_lossy("lark", "native_to_canonical")
+    assert decl is not None
+    assert decl["fidelity"] == "lossy"
+    assert decl["degraded_elements"] == ["vote block", "diagram", "comment thread"]
+    # canonical -> native mirrors the same lossiness
+    assert is_lossy("lark", "canonical_to_native")
+
+
+def test_s49_declared_lossless_is_not_lossy_and_undeclared_defaults_lossless():
+    # markdown is the native format on dingtalk/wecom -> declared lossless
+    assert is_lossy("dingtalk", "native_to_canonical") is False
+    assert is_lossy("dingtalk", "canonical_to_native") is False
+    assert is_lossy("wecom", "native_to_canonical") is False
+    # undeclared adapters default to lossless (documented)
+    assert declared_lossy("nonesuch", "native_to_canonical") is None
+    assert is_lossy("nonesuch", "native_to_canonical") is False
+
+
+def test_s49_lark_vote_block_to_canonical_placeholder_and_warning():
+    """S49: a Lark vote block degrades to an explicit placeholder, never a silent drop."""
+    canonical, degraded = to_canonical("[native: vote block]", "lark")
+    assert canonical == "[unsupported: vote block]"
+    assert degraded == ["vote block"]
+    # the proposal warning must list the element by name (confirmation is the caller's job)
+    assert "vote block" in lossy_warning_snippet(degraded)
+
+
+def test_s49_warning_snippet_plural_and_singular():
+    assert (
+        lossy_warning_snippet(["vote block", "diagram", "comment thread"])
+        == "3 elements have no Markdown equivalent: vote block, diagram, comment thread"
+    )
+    assert lossy_warning_snippet(["vote block"]) == "1 element has no Markdown equivalent: vote block"
+    assert lossy_warning_snippet([]) == ""
+
+
+def test_s49_lossless_path_unchanged_no_degraded():
+    """Lossless direction: native == canonical, empty degraded list (P1)."""
+    text = "[native: vote block]\n\nplain prose"
+    canonical, degraded = to_canonical(text, "dingtalk")  # declared lossless
+    assert canonical == text
+    assert degraded == []
+    # undeclared adapter is treated as lossless too
+    canonical2, degraded2 = to_canonical(text, "nonesuch")
+    assert canonical2 == text and degraded2 == []
+
+
+def test_s49_p1_roundtrip_lossless_preserves_content():
+    """P1 seed: to_canonical(from_canonical(x)) == x on a lossless adapter."""
+    doc = "# Title\n\nbody with [native: vote block] marker\n"
+    canonical, _ = from_canonical(doc, "dingtalk")
+    restored, _ = to_canonical(canonical, "dingtalk")
+    assert restored == doc
+
+
+def test_s49_from_canonical_notes_placeholders_on_lossy_destination():
+    """Outward direction: placeholders are reported as degraded, never dropped."""
+    canonical = "See [unsupported: vote block] and [unsupported: comment thread]"
+    out, degraded = from_canonical(canonical, "lark")
+    assert out == canonical  # placeholder text survives the write content (N11)
+    assert degraded == ["vote block", "comment thread"]
+
+
+def test_s49_from_canonical_lossless_destination_no_degraded():
+    out, degraded = from_canonical("See [unsupported: vote block]", "dingtalk")
+    assert out == "See [unsupported: vote block]"
+    assert degraded == []
+
+
+def test_s49_unknown_content_passes_through_unchanged():
+    text = "# Plain markdown\n\n- bullets\n- more\n\nend."
+    canonical, degraded = to_canonical(text, "lark")
+    assert canonical == text
+    assert degraded == []
+
+
+def test_s49_undeclared_native_marker_not_fabricated_as_degraded():
+    """Only elements the adapter DECLARES as degraded become placeholders (never fabricate)."""
+    text = "text [native: inline image] more"
+    canonical, degraded = to_canonical(text, "lark")
+    assert canonical == text  # passthrough, not invented into an unsupported placeholder
+    assert degraded == []
+
+
+def test_s49_declare_lossy_helper_registers_and_returns_elements():
+    """Test hook: construct/adjust declarations directly (Context: tests may override)."""
+    elements = declare_lossy("covfefe", "native_to_canonical", ["vote block"])
+    assert elements == ["vote block"]
+    assert is_lossy("covfefe", "native_to_canonical") is True
+    canonical, degraded = to_canonical("[native: vote block]", "covfefe")
+    assert canonical == "[unsupported: vote block]"
+    assert degraded == ["vote block"]
+    del FIDELITY_REGISTRY["covfefe"]
