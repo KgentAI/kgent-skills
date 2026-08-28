@@ -10,10 +10,17 @@ from kgent.errors import (
 )
 
 
-@pytest.mark.parametrize("cls,code", [
-    (ConfigError, 1), (VersionConflict, 4), (PolicyError, 3),
-    (ApprovalRequired, 3), (ApprovalBindingMismatch, 3), (PartialFailure, 2),
-])
+@pytest.mark.parametrize(
+    "cls,code",
+    [
+        (ConfigError, 1),
+        (VersionConflict, 4),
+        (PolicyError, 3),
+        (ApprovalRequired, 3),
+        (ApprovalBindingMismatch, 3),
+        (PartialFailure, 2),
+    ],
+)
 def test_exit_codes(cls, code):
     assert cls().exit_code == code
 
