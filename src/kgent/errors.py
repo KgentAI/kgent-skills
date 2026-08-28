@@ -1,24 +1,31 @@
-"""Interim stub error hierarchy — finalized/expanded in Task 1.1.
-
-Only VersionConflict exists today because FakeBackend raises it. Task 1.1
-owns the full error hierarchy.
-"""
-
-from __future__ import annotations
+class KgentError(Exception):
+    exit_code = 1
 
 
-class VersionConflict(Exception):
-    """Raised when a write's expected_version no longer matches the backend (§3.9)."""
+class ConfigError(KgentError):
+    exit_code = 1
 
-    def __init__(
-        self,
-        doc_uri: str,
-        expected_version: str | None,
-        actual_version: str | None,
-    ) -> None:
-        self.doc_uri = doc_uri
-        self.expected_version = expected_version
-        self.actual_version = actual_version
-        super().__init__(
-            f"version conflict on {doc_uri}: expected {expected_version}, found {actual_version}"
-        )
+
+class VersionConflict(KgentError):
+    exit_code = 4
+
+    def __init__(self, doc_uri: str = "", expected: str = "", found: str = ""):
+        super().__init__(f"VersionConflict on {doc_uri}: expected {expected}, found {found}")
+        self.expected = expected
+        self.found = found
+
+
+class PolicyError(KgentError):
+    exit_code = 3
+
+
+class ApprovalRequired(PolicyError):
+    pass
+
+
+class ApprovalBindingMismatch(PolicyError):
+    pass
+
+
+class PartialFailure(KgentError):
+    exit_code = 2
