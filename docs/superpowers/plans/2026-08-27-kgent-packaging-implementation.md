@@ -1243,11 +1243,11 @@ def test_s45_queries_redacted_by_default(test_world):
 - Modify: `src/kgent/search/fanout.py`; Create: `src/kgent/router/preflight.py`
 - Test: `tests/test_search_aggregation.py` (S31/S32), `tests/test_rate_size_fidelity.py` (S48)
 
-- [ ] **Step 1: Write failing tests for S31 + S32 + S48** (3 backends × 10 → final exactly 10; dingtalk `max_results=50` → fetched with 50 and metadata records clamp; content 2.5MB vs `max_content_bytes=2_000_000` → rejection BEFORE any proposal is displayed, message states actual size/limit/alternatives, exit 3).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** `clamp(backend, top_k) = min(top_k, limits.max_results)` and record clamp in metadata; final truncate after fusion; `preflight_size(content, targets) -> list[str]` returning per-target violations before proposal build.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: per-backend clamp + top_k total + oversize preflight (S31/S32/S48)`
+- [x] **Step 1: Write failing tests for S31 + S32 + S48** (3 backends × 10 → final exactly 10; dingtalk `max_results=50` → fetched with 50 and metadata records clamp; content 2.5MB vs `max_content_bytes=2_000_000` → rejection BEFORE any proposal is displayed, message states actual size/limit/alternatives, exit 3).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** `clamp(backend, top_k) = min(top_k, limits.max_results)` and record clamp in metadata; final truncate after fusion; `preflight_size(content, targets) -> list[str]` returning per-target violations before proposal build.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: per-backend clamp + top_k total + oversize preflight (S31/S32/S48)`
 
 ### Task 6.3: RRF ranking (§7.3, S34)
 
