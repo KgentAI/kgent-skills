@@ -141,6 +141,8 @@ def _parse_inline(s: str, number: int) -> Any:
     if s == "":
         return None
     if s.startswith("{"):
+        if s == "{}":
+            return {}
         raise ConfigError(f"flow mappings are not supported (line {number})")
     if s.startswith("["):
         return _parse_inline_list(s, number)
