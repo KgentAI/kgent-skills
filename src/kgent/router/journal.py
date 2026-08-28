@@ -138,9 +138,7 @@ class Journal:
         self._ensure_permissions()
         tmp = self.path.with_name(self.path.name + ".tmp")
         with open(tmp, "w", encoding="utf-8") as fh:
-            fh.writelines(
-                json.dumps(entry, ensure_ascii=False) + "\n" for entry in self.entries
-            )
+            fh.writelines(json.dumps(entry, ensure_ascii=False) + "\n" for entry in self.entries)
         os.chmod(tmp, 0o600)
         os.replace(tmp, self.path)
         os.chmod(self.path, 0o600)
@@ -194,11 +192,26 @@ class Journal:
             else:
                 pruned += 1
         self.entries = kept
-        self._by_op = {
-            e["op_id"]: e for e in kept if isinstance(e.get("op_id"), str)
-        }
+        self._by_op = {e["op_id"]: e for e in kept if isinstance(e.get("op_id"), str)}
         self._rewrite()
         return pruned
+
+
+def _omit_snapshot_bodies(value: Any) -> Any:
+    """Recursively strip every ``content_before`` body from a snapshot (S51).
+
+    Confidential bodies must never reach the journal when encryption is off:
+    in the flat single-target shape AND recursively nested per-target under
+    ``snapshot["targets"][uri]``. All other keys (``metadata_before`` and any
+    future metadata-only fields) are preserved.
+    """
+    if isinstance(value, dict):
+        return {
+            key: _omit_snapshot_bodies(val) for key, val in value.items() if key != "content_before"
+        }
+    if isinstance(value, list):
+        return [_omit_snapshot_bodies(item) for item in value]
+    return value
 
 
 def build_entry(
@@ -228,8 +241,10 @@ def build_entry(
     *not* mangled.
 
     **Confidentiality guard (S51).** When ``sensitivity == "confidential"``
-    and ``encrypt`` is ``False``, ``snapshot.content_before`` is omitted so the
-    confidential body is never persisted (metadata only).
+    and ``encrypt`` is ``False``, every ``content_before`` body is omitted —
+    the flat single-target one *and* the per-target bodies nested under
+    ``snapshot["targets"][uri]`` in multi-target entries — so the confidential
+    body is never persisted (metadata only).
     """
     snap: dict[str, Any] = dict(snapshot) if snapshot else {}
     if metadata_before is not None:
@@ -237,7 +252,7 @@ def build_entry(
     if content_before is not None:
         snap["content_before"] = content_before
     if sensitivity == "confidential" and not encrypt:
-        snap.pop("content_before", None)
+        snap = _omit_snapshot_bodies(snap)
     return {
         "schema_version": schema_version,
         "op_id": op_id,
@@ -283,9 +298,7 @@ def _undo_entry(
     )
 
 
-def _content_before_by_uri(
-    snapshot: dict[str, Any], targets: list[str]
-) -> dict[str, str | None]:
+def _content_before_by_uri(snapshot: dict[str, Any], targets: list[str]) -> dict[str, str | None]:
     """Map each update target uri → its pre-write ``content_before``.
 
     Handles the two snapshot shapes: flat (single target, §6.7 example) and
@@ -354,9 +367,7 @@ def undo(
             elif operation == "update":
                 content_before = content_before_by_uri.get(uri)
                 if content_before is None:
-                    failures.append(
-                        f"undo unavailable for {uri}: snapshot has no content_before"
-                    )
+                    failures.append(f"undo unavailable for {uri}: snapshot has no content_before")
                     continue
                 current = backend.read_document(uri)
                 backend.update_document(
@@ -381,9 +392,7 @@ def undo(
     else:
         status, exit_code = "failed", 1
 
-    undo_entry = _undo_entry(
-        undo_op_id, ts, restored, status, sensitivity, confirmation
-    )
+    undo_entry = _undo_entry(undo_op_id, ts, restored, status, sensitivity, confirmation)
     journal.append(undo_entry)
     if audit is not None and hasattr(audit, "append"):
         cast(Any, audit).append(
@@ -396,6 +405,4 @@ def undo(
             }
         )
     error = "; ".join(failures) if failures else None
-    return OpResult(
-        op_id=op_id, exit_code=exit_code, journal_entry=undo_entry, error=error
-    )
+    return OpResult(op_id=op_id, exit_code=exit_code, journal_entry=undo_entry, error=error)

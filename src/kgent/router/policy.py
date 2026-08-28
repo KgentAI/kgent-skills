@@ -107,9 +107,7 @@ def _metadata(proposal: WriteProposal, backend_name: str, *, doc_uri: str) -> Do
     )
 
 
-def _capture_before(
-    backend: WriteTarget, uri: str
-) -> tuple[str | None, dict[str, Any]]:
+def _capture_before(backend: WriteTarget, uri: str) -> tuple[str | None, dict[str, Any]]:
     """Re-read the document to snapshot its pre-write state (S44, best-effort).
 
     Returns ``(content, metadata_dict)``; on any read failure returns

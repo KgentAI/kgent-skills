@@ -213,6 +213,40 @@ def test_undo_confidential_unencrypted_unavailable(test_world):
     assert lark.docs[_URI].content == "new secret body"
 
 
+def test_s51_multi_target_confidential_bodies_never_serialized(test_world, tmp_home):
+    """FM3/N16 regression: confidential bodies must never reach the NDJSON
+    file, including the per-target bodies nested under
+    ``snapshot["targets"][uri]`` in a multi-target entry."""
+    lark: FakeBackend = test_world["backends"]["lark"]
+    uri_a, uri_b = _URI, "kgent://lark/docB"
+    _seed(lark, uri_a, content="SECRET-ONE", version="v1")
+    _seed(lark, uri_b, content="SECRET-TWO", version="v1")
+    journal = Journal()  # encrypt defaults to False → unencrypted journal
+    prop = _prop(
+        operation="update",
+        targets=[("lark", uri_a), ("lark", uri_b)],
+        content="new body",
+        sensitivity="confidential",
+        expected_version="v1",
+    )
+    op = execute_confirmed(
+        prop, "interactive-yes", backends=test_world["backends"], journal=journal
+    )
+    assert op.exit_code == 0
+    assert len(op.journal_entry["targets"]) == 2
+
+    # the OLD (buggy) path is gone: no content_before in ANY snapshot branch
+    snapshot = op.journal_entry["snapshot"]
+    assert len(snapshot["targets"]) == 2
+    for spec in snapshot["targets"].values():
+        assert "content_before" not in spec
+
+    # and the serialized NDJSON file on disk carries no secret body substring
+    on_disk = journal.path.read_text(encoding="utf-8")
+    assert "SECRET-ONE" not in on_disk
+    assert "SECRET-TWO" not in on_disk
+
+
 # ---------------------------------------------------------------------------
 # S52 — secrets never in the journal
 # ---------------------------------------------------------------------------
