@@ -694,7 +694,7 @@ def test_different_content_different_fingerprint():
   - `Config` dataclass with fields `version, defaults, backends, routing_rules, content_type_mapping, sensitivity_floors, fallback_chains, conflict_resolution, journal, audit`
   - `load_config_dict(raw: dict) -> Config` raising `ConfigError` naming the exact key on unknown top-level key (S20) and on `version != 1` with "kgent config migrate" hint (S21).
 
-- [ ] **Step 1: Write failing tests for S20 + S21 + defaults**
+- [x] **Step 1: Write failing tests for S20 + S21 + defaults**
 
 ```python
 import pytest
@@ -719,10 +719,10 @@ def test_defaults_applied():
     assert cfg.journal["encrypt"] is False
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `schema.py`** — `Config` dataclass with per-section default dicts (Appendix C: `defaults.routing_mode="configured"`, `default_backends=[]`, `approval_ttl_hours=24`, `search_seconds=10`, `write_seconds=30`, `max_parallel_backends=4`; `journal.retention_days=30`, `journal.encrypt=False`; `audit.enabled=True`, `path="~/.kgent/audit.ndjson"`, `redact_queries=True`; `conflict_resolution.enabled=True`, `strategies=["link","comment","archive","correct"]`, `require_confirmation=True`). Validate allowed values (routing_mode ∈ {explicit,configured,smart}; timeouts > 0; concurrency ≥ 1; approval_ttl_hours > 0). Validate `backends.<name>.type ∈ {skill,cli,mcp}` and `trust_zone ∈ {internal,external}` defaulting `external`.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: config schema + validation (S20/S21)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `schema.py`** — `Config` dataclass with per-section default dicts (Appendix C: `defaults.routing_mode="configured"`, `default_backends=[]`, `approval_ttl_hours=24`, `search_seconds=10`, `write_seconds=30`, `max_parallel_backends=4`; `journal.retention_days=30`, `journal.encrypt=False`; `audit.enabled=True`, `path="~/.kgent/audit.ndjson"`, `redact_queries=True`; `conflict_resolution.enabled=True`, `strategies=["link","comment","archive","correct"]`, `require_confirmation=True`). Validate allowed values (routing_mode ∈ {explicit,configured,smart}; timeouts > 0; concurrency ≥ 1; approval_ttl_hours > 0). Validate `backends.<name>.type ∈ {skill,cli,mcp}` and `trust_zone ∈ {internal,external}` defaulting `external`.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: config schema + validation (S20/S21)`
 
 ### Task 2.2: Config loading + precedence + trust model (§2.3)
 
