@@ -1136,7 +1136,7 @@ def test_s3_yes_without_backends_does_not_bypass():
   - `write_entry(schema_version=1, op_id, ts, operation, targets, idempotency_key, snapshot, proposal_hash, confirmation, sensitivity, status)`; omits `snapshot.content_before` when `sensitivity == "confidential"` and `journal.encrypt is False` (S51); never includes token/credential values (S52).
   - `undo(op_id) -> OpResult` restoring `content_before` on every target (S44).
 
-- [ ] **Step 1: Write failing tests for S43, S44, S51, S52**
+- [x] **Step 1: Write failing tests for S43, S44, S51, S52**
 
 ```python
 import os, stat
@@ -1168,10 +1168,10 @@ def test_s52_secrets_never_in_journal():
     assert "sk-live-" not in serialized
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `journal.py`** — append-only NDJSON under `~/.kgent/journal/`, `os.open` with `0o600`, `os.mkdir(0o700)`; retention pruning (S44 area → also S47's FM9 covered in Task 7.1).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: write journal + undo + confidentiality guard (S43/S44/S51/S52)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `journal.py`** — append-only NDJSON under `~/.kgent/journal/`, `os.open` with `0o600`, `os.mkdir(0o700)`; retention pruning (S44 area → also S47's FM9 covered in Task 7.1).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: write journal + undo + confidentiality guard (S43/S44/S51/S52)`
 
 ### Task 5.5: Audit log + query redaction (§8.4, S45, S52)
 
