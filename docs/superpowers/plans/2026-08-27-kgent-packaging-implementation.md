@@ -904,7 +904,7 @@ def test_config_narrows():
 **Interfaces:**
 - Produces: `discover(home, env) -> DiscoveryReport` (detect skills in `~/.claude/skills/`, CLIs on PATH via `--version`, MCP from config; structured-manifest reads only; **zero write-type calls**, S42; **zero auth prompts**, S53). `setup(home) -> tuple[DiscoveryReport, int]`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_s42_discovery_is_read_only(test_world, tmp_home):
@@ -922,10 +922,10 @@ def test_s53_setup_does_not_prompt_for_auth(tmp_home, monkeypatch):
     assert all(b.get("auth") == "deferred" for b in report.backends.values())
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `detect.py`** — parse only structured manifest files (`.json`/`.yaml` skill manifests), never `--help` prose (N12); mark unverified when no structured output; defer auth.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: read-only discovery + setup (S42/S53)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `detect.py`** — parse only structured manifest files (`.json`/`.yaml` skill manifests), never `--help` prose (N12); mark unverified when no structured output; defer auth.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: read-only discovery + setup (S42/S53)`
 
 ---
 
