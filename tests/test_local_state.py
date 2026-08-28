@@ -431,3 +431,40 @@ def test_audit_wired_in_execute_confirmed(tmp_home, test_world):
     assert line["confirmation"] == "interactive-yes"
     assert line["outcome"] == "ok"
     assert line["schema_version"] == 1
+
+
+# ---------------------------------------------------------------------------
+# S46 — encrypted-file fallback for credentials
+# ---------------------------------------------------------------------------
+
+
+def test_s46_encrypted_fallback_no_plaintext(tmp_home):
+    """S46: no OS secret store → credentials.enc exists, not plaintext."""
+    from kgent.secrets import EncryptedFileStore
+
+    store = EncryptedFileStore(tmp_home / "credentials.enc")
+    store.set("lark", "my-secret-token-xyz")
+    enc_path = tmp_home / "credentials.enc"
+    assert enc_path.exists()
+    raw = enc_path.read_bytes()
+    assert b"my-secret-token-xyz" not in raw
+    assert store.get("lark") == "my-secret-token-xyz"
+
+
+def test_s46_encrypted_fallback_warning(tmp_home):
+    """S46: warning 'encrypted-file fallback active' at startup and on auth use."""
+    from kgent.secrets import EncryptedFileStore, fallback_warning
+
+    store = EncryptedFileStore(tmp_home / "credentials.enc")
+    store.set("lark", "token")
+    warning = fallback_warning()
+    assert "encrypted-file fallback active" in warning
+
+
+def test_s46_no_encryption_fails_exit_1(tmp_home):
+    """S46: if encryption is also unavailable, auth setup fails, no file written."""
+    from kgent.secrets import UnavailableSecretStore
+
+    store = UnavailableSecretStore()
+    result = store.set("lark", "token")
+    assert result is False
