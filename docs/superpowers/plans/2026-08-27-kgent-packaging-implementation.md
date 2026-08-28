@@ -1285,11 +1285,11 @@ def test_s45_queries_redacted_by_default(test_world):
 - Create: `src/kgent/search/decompose.py`
 - Test: `tests/test_conflict_snippet_query.py` (S57)
 
-- [ ] **Step 1: Write failing test for S57** (compound query → sub-queries fanned out in parallel, grouped by sub-query with provenance, decomposition shown; simple queries searched as-is).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `decompose_query(query, *, decompose: Callable)` — the LLM-assisted decomposer is injected (skill layer); the router ships a deterministic fallback that returns `[query]` unchanged (never fabricated decomposition).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: compound-query decomposition (S57)`
+- [x] **Step 1: Write failing test for S57** (compound query → sub-queries fanned out in parallel, grouped by sub-query with provenance, decomposition shown; simple queries searched as-is).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `decompose_query(query, *, decompose: Callable)` — the LLM-assisted decomposer is injected (skill layer); the router ships a deterministic fallback that returns `[query]` unchanged (never fabricated decomposition).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: compound-query decomposition (S57)`
 
 ---
 
