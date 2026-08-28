@@ -58,6 +58,7 @@ kgent-skills/
 │   │   └── detect.py                  # read-only discovery (§2.2)
 │   ├── router/
 │   │   ├── __init__.py
+│   │   ├── core.py                    # Router facade: bundles config + registry + journal + audit + session (§1.4)
 │   │   ├── resolve.py                 # resolve_backends (§4) + resolve_intent → RoutingIntent (§1.5)
 │   │   ├── sensitivity.py             # analyze_sensitivity, floors, zone rules (§2.5)
 │   │   ├── approval.py                # approval gate + binding + TTL + approver policy (§3.4)
@@ -75,6 +76,7 @@ kgent-skills/
 │   ├── adapters/
 │   │   ├── __init__.py
 │   │   ├── base.py                    # Adapter contract + error normalization + fidelity (§1.2, §6.9)
+│   │   ├── registry.py                # adapter_name → Adapter lookup used by router + CLI
 │   │   ├── cli_adapter.py             # subprocess via argv array; exit-code/stderr parsing (§8.5)
 │   │   ├── lark.py                    # lark-doc skill adapter + lark-cli fallback (§1.5)
 │   │   ├── dingtalk.py
@@ -128,6 +130,10 @@ kgent-skills/
 │       ├── fault_rehearsal/           # archive-midflight, token-expiry, 429 storm
 │       ├── race_rehearsal/            # concurrent-session VersionConflict
 │       └── test_adversarial.py        # harness running all corpora
+│   └── e2e/                           # ONE end-to-end happy path per CLI command + per skill feature
+│       ├── __init__.py
+│       ├── test_cli_happy_paths.py    # create/store/search/read/update/delete/archive/unarchive/undo/sync/audit/auth/setup/trust/doctor/config
+│       └── test_skill_happy_paths.py  # knowledge-storage (create + update-first), QA (grounded citations), wiki-setup (multi-target)
 ```
 
 ---
@@ -1455,6 +1461,200 @@ def test_s47_retry_after_queued_not_retried():
 - [ ] **Step 4: Run → PASS**
 - [ ] **Step 5: Commit** `feat: QA + wiki-setup skills (S68/S69)`
 
+### Task 9.4: End-to-end happy paths — CLI (§12; one e2e per command)
+
+**Files:**
+- Create: `src/kgent/router/core.py` (thin `Router` facade, see below)
+- Create: `src/kgent/adapters/registry.py`
+- Create: `tests/e2e/__init__.py`, `tests/e2e/test_cli_happy_paths.py`
+- Modify: `tests/conftest.py` (add `e2e` fixture wiring the registry + `KGENT_HOME`)
+
+**Interfaces:**
+- Consumes: `main(argv) -> int` (Task 8.1), `Journal` (5.4), `AuditLog` (5.5), `registry` (new), `Config` (2.1), `trusted.is_trusted` (2.2).
+- Produces (new):
+  - `kgent.adapters.registry`: `register(name, adapter)`, `get(name) -> Adapter` (raises `ConfigError` if missing), `clear()`.
+  - `kgent.router.core.Router` — `@dataclass` with `config, backends, journal, audit, session=set()`; methods `resolve_intent(...)` (delegates to `resolve.py`) and `execute(proposal, *, confirmation) -> OpResult` (delegates to `policy.execute_confirmed`).
+  - `tests/conftest.py` `e2e` fixture: registers `test_world["backends"]` into the registry, writes `config.yaml` into `tmp_home`, sets `KGENT_HOME`, returns `test_world`.
+
+- [ ] **Step 1: Write the failing e2e tests** — one happy path per CLI command, driven through `kgent.cli.main(argv)` in-process against the fake backends (router/policy/journal/audit are real; only the platform boundary is faked):
+
+```python
+# tests/e2e/test_cli_happy_paths.py
+"""One end-to-end happy-path test per CLI command (design §12).
+Drives kgent.cli.main(argv) in-process against fake backends with an isolated
+~/.kgent home. Router, policy, journal, audit are the real implementations —
+only the network/platform boundary is faked (acceptance §6)."""
+import json
+from kgent.cli import main
+from kgent.router.journal import Journal
+from kgent.config.trusted import is_trusted
+
+
+def test_e2e_create(e2e):
+    assert main(["create", "--title", "Onboarding", "--content", "Welcome", "--backends", "lark"]) == 0
+    assert e2e["backends"]["lark"].docs
+
+
+def test_e2e_store_is_update_first(e2e):
+    assert main(["store", "--title", "API Guidelines", "--content", "v1", "--backends", "lark"]) == 0
+    assert main(["store", "--title", "API Guidelines", "--content", "v2", "--backends", "lark"]) == 0
+    lark = e2e["backends"]["lark"]
+    assert lark.write_calls[-1]["method"] == "update_document"      # update-first, no dup
+    assert next(iter(lark.docs.values())).content == "v2"
+
+
+def test_e2e_search_returns_results(e2e, capsys):
+    main(["create", "--title", "Meeting Notes", "--content", "Q3 plan", "--backends", "lark"])
+    assert main(["search", "--query", "Q3", "--backends", "lark", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"][0]["doc_uri"].startswith("kgent://lark/")
+
+
+def test_e2e_read(e2e):
+    main(["create", "--title", "Doc", "--content", "body", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    assert main(["read", uri]) == 0
+
+
+def test_e2e_update(e2e):
+    main(["create", "--title", "Doc", "--content", "old", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    assert main(["update", uri, "--content", "new"]) == 0
+    assert e2e["backends"]["lark"].docs[uri].content == "new"
+
+
+def test_e2e_delete_offers_archive_first(e2e, capsys):
+    main(["create", "--title", "Doc", "--content", "x", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    assert main(["delete", uri]) == 0
+    out = capsys.readouterr().out
+    assert "Archive on Lark" in out and "RECOMMENDED" in out
+
+
+def test_e2e_archive_then_unarchive(e2e):
+    main(["create", "--title", "Doc", "--content", "x", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    assert main(["archive", uri]) == 0
+    assert uri in e2e["backends"]["lark"].archived and uri not in e2e["backends"]["lark"].docs
+    assert main(["unarchive", uri]) == 0
+    assert uri in e2e["backends"]["lark"].docs
+
+
+def test_e2e_undo_restores_content(e2e, tmp_home):
+    main(["create", "--title", "Doc", "--content", "before", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    main(["update", uri, "--content", "after"])
+    op_id = [o["op_id"] for o in Journal(tmp_home).list_ops() if o["operation"] == "update"][0]
+    assert main(["undo", op_id]) == 0
+    assert e2e["backends"]["lark"].docs[uri].content == "before"
+
+
+def test_e2e_sync_repairs_partial_fanout(e2e, tmp_home):
+    e2e["backends"]["wecom"].fault = lambda m, kw: (_ for _ in ()).throw(RuntimeError("boom"))
+    assert main(["store", "--title", "Doc", "--content", "x", "--backends", "lark,wecom"]) == 2  # partial
+    e2e["backends"]["wecom"].fault = None
+    op_id = Journal(tmp_home).list_partial()[0]["op_id"]
+    assert main(["sync", "--repair", op_id]) == 0
+    assert e2e["backends"]["wecom"].docs
+
+
+def test_e2e_audit_writes(e2e, tmp_home):
+    main(["create", "--title", "Doc", "--content", "x", "--backends", "lark"])
+    assert main(["audit", "--op", "write", "--json"]) == 0
+    assert (tmp_home / "audit.ndjson").read_text().strip()
+
+
+def test_e2e_auth_status(e2e):
+    assert main(["auth", "status"]) == 0
+
+
+def test_e2e_setup_is_read_only(e2e, monkeypatch):
+    monkeypatch.setenv("PATH", "/nonexistent")
+    assert main(["setup"]) == 0
+
+
+def test_e2e_doctor_healthy(e2e):
+    assert main(["doctor"]) == 0
+
+
+def test_e2e_config_validate_and_show_effective(e2e):
+    assert main(["config", "validate"]) == 0
+    assert main(["config", "show-effective", "--json"]) == 0
+
+
+def test_e2e_trust_then_project_config_applies(e2e, tmp_home, tmp_path):
+    proj = tmp_path / "D"; proj.mkdir()
+    (proj / ".kgent-config.yaml").write_text("version: 1\ncontent_type_mapping:\n  meeting_notes: dingtalk\n")
+    assert main(["trust", str(proj)]) == 0
+    assert is_trusted(proj, tmp_home / "trusted.json")
+```
+
+- [ ] **Step 2: Run → FAIL** (registry/`Router`/CLI not yet wired; each test drives the real CLI entry).
+- [ ] **Step 3: Implement** `registry.py`, `router/core.py` (`Router` facade), and the `e2e` fixture; wire `main` to build a `Router` from `KGENT_HOME` config + registry (no subprocess, no real network — fake adapters registered by the fixture).
+- [ ] **Step 4: Run → PASS** (`pytest tests/e2e/test_cli_happy_paths.py -v` — 15 tests covering all 16 CLI commands; archive + unarchive share one test).
+- [ ] **Step 5: Commit** `test: e2e happy paths for every CLI command (§12)`
+
+### Task 9.5: End-to-end happy paths — skills (one e2e per skill feature)
+
+**Files:**
+- Create: `tests/e2e/test_skill_happy_paths.py`
+- Modify: `tests/conftest.py` (add `router` fixture building a `Router` from `e2e` + `Journal` + `AuditLog`)
+
+**Interfaces:**
+- Consumes: `Router.execute/resolve_intent` (Task 9.4), `store_workflow(user_request, context, router) -> WriteProposal` (9.1), `answer(query, router) -> Answer` with `Answer.claims: list[Claim]` where `Claim.source_uri: str | None` (9.3), `setup_wiki(items, router) -> OpResult` (9.3).
+
+- [ ] **Step 1: Write the failing e2e tests** — one happy path per skill feature, through the real router/journal/audit (fake backends only at the boundary):
+
+```python
+# tests/e2e/test_skill_happy_paths.py
+"""One end-to-end happy-path test per skill feature. Skills orchestrate via the
+real Router (policy, journal, audit) against fake backends."""
+from kgent.cli import main
+from kgent.router.journal import Journal
+from kgent.skills.knowledge_storage import store_workflow
+from kgent.skills.question_answering import answer
+from kgent.skills.wiki_setup import setup_wiki
+
+
+def test_e2e_knowledge_storage_creates_with_provenance(router, e2e):
+    proposal = store_workflow("save the new doc 'Welcome to kgent'", {}, router)
+    assert proposal.operation == "create"
+    result = router.execute(proposal, confirmation="interactive-yes")
+    assert result.exit_code == 0
+    assert e2e["backends"]["lark"].docs
+
+
+def test_e2e_knowledge_storage_update_first(router, e2e):
+    p1 = store_workflow("save 'API Guidelines v1'", {}, router)
+    router.execute(p1, confirmation="interactive-yes")
+    p2 = store_workflow("save 'API Guidelines v2'", {}, router)
+    assert p2.operation == "update"                       # update-first bias (N18)
+    assert p2.targets[0].doc_uri is not None
+
+
+def test_e2e_question_answering_cites_sources(router, e2e):
+    main(["create", "--title", "Policy", "--content",
+          "Onboarding requires security training.", "--backends", "lark"])
+    ans = answer("What does onboarding require?", router)
+    assert ans.claims
+    assert all(c.source_uri for c in ans.claims)           # grounded, never fabricated (N11)
+
+
+def test_e2e_wiki_setup_multi_target_journaled(router, e2e, tmp_home):
+    result = setup_wiki(
+        [{"title": "Team Wiki", "content": "home", "backends": ["lark", "dingtalk"]}],
+        router,
+    )
+    assert result.exit_code == 0
+    assert e2e["backends"]["lark"].docs and e2e["backends"]["dingtalk"].docs
+    assert Journal(tmp_home).list_ops()                     # journaled → undoable
+```
+
+- [ ] **Step 2: Run → FAIL**
+- [ ] **Step 3: Implement** the `router` fixture; ensure skill return types (`Answer`/`Claim`, `setup_wiki`) match Task 9.3's implementation.
+- [ ] **Step 4: Run → PASS** (`pytest tests/e2e/test_skill_happy_paths.py -v` — 4 passing, one per skill feature).
+- [ ] **Step 5: Commit** `test: e2e happy paths for every skill feature`
+
 ---
 
 ## Phase 10 — Negative constraints, invariants, adversarial pass, gauntlet
@@ -1532,6 +1732,8 @@ def test_s47_retry_after_queued_not_retried():
 | N1–N19 | Negative constraints | 10.1 (+cross-task) | test_negative_constraints.py |
 | P1–P7 | Property invariants | 10.2 | tests/properties/ |
 | FM1–FM12 | Failure modes | 10.3 + scenario refs | tests/adversarial/ |
+| all CLI commands | E2E happy path (one per command) | 9.4 | tests/e2e/test_cli_happy_paths.py |
+| all skill features | E2E happy path (one per feature) | 9.5 | tests/e2e/test_skill_happy_paths.py |
 
 ## Known limitations (record in EVIDENCE, per spec §6/§8)
 
