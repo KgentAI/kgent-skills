@@ -121,7 +121,13 @@ class PolicyGate:
 
 @dataclass(frozen=True, slots=True)
 class WriteProposal:
-    """Write proposal for mandatory confirmation (§5.6; minimal until Task 5.2)."""
+    """Write proposal for mandatory confirmation (§5.6).
+
+    ``expected_version``/``expected_updated_at`` record the read-time state so
+    the update path can enforce optimistic concurrency (§3.9): the revision
+    token for token-capable backends, or ``None`` + read-time ``updated_at``
+    for no-token backends (the S7 ``updated_at`` fallback).
+    """
 
     operation: str
     targets: list[tuple[str, str | None]] = field(default_factory=list)
@@ -134,6 +140,8 @@ class WriteProposal:
     warnings: list[str] = field(default_factory=list)
     snapshot_note: str = ""
     content: str = ""
+    expected_updated_at: datetime | None = None
+    expected_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

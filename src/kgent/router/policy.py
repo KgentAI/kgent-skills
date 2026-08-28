@@ -1,9 +1,16 @@
-"""Write-proposal confirmation gate (§5.6, S1–S4, N1).
+"""Write-proposal confirmation gate (§5.6, S1–S4, N1) + optimistic concurrency (§3.9, S5–S7).
 
 The N1-critical invariant enforced here: the router never writes without a
 *recorded confirmation* that matches the targets actually executed. No write
 leg runs that was not confirmed, and the journal entry records exactly the
 uris written — no extra legs.
+
+Optimistic concurrency (F2): update legs pass the proposal's read-time
+``expected_version`` to the adapter; a :class:`VersionConflict` is journaled
+with ``status == "conflict"`` at exit code 4, never re-raised as a generic
+error, and a fresh proposal re-pinned to the re-read document's current
+version is offered (S6). Backends without revision tokens fall back to an
+``updated_at`` comparison (S7).
 
 Two stages:
 
@@ -23,14 +30,15 @@ Only ``create`` and ``update`` are wired for now; ``delete``/``archive``/
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from itertools import count as _count
 from typing import Any, Protocol, cast
 
-from kgent.errors import PolicyError
+from kgent.errors import PolicyError, VersionConflict
+from kgent.router.concurrency import check_version
 from kgent.router.sensitivity import enforce_zone
-from kgent.types import DocumentMetadata, WriteProposal
+from kgent.types import Document, DocumentMetadata, WriteProposal
 
 __all__ = ["OpResult", "confirm", "execute_confirmed"]
 
@@ -51,6 +59,8 @@ class WriteTarget(Protocol):
 
     def create_document(self, title: str, content: str, metadata: DocumentMetadata) -> str: ...
 
+    def read_document(self, doc_uri: str) -> Document: ...
+
     def update_document(
         self,
         doc_uri: str,
@@ -70,11 +80,19 @@ class JournalAppender(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class OpResult:
-    """Outcome of an executed write (§5.6)."""
+    """Outcome of an executed write (§5.6).
+
+    On a :class:`VersionConflict` the result carries ``exit_code=4``, a
+    journal entry with ``status == "conflict"``, the conflict message in
+    ``error``, and — best-effort — a ``fresh_proposal`` re-pinned to the
+    re-read document's current version (S6/S7).
+    """
 
     op_id: str
     exit_code: int
     journal_entry: dict[str, object]
+    fresh_proposal: WriteProposal | None = None
+    error: str | None = None
 
 
 def _metadata(proposal: WriteProposal, backend_name: str, *, doc_uri: str) -> DocumentMetadata:
@@ -86,6 +104,74 @@ def _metadata(proposal: WriteProposal, backend_name: str, *, doc_uri: str) -> Do
         content_type=proposal.content_type,
         sensitivity=proposal.sensitivity,
     )
+
+
+def _no_token_guard(proposal: WriteProposal, backend: WriteTarget, uri: str) -> None:
+    """No-token fallback: compare read-time vs current ``updated_at`` (S7).
+
+    Best-effort — if the current document cannot be re-read (e.g. it was
+    deleted on-platform), the write proceeds and the adapter remains the
+    source of truth. A mismatch raises :class:`VersionConflict`.
+    """
+    try:
+        current = backend.read_document(uri)
+    except Exception:
+        return
+    check_version(
+        None,
+        current.metadata.version,
+        proposal.expected_updated_at,
+        current.metadata.updated_at,
+        uri,
+    )
+
+
+def _fresh_proposal(
+    proposal: WriteProposal, backend: WriteTarget, uri: str
+) -> WriteProposal | None:
+    """Best-effort re-read → fresh proposal pinned to the current version.
+
+    The user's edit, targets, and every other field are preserved; only the
+    read-time version/updated_at are re-pinned (§3.9.3: never auto-merge or
+    overwrite — review and retry). Returns ``None`` when the re-read fails.
+    """
+    try:
+        current = backend.read_document(uri)
+    except Exception:
+        return None
+    return replace(
+        proposal,
+        expected_version=current.metadata.version,
+        expected_updated_at=current.metadata.updated_at,
+    )
+
+
+def _conflict_entry(
+    *,
+    op_id: str,
+    ts: str,
+    proposal: WriteProposal,
+    confirmation: str,
+    executed: list[str],
+) -> dict[str, object]:
+    """Journal entry for a failed optimistic-concurrency check (S6/S7).
+
+    Same schema as the ok-path entry with ``status == "conflict"``; targets
+    record exactly the uris actually written so far (N1).
+    """
+    return {
+        "schema_version": 1,
+        "op_id": op_id,
+        "ts": ts,
+        "operation": proposal.operation,
+        "targets": executed,
+        "idempotency_key": op_id,
+        "snapshot": {},
+        "proposal_hash": hashlib.sha256(repr(proposal).encode("utf-8")).hexdigest(),
+        "confirmation": confirmation,
+        "sensitivity": proposal.sensitivity,
+        "status": "conflict",
+    }
 
 
 def confirm(
@@ -159,15 +245,52 @@ def execute_confirmed(
             )
             executed.append(created_uri)
         elif proposal.operation == "update" and uri is not None:
-            backend.update_document(
-                doc_uri=uri,
-                content=proposal.content,
-                metadata=_metadata(proposal, backend_name, doc_uri=uri),
-                approval_token=None,
-                idempotency_key=op_id,
-                expected_version=None,
-            )
-            executed.append(uri)
+            try:
+                if proposal.expected_version is None:
+                    # No-token path (§3.9.4): the backend has no revision
+                    # token, so guard with the read-time vs current
+                    # ``updated_at`` comparison before the write.
+                    _no_token_guard(proposal, backend, uri)
+                backend.update_document(
+                    doc_uri=uri,
+                    content=proposal.content,
+                    metadata=_metadata(proposal, backend_name, doc_uri=uri),
+                    approval_token=None,
+                    idempotency_key=op_id,
+                    expected_version=proposal.expected_version,
+                )
+                executed.append(uri)
+            except VersionConflict as exc:
+                # F2 (S6/S7): a stale write journals ``status: conflict`` and
+                # exits 4 — the conflict is surfaced, never re-raised as a
+                # generic error, and a fresh proposal from a re-read is
+                # offered so the caller can review-and-retry.
+                conflict_entry = _conflict_entry(
+                    op_id=op_id,
+                    ts=ts,
+                    proposal=proposal,
+                    confirmation=confirmation,
+                    executed=executed,
+                )
+                journal.append(conflict_entry)
+                if audit is not None and hasattr(audit, "append"):
+                    cast(Any, audit).append(
+                        {
+                            "op_id": op_id,
+                            "operation": proposal.operation,
+                            "targets": executed,
+                            "confirmation": confirmation,
+                            "ts": ts,
+                            "status": "conflict",
+                        }
+                    )
+                return OpResult(
+                    op_id=op_id,
+                    exit_code=4,
+                    journal_entry=conflict_entry,
+                    fresh_proposal=_fresh_proposal(proposal, backend, uri),
+                    error=str(exc),
+                )
         else:
             # delete/archive/unarchive (and any unmapped op) degrade to a safe
             # no-op with a warning until a later task wires them.
