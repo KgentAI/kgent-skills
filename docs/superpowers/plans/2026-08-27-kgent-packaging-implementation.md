@@ -795,7 +795,7 @@ def test_s19_trusted_routing_overrides_work(tmp_home, tmp_path):
 **Interfaces:**
 - Produces: `validate_config(cfg) -> list[str]` (findings; empty = healthy), `migrate_config(path) -> None` (backup `config.yaml.bak-<ts>` first), `doctor(home) -> tuple[list[str], int]` (findings + exit code; no writes, no auth prompts — S54).
 
-- [ ] **Step 1: Write failing test for S54**
+- [x] **Step 1: Write failing test for S54**
 
 ```python
 def test_s54_doctor_validates_config(tmp_home):
@@ -814,10 +814,10 @@ def test_s54_doctor_healthy(tmp_home):
     assert code == 0 and findings == []
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `validate.py`** (reuse `load_config_dict`; check forbidden project keys, trust records, backend zone/floor/capability consistency, capability-cache freshness) and `migrate.py` (recognize `version: 1` as current; older/none → upgrade with backup).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: config validate/migrate + doctor (S54)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `validate.py`** (reuse `load_config_dict`; check forbidden project keys, trust records, backend zone/floor/capability consistency, capability-cache freshness) and `migrate.py` (recognize `version: 1` as current; older/none → upgrade with backup).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: config validate/migrate + doctor (S54)`
 
 ---
 
