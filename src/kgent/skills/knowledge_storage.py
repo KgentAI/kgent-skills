@@ -31,7 +31,21 @@ def store_workflow(
     """
     conversation = context.get("conversation", "")
     preferences = context.get("preferences", {})
-    target_backend = preferences.get("target_backend") or _default_backend(router)
+    explicit_input = context.get("explicit_input", "")
+
+    # Resolution priority (S67): explicit input > preferences > defaults
+    target_backend: str
+    target_source: str
+    explicit_backend = _extract_backend_from_input(explicit_input, router) if explicit_input else None
+    if explicit_backend is not None:
+        target_backend = explicit_backend
+        target_source = "explicit user input"
+    elif preferences.get("target_backend"):
+        target_backend = preferences["target_backend"]
+        target_source = "preferences"
+    else:
+        target_backend = _default_backend(router)
+        target_source = "config default"
 
     # Extract title from user request (simple heuristic)
     title = _extract_title(user_request)
@@ -60,11 +74,14 @@ def store_workflow(
     provenance: dict[str, str] = {
         "intent": intent,
         "target": target_backend,
+        "target_source": target_source,
     }
     if conversation:
         provenance["conversation"] = conversation
     if preferences:
         provenance["preferences"] = str(preferences)
+    if explicit_input:
+        provenance["explicit_input"] = explicit_input
 
     return WriteProposal(
         operation=operation,
@@ -86,6 +103,15 @@ def _default_backend(router: Router) -> str:
     for name in router.config.backends:
         return str(name)
     return "lark"
+
+
+def _extract_backend_from_input(text: str, router: Router) -> str | None:
+    """Extract a backend name from explicit user input (e.g., 'store to dingtalk')."""
+    text_lower = text.lower()
+    for backend_name in router.backends:
+        if backend_name.lower() in text_lower:
+            return backend_name
+    return None
 
 
 def _extract_title(request: str) -> str:
