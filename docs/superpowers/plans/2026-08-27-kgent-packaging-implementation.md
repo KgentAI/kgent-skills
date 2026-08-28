@@ -1024,7 +1024,7 @@ def test_s59_platform_skill_preferred_over_cli():
   - `enforce_zone(tier, backend_zone, backend_name) -> None` raising `PolicyError` with exact message `"tier 'confidential' cannot be written to external-zone backend 'dingtalk'"` (S13).
   - `warn_query_leakage(targets, session) -> list[str]` (once per session; S16).
 
-- [ ] **Step 1: Write failing tests for S13–S16**
+- [x] **Step 1: Write failing tests for S13–S16**
 
 ```python
 import pytest
@@ -1054,10 +1054,10 @@ def test_s16_query_leak_warning_once():
     assert warn_query_leakage([("lark", "internal"), ("dingtalk", "external")], session) == []
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** with exact message strings from §2.5/acceptance.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: sensitivity tiers + zone enforcement (S13–S16)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** with exact message strings from §2.5/acceptance.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: sensitivity tiers + zone enforcement (S13–S16)`
 
 ### Task 5.2: Write proposal + confirmation gate (§5.6, S1–S4)
 
