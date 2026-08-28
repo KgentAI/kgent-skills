@@ -1070,7 +1070,7 @@ def test_s16_query_leak_warning_once():
   - `class WriteProposal` (operation, targets: list[tuple[backend, uri]], title, content_type, sensitivity, approval_required, provenance, degraded: list[str], warnings: list[str], snapshot_note: str)
   - `confirm(proposal, mode: str) -> str` → `"interactive-yes" | "--yes" | "rejected"` (mode `"interactive"` returns interactive-yes when answer yes; `"--yes"` requires explicit `--backends` + full content else returns "rejected" with warning, S3).
 
-- [ ] **Step 1: Write failing tests for S1–S4**
+- [x] **Step 1: Write failing tests for S1–S4**
 
 ```python
 def test_s1_interactive_confirm_then_write(test_world):
@@ -1104,10 +1104,10 @@ def test_s3_yes_without_backends_does_not_bypass():
     # warning containing "--yes requires explicit --backends" is surfaced
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `policy.py`** with `confirm` and `execute_confirmed` (the latter invokes the resolved adapters, journals via `journal.py` (Task 5.4), audits via `audit.py` (Task 5.5), enforces zones via `sensitivity.py`). `execute_confirmed` returns an `OpResult` carrying `journal_entry`, `exit_code`.
-- [ ] **Step 4: Run → PASS** (S1–S4 GREEN once journal/audit stubs exist — split: implement journal/audit in 5.4/5.5 then return here to finish S1/S4 assertions).
-- [ ] **Step 5: Commit** `feat: write proposal + confirmation gate (S1–S4)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `policy.py`** with `confirm` and `execute_confirmed` (the latter invokes the resolved adapters, journals via `journal.py` (Task 5.4), audits via `audit.py` (Task 5.5), enforces zones via `sensitivity.py`). `execute_confirmed` returns an `OpResult` carrying `journal_entry`, `exit_code`.
+- [x] **Step 4: Run → PASS** (S1–S4 GREEN once journal/audit stubs exist — split: implement journal/audit in 5.4/5.5 then return here to finish S1/S4 assertions).
+- [x] **Step 5: Commit** `feat: write proposal + confirmation gate (S1–S4)`
 
 ### Task 5.3: Optimistic concurrency (§3.9, S5–S7)
 
