@@ -1,5 +1,6 @@
 """Multi-backend search: bounded fan-out (§7.1; S33), RRF ranking (§7.3; S34),
-and aggregation — dedupe, near-dup clustering, staleness, conflicts (§7.2, §6.5, §8.6; S35–S38, S55, S56)."""
+compound-query decomposition (§7.4; S57), and aggregation — dedupe, near-dup
+clustering, staleness, conflicts (§7.2, §6.5, §8.6; S35–S38, S55, S56)."""
 
 from kgent.search.aggregate import (
     DEFAULT_CONFLICT_STRATEGIES,
@@ -17,12 +18,14 @@ from kgent.search.aggregate import (
     snippet_overlap,
     verify_results,
 )
+from kgent.search.decompose import DecompositionResult, decompose_query
 from kgent.search.fanout import build_footer, exit_code_for_failures, fanout
 from kgent.search.rank import rank_and_truncate, rrf
 
 __all__ = [
     "DEFAULT_CONFLICT_STRATEGIES",
     "Conflict",
+    "DecompositionResult",
     "IdMap",
     "NearDupCluster",
     "assess_staleness",
@@ -30,6 +33,7 @@ __all__ = [
     "classify_read_failure",
     "cluster_title",
     "cluster_uris",
+    "decompose_query",
     "detect_conflicts",
     "exit_code_for_failures",
     "fanout",

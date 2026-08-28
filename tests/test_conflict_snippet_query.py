@@ -1,13 +1,14 @@
-"""Conflict detection + snippet overlap (§7.5, §6.5; S55, S56).
+"""Conflict detection + snippet overlap + query decomposition (§7.5, §6.5, §7.4; S55, S56, S57).
 
 S56 — two documents sharing a copy-pasted section are flagged "overlapping
 content" via :func:`snippet_overlap`, never auto-merged. S55 — a diverged
 near-duplicate pair (same title, different fingerprints, overlapping
 snippets) surfaces a :class:`Conflict` whose recommended strategy comes from
 the configured ``conflict_resolution.strategies`` list; no resolution action
-executes. Also covers the stale-vs-live deterministic rule (§8.6) and
-:func:`has_conflicts`. 6.5 will extend this file with query-decomposition
-tests.
+executes. Also covers the stale-vs-live deterministic rule (§8.6),
+:func:`has_conflicts`, and S57 query decomposition (§7.4): the router ships a
+deterministic fallback that returns the query unchanged; LLM-assisted
+decomposition arrives as an injected callable and is never invented.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from kgent.search.aggregate import (
     merge_and_deduplicate,
     snippet_overlap,
 )
+from kgent.search.decompose import DecompositionResult, decompose_query
 from kgent.types import DocumentMetadata, SearchResult
 
 
@@ -219,3 +221,79 @@ def test_no_conflict_when_snippets_disjoint():
 
 def test_has_conflicts_empty_is_false():
     assert has_conflicts([]) is False
+
+
+# ---------------------------------------------------------------------------
+# S57 — query decomposition (§7.4)
+# ---------------------------------------------------------------------------
+
+
+def test_s57_compound_query_decomposed_by_injected_decomposer():
+    """A genuinely compound query, decomposed by the INJECTED skill-layer
+    decomposer, yields sub-queries with decomposed=True (S57)."""
+    query = "onboarding policy changes and where it is referenced"
+    result = decompose_query(
+        query,
+        decomposer=lambda q: ["onboarding policy changes", "onboarding policy references"],
+    )
+
+    assert isinstance(result, DecompositionResult)
+    assert result.sub_queries == [
+        "onboarding policy changes",
+        "onboarding policy references",
+    ]
+    assert result.decomposed is True
+
+
+def test_s57_no_decomposer_returns_query_unchanged_not_decomposed():
+    """No injected decomposer → deterministic fallback: the query passes through
+    unchanged and is NEVER decomposed or invented (router never reasons, §1.4)."""
+    query = "onboarding policy changes and where it is referenced"
+    result = decompose_query(query)
+
+    assert result.sub_queries == [query]
+    assert result.decomposed is False
+
+
+def test_s57_simple_query_not_fabricated_into_multi_query():
+    """A simple query injected decomposer returns as-is → single sub-query,
+    decomposed=False: no fabricated multi-query even when a decomposer exists."""
+    query = "onboarding policy"
+    result = decompose_query(query, decomposer=lambda q: [q])
+
+    assert result.sub_queries == [query]
+    assert result.decomposed is False
+
+
+def test_s57_dedupe_preserves_order_and_drops_empties():
+    """Sub-queries are deduplicated preserving first-encounter order and empties
+    dropped before the decomposed flag is decided (S57)."""
+    result = decompose_query(
+        "onboarding policy",
+        decomposer=lambda q: ["references", "", "references", "changes", "   "],
+    )
+
+    assert result.sub_queries == ["references", "changes"]
+    assert result.decomposed is True
+
+
+def test_s57_duplicate_only_subqueries_not_decomposed():
+    """A decomposer collapsing to one distinct sub-query must not report a
+    fabricated decomposition."""
+    result = decompose_query(
+        "onboarding policy",
+        decomposer=lambda q: ["changes", "changes"],
+    )
+
+    assert result.sub_queries == ["changes"]
+    assert result.decomposed is False
+
+
+def test_s57_empty_decomposition_degrades_to_passthrough():
+    """An injected decomposer yielding nothing usable degrades to the
+    deterministic passthrough — never an empty (or invented) decomposition."""
+    query = "onboarding policy"
+    result = decompose_query(query, decomposer=lambda q: ["", "  "])
+
+    assert result.sub_queries == [query]
+    assert result.decomposed is False
