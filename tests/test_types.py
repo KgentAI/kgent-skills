@@ -1,6 +1,8 @@
 import dataclasses
 
 from kgent.types import (
+    ApprovalBinding,
+    ApprovalStatus,
     BackendResolution,
     DocumentMetadata,
     RoutingIntent,
@@ -41,6 +43,18 @@ def test_search_result_defaults():
         ),
     )
     assert r.access == "ok" and r.also_available_in == [] and r.mode_used is None
+
+
+def test_approval_binding_fields():
+    names = {f.name for f in dataclasses.fields(ApprovalBinding)}
+    assert {"doc_uri", "operation", "content_fingerprint"} == names
+    st = ApprovalStatus(
+        approval_id="ap1",
+        binding=ApprovalBinding(
+            doc_uri="kgent://lark/d1", operation="update", content_fingerprint="fp1"
+        ),
+    )
+    assert st.binding.operation == "update" and st.binding.content_fingerprint == "fp1"
 
 
 def test_routing_intent_shape():

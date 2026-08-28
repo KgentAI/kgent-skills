@@ -67,6 +67,15 @@ class ApproverDecision:
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovalBinding:
+    """Cryptographic binding for an approval (§3.8, §3.4)."""
+
+    doc_uri: str
+    operation: str  # create | update | delete
+    content_fingerprint: str
+
+
+@dataclass(frozen=True, slots=True)
 class ApprovalStatus:
     """State of an approval request (§3.8)."""
 
@@ -76,7 +85,7 @@ class ApprovalStatus:
     decided_at: datetime | None = None
     expires_at: datetime | None = None
     approvers: list[ApproverDecision] = field(default_factory=list)
-    binding: dict[str, str] | None = None  # doc_uri, operation, content_fingerprint
+    binding: ApprovalBinding | None = None
 
 
 @dataclass(frozen=True, slots=True)
