@@ -245,8 +245,10 @@ def execute_confirmed(
     ``journal`` defaults to the real :class:`~kgent.router.journal.Journal`
     (home from ``KGENT_HOME``/``~/.kgent``); update legs capture the pre-write
     ``content_before`` snapshot before the write (S44). If ``audit`` exposes
-    an ``append`` method it is called with a minimal entry (Task 5.5 replaces
-    this; otherwise audit is skipped, duck-typed).
+    an ``append`` method it is called with a full §8.4 entry (op_id,
+    operation, targets, confirmation, sensitivity, outcome); otherwise audit
+    is skipped, duck-typed. Write ops carry no query, so no
+    ``redacted_query`` marker is invented.
     """
     if journal is None:
         journal = Journal()
@@ -314,12 +316,13 @@ def execute_confirmed(
                 if audit is not None and hasattr(audit, "append"):
                     cast(Any, audit).append(
                         {
+                            "ts": ts,
                             "op_id": op_id,
                             "operation": proposal.operation,
                             "targets": executed,
                             "confirmation": confirmation,
-                            "ts": ts,
-                            "status": "conflict",
+                            "sensitivity": proposal.sensitivity,
+                            "outcome": "conflict",
                         }
                     )
                 return OpResult(
@@ -361,11 +364,13 @@ def execute_confirmed(
     if audit is not None and hasattr(audit, "append"):
         cast(Any, audit).append(
             {
+                "ts": ts,
                 "op_id": op_id,
                 "operation": proposal.operation,
                 "targets": executed,
                 "confirmation": confirmation,
-                "ts": ts,
+                "sensitivity": proposal.sensitivity,
+                "outcome": "ok",
             }
         )
     return OpResult(op_id=op_id, exit_code=0, journal_entry=entry)

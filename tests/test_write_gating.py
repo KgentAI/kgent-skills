@@ -11,11 +11,11 @@ from __future__ import annotations
 import pytest
 
 from kgent.errors import PolicyError
+from kgent.router.audit import AuditLog
 from kgent.router.journal import Journal
 from kgent.router.policy import confirm, execute_confirmed
 from kgent.types import WriteProposal
 from tests.fakes.fake_backend import FakeBackend
-from tests.fakes.inmemory_journal import InMemoryAudit
 
 
 def _prop(**kw: object) -> WriteProposal:
@@ -39,7 +39,7 @@ def _prop(**kw: object) -> WriteProposal:
 def test_s1_interactive_confirm_then_write(test_world):
     backend: FakeBackend = test_world["backends"]["lark"]
     journal = Journal()
-    audit = InMemoryAudit()
+    audit = AuditLog()
     prop = _prop()
     conf = confirm(prop, "interactive", answer="yes")
     assert conf == "interactive-yes"
@@ -80,7 +80,7 @@ def test_s4_yes_with_explicit_backends_but_empty_content_rejects():
 def test_s4_yes_with_explicit_backends_and_content(test_world):
     backend: FakeBackend = test_world["backends"]["lark"]
     journal = Journal()
-    audit = InMemoryAudit()
+    audit = AuditLog()
     prop = _prop()
     conf = confirm(prop, "--yes", explicit_backends=True)
     assert conf == "--yes"
@@ -95,7 +95,7 @@ def test_s4_yes_with_explicit_backends_and_content(test_world):
 def test_n1_executed_targets_equal_journaled(test_world):
     backend: FakeBackend = test_world["backends"]["lark"]
     journal = Journal()
-    audit = InMemoryAudit()
+    audit = AuditLog()
     prop = _prop()
     op = execute_confirmed(
         prop,
@@ -116,7 +116,7 @@ def test_n4_zones_enforced_before_any_write(test_world):
     in-zone target is not touched when a later target violates the zone rule.
     """
     journal = Journal()
-    audit = InMemoryAudit()
+    audit = AuditLog()
     prop = _prop(
         targets=[("lark", None), ("dingtalk", None)],
         sensitivity="confidential",
@@ -137,7 +137,7 @@ def test_n4_zones_enforced_before_any_write(test_world):
 def test_rejected_confirmation_never_executes(test_world):
     backend: FakeBackend = test_world["backends"]["lark"]
     journal = Journal()
-    audit = InMemoryAudit()
+    audit = AuditLog()
     prop = _prop()
     with pytest.raises(PolicyError):
         execute_confirmed(

@@ -401,7 +401,9 @@ def undo(
                 "operation": "undo",
                 "targets": restored,
                 "ts": ts,
-                "status": status,
+                "sensitivity": sensitivity,
+                # §8.4 audit schema: the undo outcome mirrors the journal status.
+                "outcome": status,
             }
         )
     error = "; ".join(failures) if failures else None

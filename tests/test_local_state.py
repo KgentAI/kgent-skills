@@ -16,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from kgent.router.audit import AUDIT_REDACT_QUERY_WARNING, AuditLog
 from kgent.router.journal import Journal, build_entry, undo
 from kgent.router.policy import execute_confirmed
 from kgent.types import Document, DocumentMetadata, WriteProposal
@@ -323,3 +324,110 @@ def test_prune_keeps_recent_drops_old(tmp_home):
     on_disk = journal.path.read_text(encoding="utf-8")
     assert "op-recent" in on_disk
     assert "op-old" not in on_disk
+
+
+# ---------------------------------------------------------------------------
+# §8.4 audit log — S45 query redaction, S52 secrets, permissions, schema
+# ---------------------------------------------------------------------------
+
+
+def test_s45_queries_redacted_by_default(tmp_home):
+    """S45: with redact_queries=True (default) a query body never hits the file."""
+    audit = AuditLog(path=tmp_home / "audit.ndjson", redact_queries=True)
+    audit.append(
+        {
+            "ts": "2026-08-28T00:00:00+00:00",
+            "operation": "search",
+            "query": "secret project phoenix",
+        }
+    )
+    raw = (tmp_home / "audit.ndjson").read_text(encoding="utf-8")
+    assert "phoenix" not in raw
+    assert "secret project" not in raw
+    line = json.loads(raw)
+    assert line["query"] == "<redacted>"
+    assert line["redacted_query"] is True
+
+
+def test_s45_redact_queries_false_is_opt_in(tmp_home):
+    audit = AuditLog(path=tmp_home / "audit.ndjson", redact_queries=False)
+    audit.append({"ts": "...", "operation": "search", "query": "secret project phoenix"})
+    raw = (tmp_home / "audit.ndjson").read_text(encoding="utf-8")
+    assert "phoenix" in raw
+    assert json.loads(raw)["query"] == "secret project phoenix"
+
+
+def test_redact_query_helper_and_warning_constant():
+    on = AuditLog(redact_queries=True)
+    off = AuditLog(redact_queries=False)
+    assert on.redact_query("phoenix") == "<redacted>"
+    assert off.redact_query("phoenix") == "phoenix"
+    assert "redact_queries" in AUDIT_REDACT_QUERY_WARNING
+    assert "queries" in AUDIT_REDACT_QUERY_WARNING.lower()
+
+
+def test_s52_secrets_never_in_audit(tmp_home):
+    audit = AuditLog(path=tmp_home / "audit.ndjson")
+    audit.append(
+        {
+            "ts": "2026-08-28T00:00:00+00:00",
+            "op_id": "op-1",
+            "operation": "search",
+            "query": "unimportant",
+            "token": "sk-live-abcdef123456",
+            "secret": "hunter2",
+            "credential": "credential-value",
+        }
+    )
+    raw = (tmp_home / "audit.ndjson").read_text(encoding="utf-8")
+    assert "sk-live-" not in raw
+    assert "hunter2" not in raw
+    assert "credential-value" not in raw
+    assert "token" not in raw
+    assert "secret" not in raw
+    # known schema fields survive; the query body is redacted even on search
+    assert json.loads(raw)["operation"] == "search"
+
+
+def test_audit_ndjson_permissions_0600(tmp_home):
+    audit = AuditLog(path=tmp_home / "audit.ndjson")
+    audit.append({"ts": "...", "operation": "search", "query": "q"})
+    if os.name == "nt":
+        # NTFS exposes no POSIX mode bits; the real write above still runs.
+        pytest.skip("POSIX mode bits are not representable on Windows")
+    assert stat.S_IMODE(os.stat(tmp_home).st_mode) == 0o700
+    assert stat.S_IMODE(os.stat(tmp_home / "audit.ndjson").st_mode) == 0o600
+
+
+def test_audit_entry_schema_version_and_outcome_default(tmp_home):
+    audit = AuditLog(path=tmp_home / "audit.ndjson")
+    audit.append(
+        {
+            "ts": "2026-08-28T00:00:00+00:00",
+            "op_id": "op-1",
+            "operation": "update",
+            "targets": ["kgent://lark/docA"],
+            "confirmation": "interactive-yes",
+            "sensitivity": "internal",
+        }
+    )
+    line = json.loads((tmp_home / "audit.ndjson").read_text(encoding="utf-8"))
+    assert line["schema_version"] == 1
+    assert line["outcome"] == "ok"
+    # write ops carry no query — no redaction marker is invented
+    assert "query" not in line
+    assert "redacted_query" not in line
+
+
+def test_audit_wired_in_execute_confirmed(tmp_home, test_world):
+    """A real write audits a full §8.4 entry with outcome ok (router wiring)."""
+    audit = AuditLog(path=tmp_home / "audit.ndjson")
+    prop = _prop()
+    op = execute_confirmed(prop, "interactive-yes", backends=test_world["backends"], audit=audit)
+    line = json.loads((tmp_home / "audit.ndjson").read_text(encoding="utf-8"))
+    assert line["op_id"] == op.journal_entry["op_id"]
+    assert line["operation"] == "create"
+    assert line["sensitivity"] == "internal"
+    assert line["confirmation"] == "interactive-yes"
+    assert line["outcome"] == "ok"
+    assert line["schema_version"] == 1
