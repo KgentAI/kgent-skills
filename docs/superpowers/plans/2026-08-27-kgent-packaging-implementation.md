@@ -226,7 +226,7 @@ git commit -m "chore: scaffold kgent Python package + tooling config"
 **Interfaces:**
 - Produces: `tools/gauntlet.sh` runs the full chain and fails closed (`set -euo pipefail`).
 
-- [ ] **Step 1: Write `tools/gauntlet.sh`**
+- [x] **Step 1: Write `tools/gauntlet.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -271,7 +271,7 @@ python -c "print('N14: network capture enforced via test fixture (Task 10.1)')"
 echo "GAUNTLET PASS"
 ```
 
-- [ ] **Step 2: Write `tools/mutants.py`** (manual-mutation fallback; records a summary)
+- [x] **Step 2: Write `tools/mutants.py`** (manual-mutation fallback; records a summary)
 
 ```python
 """Manual mutation fallback (per acceptance §6). Mutates one statement and re-runs
@@ -297,12 +297,12 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 3: `chmod +x` and smoke-run**
+- [x] **Step 3: `chmod +x` and smoke-run**
 
 Run: `chmod +x tools/gauntlet.sh && bash tools/gauntlet.sh`
 Expected: fails early at `pytest` (no tests yet) — the script itself runs cleanly through clean+test stage with exit 5.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tools/gauntlet.sh tools/mutants.py
