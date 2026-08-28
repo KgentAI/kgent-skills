@@ -315,6 +315,7 @@ def execute_confirmed(
     journal: JournalAppender | None = None,
     audit: object | None = None,
     approval_tokens: dict[str, str] | None = None,
+    op_id: str | None = None,
 ) -> OpResult:
     """Execute the confirmed write and journal one entry per leg (S1–S4, N1).
 
@@ -356,7 +357,7 @@ def execute_confirmed(
             )
 
     ts = datetime.now(UTC).isoformat()
-    op_id = _next_op_id()
+    op_id = op_id or _next_op_id()
     executed: list[str] = []
     snapshots: dict[str, dict[str, Any]] = {}
     blocked: list[str] = []

@@ -70,6 +70,7 @@ class Router:
         *,
         confirmation: str,
         approval_tokens: dict[str, str] | None = None,
+        op_id: str | None = None,
     ) -> OpResult:
         """Execute a confirmed write and journal/audit the result (§5.6, S1–S4)."""
         return execute_confirmed(
@@ -79,6 +80,7 @@ class Router:
             journal=self.journal,
             audit=self.audit,
             approval_tokens=approval_tokens,
+            op_id=op_id,
         )
 
     async def search(

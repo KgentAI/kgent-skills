@@ -227,6 +227,43 @@ def test_cli_store_update_first(e2e):
     assert next(iter(lark.docs.values())).content == "v2"
 
 
+def test_cli_store_yes_audited_with_confirmation(e2e):
+    """S4: --yes write is audited with confirmation "--yes"."""
+    code = main(["store", "--title", "Doc", "--content", "body", "--backends", "lark", "--yes"])
+    assert code == 0
+    from kgent.router.journal import Journal
+    journal = Journal(e2e["home"])
+    ops = journal.list_ops()
+    assert ops, "expected at least one journal entry"
+    assert ops[-1]["confirmation"] == "--yes"
+
+
+def test_cli_store_dry_run_no_write_no_journal(e2e):
+    """--dry-run: no write, no journal entry."""
+    code = main([
+        "store", "--title", "Doc", "--content", "body", "--backends", "lark", "--dry-run",
+    ])
+    assert code == 0
+    assert not e2e["backends"]["lark"].docs, "--dry-run must not write"
+    from kgent.router.journal import Journal
+    journal = Journal(e2e["home"])
+    assert journal.list_ops() == [], "--dry-run must not journal"
+
+
+def test_cli_store_op_id_reuse(e2e):
+    """--op-id reuses the caller-supplied op_id in the journal entry."""
+    code = main([
+        "store", "--title", "Doc", "--content", "body",
+        "--backends", "lark", "--op-id", "op-custom-42",
+    ])
+    assert code == 0
+    from kgent.router.journal import Journal
+    journal = Journal(e2e["home"])
+    ops = journal.list_ops()
+    assert ops, "expected at least one journal entry"
+    assert ops[-1]["op_id"] == "op-custom-42"
+
+
 def test_cli_sync_repair_partial_fanout(e2e):
     e2e["backends"]["wecom"].fault = lambda m, kw: (_ for _ in ()).throw(RuntimeError("boom"))
     code = main([

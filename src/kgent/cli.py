@@ -209,8 +209,25 @@ def _cmd_store(args: argparse.Namespace) -> int:
     if confirmation == "rejected":
         _text_out("rejected: write not confirmed")
         return 3
+
+    # --dry-run: show what would happen without writing or journaling.
+    if getattr(args, "dry_run", False):
+        plan = {
+            "operation": proposal.operation,
+            "targets": [t for t, _ in proposal.targets],
+            "title": proposal.title,
+            "update_first": existing_uri is not None,
+            "dry_run": True,
+        }
+        if getattr(args, "json", False):
+            _json_out(plan)
+        else:
+            _text_out(f"dry-run: {proposal.operation} {plan['targets']}")
+        return 0
+
+    caller_op_id = getattr(args, "op_id", None)
     try:
-        result = router.execute(proposal, confirmation=confirmation)
+        result = router.execute(proposal, confirmation=confirmation, op_id=caller_op_id)
     except Exception as exc:  # noqa: BLE001  — adapters are a platform boundary
         # Backend error during execution: journal what we can, report partial
         _text_out(f"error: {exc}")
@@ -643,6 +660,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_store.add_argument("--backends", default=None)
     p_store.add_argument("--sensitivity", default="internal")
     p_store.add_argument("--yes", action="store_true", default=False)
+    p_store.add_argument("--dry-run", dest="dry_run", action="store_true", default=False,
+                         help="Show what would happen without writing or journaling")
+    p_store.add_argument("--op-id", dest="op_id", default=None,
+                         help="Reuse a caller-supplied op_id for the journal entry")
 
     # search
     p_search = sub.add_parser("search", help="Search documents", parents=[common])
