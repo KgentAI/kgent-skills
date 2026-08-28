@@ -1307,7 +1307,7 @@ def test_s45_queries_redacted_by_default(test_world):
   - `run_cli(argv: list[str], timeout: float) -> tuple[int, str, str]` — subprocess via argv array, **never** shell (S40); query DSL built via parameterization/escaping (S41).
   - `class RetryBudget` — transient retries (3 attempts, backoff) for network/5xx; `429 Retry-After` queued until operation timeout and **never counted against the 3-attempt budget** (S47, N13).
 
-- [ ] **Step 1: Write failing tests for S40 + S41 + S47**
+- [x] **Step 1: Write failing tests for S40 + S41 + S47**
 
 ```python
 def test_s40_shell_metacharacters_inert(tmp_path, monkeypatch):
@@ -1329,10 +1329,10 @@ def test_s47_retry_after_queued_not_retried():
     assert budget.transient_attempts == 0                        # NOT counted
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** `run_cli` via `subprocess.run([...], timeout=...)` with `shell=False` (default, explicit); `escape_query` per backend's DSL (backslash/quote escaping, param binding); `RetryBudget` with separate transient-retry and rate-limit-queue counters (queueing exceeding operation timeout surfaces a rate-limit-named failure).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: adapter base + argv-safe CLI + query escaping + rate budget (S40/S41/S47/N13)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** `run_cli` via `subprocess.run([...], timeout=...)` with `shell=False` (default, explicit); `escape_query` per backend's DSL (backslash/quote escaping, param binding); `RetryBudget` with separate transient-retry and rate-limit-queue counters (queueing exceeding operation timeout surfaces a rate-limit-named failure).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: adapter base + argv-safe CLI + query escaping + rate budget (S40/S41/S47/N13)`
 
 ### Task 7.2: Lark / DingTalk / WeCom adapters (§1.3, §1.5)
 
