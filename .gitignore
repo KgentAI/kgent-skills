@@ -1,0 +1,7 @@
+.kgent
+.pytest_cache
+.ruff_cache
+.mypy_cache
+__pycache__
+.coverage
+htmlcov
