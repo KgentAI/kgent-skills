@@ -151,7 +151,7 @@ kgent-skills/
 **Interfaces:**
 - Produces: `kgent.__version__ = "0.1.0"`; `python -m kgent` entry.
 
-- [ ] **Step 1: Write `pyproject.toml`**
+- [x] **Step 1: Write `pyproject.toml`**
 
 ```toml
 [build-system]
@@ -190,13 +190,13 @@ python_version = "3.11"
 source = ["kgent"]
 ```
 
-- [ ] **Step 2: Write `src/kgent/__init__.py`**
+- [x] **Step 2: Write `src/kgent/__init__.py`**
 
 ```python
 __version__ = "0.1.0"
 ```
 
-- [ ] **Step 3: Write `src/kgent/__main__.py`**
+- [x] **Step 3: Write `src/kgent/__main__.py`**
 
 ```python
 from kgent.cli import main
@@ -205,12 +205,12 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Verify install + entry**
+- [x] **Step 4: Verify install + entry**
 
 Run: `pip install -e ".[dev]" && python -c "import kgent; print(kgent.__version__)"`
 Expected: `0.1.0` printed, no import error. (If `kgent.cli` missing, this step moves after Task 8.1; keep the `__main__` import but a stub `main` is acceptable — create `cli.py` with `def main() -> int: return 0` temporarily.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml .gitignore src/kgent/__init__.py src/kgent/__main__.py src/kgent/cli.py tests/
