@@ -1231,11 +1231,11 @@ def test_s45_queries_redacted_by_default(test_world):
 **Interfaces:**
 - Produces: `async def fanout(targets, query, mode, top_k, timeout, concurrency) -> tuple[list[SearchResult], list[dict]]` returning successes + per-backend failures/timeouts; footer naming timed-out backends (S33, exit 2).
 
-- [ ] **Step 1: Write failing test for S33** (dingtalk fake hangs past `search_seconds` via `fault`; remaining results returned; footer `"1 backend timed out"`).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** with `asyncio.wait_for` + `asyncio.gather(return_exceptions=True)` + `Semaphore(max_parallel_backends)`.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: bounded fan-out + timeouts (S33)`
+- [x] **Step 1: Write failing test for S33** (dingtalk fake hangs past `search_seconds` via `fault`; remaining results returned; footer `"1 backend timed out"`).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** with `asyncio.wait_for` + `asyncio.gather(return_exceptions=True)` + `Semaphore(max_parallel_backends)`.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: bounded fan-out + timeouts (S33)`
 
 ### Task 6.2: Clamping + top_k total + oversize preflight (§3.7, S31, S32, S48)
 
