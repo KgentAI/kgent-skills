@@ -253,7 +253,7 @@ def build_entry(
         snap["content_before"] = content_before
     if sensitivity == "confidential" and not encrypt:
         snap = _omit_snapshot_bodies(snap)
-    return {
+    entry: dict[str, Any] = {
         "schema_version": schema_version,
         "op_id": op_id,
         "ts": ts,
@@ -266,6 +266,11 @@ def build_entry(
         "sensitivity": sensitivity,
         "status": status,
     }
+    # Propagate partial-fan-out metadata so sync/repair can target failed legs.
+    for key in ("failed_targets", "failed_legs", "proposal_title", "proposal_content"):
+        if key in extra:
+            entry[key] = extra[key]
+    return entry
 
 
 #: ``write_entry`` is the plan's name for :func:`build_entry`; both are the
@@ -315,6 +320,26 @@ def _content_before_by_uri(snapshot: dict[str, Any], targets: list[str]) -> dict
     if len(targets) == 1 and "content_before" in snapshot:
         cb = snapshot.get("content_before")
         return {targets[0]: cb if isinstance(cb, str) else None}
+    return {}
+
+
+def _version_after_by_uri(snapshot: dict[str, Any], targets: list[str]) -> dict[str, str | None]:
+    """Map each update target uri → its post-write ``version_after``.
+
+    Handles the two snapshot shapes: flat (single target, §6.7 example) and
+    ``{"targets": {uri: {…}}}`` (multi-target).
+    """
+    inner = snapshot.get("targets")
+    if isinstance(inner, dict):
+        result: dict[str, str | None] = {}
+        for key, value in inner.items():
+            if isinstance(value, dict):
+                va = value.get("version_after")
+                result[str(key)] = va if isinstance(va, str) else None
+        return result
+    if len(targets) == 1 and "version_after" in snapshot:
+        va = snapshot.get("version_after")
+        return {targets[0]: va if isinstance(va, str) else None}
     return {}
 
 
@@ -370,6 +395,14 @@ def undo(
                     failures.append(f"undo unavailable for {uri}: snapshot has no content_before")
                     continue
                 current = backend.read_document(uri)
+                # S12: refuse if the document was edited since the journaled update.
+                version_after = _version_after_by_uri(snapshot, targets).get(uri)
+                if version_after is not None and current.metadata.version != version_after:
+                    failures.append(
+                        f"undo refused for {uri}: document edited since the journaled update "
+                        f"(expected version {version_after}, current {current.metadata.version})"
+                    )
+                    continue
                 backend.update_document(
                     doc_uri=uri,
                     content=content_before,

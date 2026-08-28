@@ -410,34 +410,28 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     router, _config = _build_router()
     repair_op = getattr(args, "repair", None)
     if repair_op:
-        entry = router.journal.get(repair_op)
-        if entry is None:
-            _text_out(f"error: op {repair_op!r} not found in journal")
-            return 1
-        status = entry.get("status")
-        if status == "partial":
-            # Re-execute failed legs: for now, report status (full repair in Task 8.3)
-            failed_targets = [t for t in entry.get("targets", []) if isinstance(t, str)]
-            if getattr(args, "json", False):
-                _json_out({"operation": "sync", "op_id": repair_op, "status": "repaired",
-                            "repaired_targets": failed_targets})
+        from kgent.router.repair import sync_repair
+        result = sync_repair(repair_op, journal=router.journal, backends=router.backends)
+        if getattr(args, "json", False):
+            _json_out({"operation": "sync", "op_id": repair_op,
+                        "status": result.journal_entry.get("status"),
+                        "repaired_targets": result.journal_entry.get("repaired_targets", [])})
+        else:
+            if result.exit_code == 0:
+                _text_out(f"repaired {repair_op}")
             else:
-                _text_out(f"repaired {len(failed_targets)} target(s) for {repair_op}")
-            return 0
-        _text_out(f"op {repair_op!r} is not partial (status={status})")
-        return 1
+                _text_out(f"repair failed: {result.error}")
+        return result.exit_code
     # Status: list failed/partial ops
-    failed = router.journal.list_failed()
-    partial = router.journal.list_partial()
+    from kgent.router.repair import sync_status
+    statuses = sync_status(router.journal)
     if getattr(args, "json", False):
-        _json_out({"failed": [e.get("op_id") for e in failed],
-                    "partial": [e.get("op_id") for e in partial]})
+        _json_out({"operations": statuses})
     else:
-        for e in failed:
-            _text_out(f"failed: {e.get('op_id')}")
-        for e in partial:
-            _text_out(f"partial: {e.get('op_id')}")
-        if not failed and not partial:
+        for s in statuses:
+            failed = s.get("failed_targets", [])
+            _text_out(f"{s['status']}: {s['op_id']} ({s['operation']}) failed={failed}")
+        if not statuses:
             _text_out("no failed or partial operations")
     return 0
 

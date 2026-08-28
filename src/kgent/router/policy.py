@@ -423,9 +423,17 @@ def execute_confirmed(
                 )
                 executed.append(uri)
                 if content_before is not None:
+                    # Capture version_after so undo can detect subsequent edits (S12).
+                    version_after: str | None = None
+                    try:
+                        after = backend.read_document(uri)
+                        version_after = after.metadata.version
+                    except Exception:  # noqa: BLE001, S110 — best-effort version capture
+                        pass
                     snapshots[uri] = {
                         "content_before": content_before,
                         "metadata_before": metadata_before,
+                        "version_after": version_after,
                     }
             except VersionConflict as exc:
                 # F2 (S6/S7): a stale write journals ``status: conflict`` and
@@ -556,6 +564,9 @@ def execute_confirmed(
             status="partial",
             encrypt=getattr(journal, "encrypt", False),
             failed_targets=failed_targets,
+            failed_legs=failed_legs,
+            proposal_title=proposal.title or "",
+            proposal_content=proposal.content,
         )
         journal.append(partial_entry)
         _audit_append(
