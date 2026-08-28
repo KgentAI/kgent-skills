@@ -115,7 +115,8 @@ def _no_token_guard(proposal: WriteProposal, backend: WriteTarget, uri: str) -> 
     """
     try:
         current = backend.read_document(uri)
-    except Exception:
+    except Exception:  # noqa: BLE001 — best-effort re-read: any failure falls
+        # through to the adapter, which remains the source of truth.
         return
     check_version(
         None,
@@ -137,7 +138,8 @@ def _fresh_proposal(
     """
     try:
         current = backend.read_document(uri)
-    except Exception:
+    except Exception:  # noqa: BLE001 — best-effort re-read: on any failure no
+        # fresh proposal is offered.
         return None
     return replace(
         proposal,
