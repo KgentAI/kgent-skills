@@ -1,11 +1,12 @@
 """Manual mutation fallback (per acceptance §6). Mutates one statement and re-runs
 the suite; a surviving mutant is reported. Used only when mutmut is unavailable."""
-import subprocess
+
 import sys
 
 MUTANTS = [
     # (file, line, original, mutated) — filled in as real mutants are introduced
 ]
+
 
 def main() -> int:
     if not MUTANTS:
@@ -16,6 +17,7 @@ def main() -> int:
         print(f"manual mutant: {f} (skipped — see EVIDENCE note)")
     print(f"manual-mutation fallback: {len(MUTANTS)} mutants reviewed, {failures} survived")
     return failures
+
 
 if __name__ == "__main__":
     sys.exit(main())
