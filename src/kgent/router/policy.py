@@ -361,6 +361,8 @@ def execute_confirmed(
     snapshots: dict[str, dict[str, Any]] = {}
     blocked: list[str] = []
     block_reasons: list[str] = []
+    failed_legs: list[str] = []
+    failed_targets: list[str] = []
     # Approval gate (§3.4): fingerprint the proposal content once so every
     # gated leg is verified against the same binding.
     write_fingerprint = (
@@ -392,12 +394,16 @@ def execute_confirmed(
                 block_reasons.append(str(exc))
                 continue
         if proposal.operation == "create":
-            created_uri = backend.create_document(
-                title=proposal.title or "",
-                content=proposal.content,
-                metadata=_metadata(proposal, backend_name, doc_uri=""),
-            )
-            executed.append(created_uri)
+            try:
+                created_uri = backend.create_document(
+                    title=proposal.title or "",
+                    content=proposal.content,
+                    metadata=_metadata(proposal, backend_name, doc_uri=""),
+                )
+                executed.append(created_uri)
+            except Exception as exc:  # noqa: BLE001 — per-target backend failure
+                failed_targets.append(f"{backend_name}: {exc}")
+                failed_legs.append(backend_name)
         elif proposal.operation == "update" and uri is not None:
             content_before, metadata_before = _capture_before(backend, uri)
             try:
@@ -530,6 +536,42 @@ def execute_confirmed(
             op_id=op_id,
             exit_code=2,
             journal_entry=entry,
+            status="partial",
+            error=reason,
+        )
+    if failed_legs:
+        # Backend failure on one or more legs: journal the partial result so
+        # ``kgent sync --repair`` can target exactly the failed targets.
+        partial_entry = build_entry(
+            op_id=op_id,
+            ts=ts,
+            operation=proposal.operation,
+            targets=executed,
+            idempotency_key=op_id,
+            snapshot=snapshot,
+            proposal_hash=hashlib.sha256(repr(proposal).encode("utf-8")).hexdigest(),
+            confirmation=confirmation,
+            sensitivity=proposal.sensitivity,
+            status="partial",
+            encrypt=getattr(journal, "encrypt", False),
+            failed_targets=failed_targets,
+        )
+        journal.append(partial_entry)
+        _audit_append(
+            audit,
+            op_id=op_id,
+            ts=ts,
+            operation=proposal.operation,
+            targets=executed,
+            confirmation=confirmation,
+            sensitivity=proposal.sensitivity,
+            outcome="partial",
+        )
+        reason = "; ".join(failed_targets)
+        return OpResult(
+            op_id=op_id,
+            exit_code=2,
+            journal_entry=partial_entry,
             status="partial",
             error=reason,
         )

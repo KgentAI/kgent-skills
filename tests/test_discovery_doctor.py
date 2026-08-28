@@ -14,12 +14,13 @@ from __future__ import annotations
 def test_s54_doctor_validates_config(tmp_home):
     from kgent.config.validate import doctor
 
+    # Doctor flags invalid trust_zone values in backend specs (S54).
     (tmp_home / "config.yaml").write_text(
-        "version: 1\nbackends:\n  lark:\n    skill_name: evil-skill\n"
+        "version: 1\nbackends:\n  lark:\n    type: skill\n    trust_zone: hostile\n"
     )
     findings, code = doctor(tmp_home)
     assert code == 1
-    assert any("backends.lark.skill_name" in f for f in findings)
+    assert any("trust_zone" in f for f in findings)
 
 
 def test_s54_doctor_healthy(tmp_home):

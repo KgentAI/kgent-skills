@@ -14,6 +14,7 @@ Fidelity declarations and lossy-conversion warnings (§6.9, S49/N11/P1) live in
 :mod:`~kgent.adapters.fidelity` and are re-exported here for convenience.
 """
 
+from kgent.adapters import registry
 from kgent.adapters.base import Adapter, RetryBudget, escape_query
 from kgent.adapters.cli_adapter import CliCapabilityAdapter, SubprocessResult, run_cli
 from kgent.adapters.dingtalk import DingTalkAdapter
@@ -44,6 +45,7 @@ __all__ = [
     "from_canonical",
     "is_lossy",
     "lossy_warning_snippet",
+    "registry",
     "run_cli",
     "to_canonical",
 ]

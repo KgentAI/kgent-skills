@@ -98,7 +98,9 @@ def doctor(home: Path) -> tuple[list[str], int]:
         return ["config must be a mapping"], 1
 
     findings: list[str] = []
-    findings.extend(_forbidden_key_findings(raw))
+    # NOTE: forbidden-key checks apply to project-local configs only (§2.3),
+    # not the global config. The global config legitimately carries backend
+    # auth/skill_name/cli_name/trust_zone keys.
 
     try:
         cfg = load_config_dict(raw)

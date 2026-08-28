@@ -1,0 +1,265 @@
+"""CLI exit-code and --json tests (§12; Task 8.1).
+
+Each test drives ``kgent.cli.main(argv)`` in-process against fake backends
+registered in the adapter registry, with an isolated ``KGENT_HOME``. The real
+router/policy/journal/audit code paths are exercised — only the platform
+boundary is faked (acceptance §6).
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from kgent.adapters import registry
+from kgent.cli import main
+from kgent.config.trusted import is_trusted
+from tests.fakes.fake_backend import FakeBackend
+
+# ---------------------------------------------------------------------------
+# e2e fixture (shared with later e2e tests — Task 9.4)
+# ---------------------------------------------------------------------------
+
+
+def _full_caps() -> dict:
+    return {
+        "document_storage": {
+            "supported": True,
+            "features": [
+                "create", "read", "update", "delete", "list", "archive", "unarchive",
+            ],
+        },
+        "document_search": {
+            "supported": True,
+            "features": {
+                "search_by_keywords": True,
+                "search_by_semantics": True,
+                "search_hybrid": True,
+            },
+            "limits": {"max_results": 100, "max_content_bytes": 2_000_000},
+        },
+        "approval_flow": {
+            "supported": True,
+            "features": ["request_approval", "check_status", "execute_approved"],
+        },
+    }
+
+
+@pytest.fixture
+def e2e(tmp_home, monkeypatch):
+    """Register fake backends in the adapter registry + write config.yaml.
+
+    Returns the ``test_world`` dict so tests can inspect backend state.
+    """
+    backends = {
+        "lark": FakeBackend("lark", "internal", _full_caps(), owner="alice"),
+        "dingtalk": FakeBackend("dingtalk", "external", _full_caps()),
+        "wecom": FakeBackend("wecom", "external", _full_caps()),
+    }
+    for name, backend in backends.items():
+        registry.register(name, backend)
+
+    config_text = (
+        "version: 1\n"
+        "defaults:\n"
+        "  routing_mode: configured\n"
+        "  default_backends: [lark]\n"
+        "  approval_ttl_hours: 24\n"
+        "  timeouts:\n"
+        "    search_seconds: 10\n"
+        "    write_seconds: 30\n"
+        "  concurrency:\n"
+        "    max_parallel_backends: 4\n"
+        "backends:\n"
+        "  lark:\n"
+        "    enabled: true\n"
+        "    type: skill\n"
+        "    skill_name: lark-doc\n"
+        "    trust_zone: internal\n"
+        "  dingtalk:\n"
+        "    enabled: true\n"
+        "    type: cli\n"
+        "    cli_name: dingtalk-cli\n"
+        "    trust_zone: external\n"
+        "  wecom:\n"
+        "    enabled: true\n"
+        "    type: cli\n"
+        "    cli_name: wecom-cli\n"
+        "    trust_zone: external\n"
+        "content_type_mapping:\n"
+        "  meeting_notes: lark\n"
+        "  team_wiki: lark\n"
+        "  external_docs: dingtalk\n"
+        "  default: lark\n"
+    )
+    (tmp_home / "config.yaml").write_text(config_text, encoding="utf-8")
+    monkeypatch.setenv("KGENT_HOME", str(tmp_home))
+
+    yield {"backends": backends, "home": tmp_home}
+
+    registry.clear()
+
+
+# ---------------------------------------------------------------------------
+# Task 8.1 — CLI exit codes + --json
+# ---------------------------------------------------------------------------
+
+
+def test_cli_create_exit_0(e2e):
+    code = main(["create", "--title", "Onboarding", "--content", "Welcome", "--backends", "lark"])
+    assert code == 0
+    assert e2e["backends"]["lark"].docs
+
+
+def test_cli_search_exit_0(e2e, capsys):
+    main(["create", "--title", "Meeting Notes", "--content", "Q3 plan", "--backends", "lark"])
+    code = main(["search", "--query", "Q3", "--backends", "lark", "--json"])
+    assert code == 0
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert "results" in payload
+    assert payload["results"][0]["doc_uri"].startswith("kgent://lark/")
+
+
+def test_cli_read_exit_0(e2e):
+    main(["create", "--title", "Doc", "--content", "body", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    code = main(["read", uri])
+    assert code == 0
+
+
+def test_cli_update_exit_0(e2e):
+    main(["create", "--title", "Doc", "--content", "old", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    code = main(["update", uri, "--content", "new"])
+    assert code == 0
+    assert e2e["backends"]["lark"].docs[uri].content == "new"
+
+
+def test_cli_delete_exit_0(e2e):
+    main(["create", "--title", "Doc", "--content", "x", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    code = main(["delete", uri])
+    assert code == 0
+
+
+def test_cli_archive_then_unarchive(e2e):
+    main(["create", "--title", "Doc", "--content", "x", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    assert main(["archive", uri]) == 0
+    assert uri in e2e["backends"]["lark"].archived
+    assert main(["unarchive", uri]) == 0
+    assert uri in e2e["backends"]["lark"].docs
+
+
+def test_cli_undo_restores_content(e2e):
+    main(["create", "--title", "Doc", "--content", "before", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    main(["update", uri, "--content", "after"])
+    from kgent.router.journal import Journal
+    journal = Journal(e2e["home"])
+    op_id = next(o["op_id"] for o in journal.list_ops() if o["operation"] == "update")
+    code = main(["undo", op_id])
+    assert code == 0
+    assert e2e["backends"]["lark"].docs[uri].content == "before"
+
+
+def test_cli_audit_writes(e2e):
+    main(["create", "--title", "Doc", "--content", "x", "--backends", "lark"])
+    code = main(["audit", "--op", "write", "--json"])
+    assert code == 0
+    audit_text = (e2e["home"] / "audit.ndjson").read_text(encoding="utf-8").strip()
+    assert audit_text
+
+
+def test_cli_doctor_healthy(e2e):
+    code = main(["doctor"])
+    assert code == 0
+
+
+def test_cli_config_validate(e2e):
+    code = main(["config", "validate"])
+    assert code == 0
+
+
+def test_cli_config_show_effective_json(e2e, capsys):
+    code = main(["config", "show-effective", "--json"])
+    assert code == 0
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert "version" in payload
+
+
+def test_cli_setup_read_only(e2e, monkeypatch):
+    monkeypatch.setenv("PATH", "/nonexistent")
+    code = main(["setup"])
+    assert code == 0
+
+
+def test_cli_auth_status(e2e):
+    code = main(["auth", "status"])
+    assert code == 0
+
+
+def test_cli_trust_then_project_config(e2e, tmp_home, tmp_path):
+    proj = tmp_path / "D"
+    proj.mkdir()
+    (proj / ".kgent-config.yaml").write_text(
+        "version: 1\ncontent_type_mapping:\n  meeting_notes: dingtalk\n",
+        encoding="utf-8",
+    )
+    code = main(["trust", str(proj)])
+    assert code == 0
+    assert is_trusted(proj, tmp_home / "trusted.json")
+
+
+def test_cli_store_exit_0(e2e):
+    code = main(["store", "--title", "Notes", "--content", "hello", "--backends", "lark"])
+    assert code == 0
+
+
+def test_cli_store_update_first(e2e):
+    main(["store", "--title", "API Guidelines", "--content", "v1", "--backends", "lark"])
+    main(["store", "--title", "API Guidelines", "--content", "v2", "--backends", "lark"])
+    lark = e2e["backends"]["lark"]
+    assert lark.write_calls[-1]["method"] == "update_document"
+    assert next(iter(lark.docs.values())).content == "v2"
+
+
+def test_cli_sync_repair_partial_fanout(e2e):
+    e2e["backends"]["wecom"].fault = lambda m, kw: (_ for _ in ()).throw(RuntimeError("boom"))
+    code = main([
+        "store", "--title", "Doc", "--content", "x", "--backends", "lark,wecom",
+    ])
+    assert code == 2  # partial
+    e2e["backends"]["wecom"].fault = None
+    from kgent.router.journal import Journal
+    journal = Journal(e2e["home"])
+    op_id = journal.list_partial()[0]["op_id"]
+    code = main(["sync", "--repair", op_id])
+    assert code == 0
+
+
+def test_cli_version_conflict_exit_4(e2e):
+    """Simulate a version conflict via the concurrency check (S6, exit 4)."""
+    main(["create", "--title", "Doc", "--content", "v1", "--backends", "lark"])
+    uri = next(iter(e2e["backends"]["lark"].docs))
+    # A real update bumps the doc version to v2
+    main(["update", uri, "--content", "v1.5"])
+    # Now an update with a stale expected_version should conflict (exit 4)
+    code = main(["update", uri, "--content", "v2", "--expected-version", "v1"])
+    assert code == 4
+
+
+def test_cli_json_output_schema_versioned(e2e, capsys):
+    main(["create", "--title", "Doc", "--content", "body", "--backends", "lark"])
+    main(["search", "--query", "body", "--backends", "lark", "--json"])
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload.get("schema_version") == 1
+
+
+def test_cli_unknown_command_exit_1(capsys):
+    code = main(["nonexistent-command"])
+    assert code == 1
