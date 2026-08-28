@@ -67,6 +67,15 @@ def test_s3_yes_without_backends_does_not_bypass():
     assert any("--yes requires explicit --backends" in w for w in prop.warnings)
 
 
+def test_s4_yes_with_explicit_backends_but_empty_content_rejects():
+    prop = _prop(content="")
+    conf = confirm(prop, "--yes", explicit_backends=True)
+    assert conf == "rejected"
+    # the content-empty guard is a separate rejection reason but must still
+    # surface the required warning substring
+    assert any("--yes requires explicit --backends" in w for w in prop.warnings)
+
+
 def test_s4_yes_with_explicit_backends_and_content(test_world):
     backend: FakeBackend = test_world["backends"]["lark"]
     journal = InMemoryJournal()

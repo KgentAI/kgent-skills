@@ -25,6 +25,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from itertools import count as _count
 from typing import Any, Protocol, cast
 
 from kgent.errors import PolicyError
@@ -32,6 +33,15 @@ from kgent.router.sensitivity import enforce_zone
 from kgent.types import DocumentMetadata, WriteProposal
 
 __all__ = ["OpResult", "confirm", "execute_confirmed"]
+
+#: Monotonic per-process op counter: op ids double as idempotency keys, so
+#: they must never be reused within a process (F1 review finding).
+_OP_SEQ = _count(1)
+
+
+def _next_op_id() -> str:
+    """Unique ``op-<yyyymmdd>-<seq>`` id (plan format "op-20260826-01")."""
+    return f"op-{datetime.now(UTC).strftime('%Y%m%d')}-{next(_OP_SEQ):02d}"
 
 
 class WriteTarget(Protocol):
@@ -137,11 +147,9 @@ def execute_confirmed(
             )
 
     ts = datetime.now(UTC).isoformat()
-    base_id = f"op-{ts}"
-    op_id = base_id
+    op_id = _next_op_id()
     executed: list[str] = []
-    for n, (backend_name, uri) in enumerate(proposal.targets):
-        op_id = f"{base_id}-{n}"
+    for backend_name, uri in proposal.targets:
         backend = backends[backend_name]
         if proposal.operation == "create":
             created_uri = backend.create_document(
