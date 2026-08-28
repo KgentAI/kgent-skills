@@ -35,7 +35,9 @@ from datetime import UTC, datetime
 from itertools import count as _count
 from typing import Any, Protocol, cast
 
-from kgent.errors import PolicyError, VersionConflict
+from kgent.errors import ApprovalBindingMismatch, ApprovalRequired, PolicyError, VersionConflict
+from kgent.fingerprint import content_fingerprint
+from kgent.router.approval import execute_approved
 from kgent.router.concurrency import check_version
 from kgent.router.journal import Journal, build_entry
 from kgent.router.sensitivity import enforce_zone
@@ -83,6 +85,12 @@ class JournalAppender(Protocol):
 class OpResult:
     """Outcome of an executed write (§5.6).
 
+    ``status``: ``"ok"`` | ``"partial"`` | ``"blocked"`` | ``"conflict"``.
+    Approval-blocked legs (§3.4, S22–S28) never write: all-legs-blocked
+    journals a ``"blocked"`` entry at exit 3 (policy-rejected); a mix of
+    blocked and executed legs is ``"partial"`` at exit 2 with one journal
+    entry per leg.
+
     On a :class:`VersionConflict` the result carries ``exit_code=4``, a
     journal entry with ``status == "conflict"``, the conflict message in
     ``error``, and — best-effort — a ``fresh_proposal`` re-pinned to the
@@ -92,6 +100,7 @@ class OpResult:
     op_id: str
     exit_code: int
     journal_entry: dict[str, object]
+    status: str = "ok"
     fresh_proposal: WriteProposal | None = None
     error: str | None = None
 
@@ -200,6 +209,76 @@ def _conflict_entry(
     }
 
 
+def _token_for(
+    approval_tokens: dict[str, str] | None, backend_name: str, uri: str | None
+) -> str | None:
+    """Look up a per-target approval token: by concrete doc_uri, else backend.
+
+    Gated writes bind approvals to a document (§3.4), so the uri is the
+    primary key; the backend name is a fallback for create-style targets.
+    """
+    if not approval_tokens:
+        return None
+    if uri is not None and uri in approval_tokens:
+        return approval_tokens[uri]
+    return approval_tokens.get(backend_name)
+
+
+def _blocked_entry(
+    *,
+    op_id: str,
+    ts: str,
+    proposal: WriteProposal,
+    confirmation: str,
+    blocked_uris: list[str],
+) -> dict[str, object]:
+    """Journal entry for a leg blocked by the approval gate (§3.4, S22–S28).
+
+    Same fixed schema as the ok-path entry with ``status == "blocked"``;
+    ``targets`` names the blocked uris (nothing was written — or, in a
+    partial op, these uris specifically were refused).
+    """
+    return {
+        "schema_version": 1,
+        "op_id": op_id,
+        "ts": ts,
+        "operation": proposal.operation,
+        "targets": blocked_uris,
+        "idempotency_key": op_id,
+        "snapshot": {},
+        "proposal_hash": hashlib.sha256(repr(proposal).encode("utf-8")).hexdigest(),
+        "confirmation": confirmation,
+        "sensitivity": proposal.sensitivity,
+        "status": "blocked",
+    }
+
+
+def _audit_append(
+    audit: object | None,
+    *,
+    op_id: str,
+    ts: str,
+    operation: str,
+    targets: list[str],
+    confirmation: str,
+    sensitivity: str,
+    outcome: str,
+) -> None:
+    """Duck-typed §8.4 audit append; skipped when ``audit`` has no append."""
+    if audit is not None and hasattr(audit, "append"):
+        cast(Any, audit).append(
+            {
+                "op_id": op_id,
+                "ts": ts,
+                "operation": operation,
+                "targets": targets,
+                "confirmation": confirmation,
+                "sensitivity": sensitivity,
+                "outcome": outcome,
+            }
+        )
+
+
 def confirm(
     proposal: WriteProposal,
     mode: str,
@@ -235,20 +314,31 @@ def execute_confirmed(
     backends: dict[str, WriteTarget],
     journal: JournalAppender | None = None,
     audit: object | None = None,
+    approval_tokens: dict[str, str] | None = None,
 ) -> OpResult:
-    """Execute the confirmed write and journal one entry (S1–S4, N1).
+    """Execute the confirmed write and journal one entry per leg (S1–S4, N1).
 
     A ``"rejected"`` confirmation is refused outright (zero writes, zero
     journal entries) — this is the last line of defense for N1. Otherwise all
     zone checks run before the first write (N4), then only the confirmed
     targets execute, and the journal records exactly the executed uris (N1).
+
+    **Approval gate (§3.4, S22–S28).** When ``proposal.approval_required`` is
+    set, each target's leg is verified via :func:`execute_approved` against
+    ``approval_tokens`` (keyed by doc_uri, else backend name) *before* the
+    adapter call — a missing/expired/rejected (or incorrectly bound) token
+    blocks that leg with zero writes. All legs blocked → one ``"blocked"``
+    journal entry, exit 3, ``status="blocked"``; some legs blocked → the ok
+    legs write, one ``"ok"`` entry and one ``"blocked"`` entry are journaled
+    (per leg), exit 2, ``status="partial"``. A verified token is passed to
+    the adapter as ``approval_token``; un-gated writes pass ``None``.
+
     ``journal`` defaults to the real :class:`~kgent.router.journal.Journal`
     (home from ``KGENT_HOME``/``~/.kgent``); update legs capture the pre-write
     ``content_before`` snapshot before the write (S44). If ``audit`` exposes
     an ``append`` method it is called with a full §8.4 entry (op_id,
     operation, targets, confirmation, sensitivity, outcome); otherwise audit
-    is skipped, duck-typed. Write ops carry no query, so no
-    ``redacted_query`` marker is invented.
+    is skipped, duck-typed.
     """
     if journal is None:
         journal = Journal()
@@ -269,8 +359,38 @@ def execute_confirmed(
     op_id = _next_op_id()
     executed: list[str] = []
     snapshots: dict[str, dict[str, Any]] = {}
+    blocked: list[str] = []
+    block_reasons: list[str] = []
+    # Approval gate (§3.4): fingerprint the proposal content once so every
+    # gated leg is verified against the same binding.
+    write_fingerprint = (
+        content_fingerprint(proposal.title or "", proposal.content)
+        if proposal.approval_required
+        else None
+    )
     for backend_name, uri in proposal.targets:
         backend = backends[backend_name]
+        token = _token_for(approval_tokens, backend_name, uri)
+        if proposal.approval_required:
+            # Phase 2a — approval gate per target (§3.4, S22–S28): the leg is
+            # verified BEFORE any adapter call; a missing/expired/rejected or
+            # incorrectly-bound token blocks the leg with zero writes.
+            if uri is None:
+                # A gated write must bind to a concrete document; a create
+                # target without a doc_uri fails closed (safe).
+                blocked.append(backend_name)
+                block_reasons.append(
+                    "ApprovalRequired: gated target has no concrete doc_uri to bind an approval to"
+                )
+                continue
+            try:
+                execute_approved(
+                    uri, token or "", proposal.content, valid_fingerprint=write_fingerprint
+                )
+            except (ApprovalRequired, ApprovalBindingMismatch) as exc:
+                blocked.append(uri)
+                block_reasons.append(str(exc))
+                continue
         if proposal.operation == "create":
             created_uri = backend.create_document(
                 title=proposal.title or "",
@@ -290,7 +410,7 @@ def execute_confirmed(
                     doc_uri=uri,
                     content=proposal.content,
                     metadata=_metadata(proposal, backend_name, doc_uri=uri),
-                    approval_token=None,
+                    approval_token=(token if proposal.approval_required else None),
                     idempotency_key=op_id,
                     expected_version=proposal.expected_version,
                 )
@@ -313,22 +433,21 @@ def execute_confirmed(
                     executed=executed,
                 )
                 journal.append(conflict_entry)
-                if audit is not None and hasattr(audit, "append"):
-                    cast(Any, audit).append(
-                        {
-                            "ts": ts,
-                            "op_id": op_id,
-                            "operation": proposal.operation,
-                            "targets": executed,
-                            "confirmation": confirmation,
-                            "sensitivity": proposal.sensitivity,
-                            "outcome": "conflict",
-                        }
-                    )
+                _audit_append(
+                    audit,
+                    op_id=op_id,
+                    ts=ts,
+                    operation=proposal.operation,
+                    targets=executed,
+                    confirmation=confirmation,
+                    sensitivity=proposal.sensitivity,
+                    outcome="conflict",
+                )
                 return OpResult(
                     op_id=op_id,
                     exit_code=4,
                     journal_entry=conflict_entry,
+                    status="conflict",
                     fresh_proposal=_fresh_proposal(proposal, backend, uri),
                     error=str(exc),
                 )
@@ -360,17 +479,69 @@ def execute_confirmed(
         status="ok",
         encrypt=getattr(journal, "encrypt", False),
     )
-    journal.append(entry)
-    if audit is not None and hasattr(audit, "append"):
-        cast(Any, audit).append(
-            {
-                "ts": ts,
-                "op_id": op_id,
-                "operation": proposal.operation,
-                "targets": executed,
-                "confirmation": confirmation,
-                "sensitivity": proposal.sensitivity,
-                "outcome": "ok",
-            }
+    if blocked:
+        # Approval gate (§3.4, S22–S28): blocked legs never wrote. All legs
+        # blocked → one "blocked" entry, exit 3 (policy-rejected); a mix of
+        # blocked and executed legs → keep one journal entry per leg (ok +
+        # blocked), exit 2, status "partial" — each leg is individually
+        # reported so sync/repair can target exactly the blocked ones.
+        blocked_entry = _blocked_entry(
+            op_id=op_id,
+            ts=ts,
+            proposal=proposal,
+            confirmation=confirmation,
+            blocked_uris=blocked,
         )
-    return OpResult(op_id=op_id, exit_code=0, journal_entry=entry)
+        reason = "; ".join(block_reasons)
+        if not executed:
+            # All legs blocked: zero writes, but the refusal is journaled
+            # (S22 — journal status "blocked", exit 3, policy-rejected).
+            journal.append(blocked_entry)
+            _audit_append(
+                audit,
+                op_id=op_id,
+                ts=ts,
+                operation=proposal.operation,
+                targets=executed,
+                confirmation=confirmation,
+                sensitivity=proposal.sensitivity,
+                outcome="blocked",
+            )
+            return OpResult(
+                op_id=op_id,
+                exit_code=3,
+                journal_entry=blocked_entry,
+                status="blocked",
+                error=reason,
+            )
+        journal.append(entry)
+        journal.append(blocked_entry)
+        _audit_append(
+            audit,
+            op_id=op_id,
+            ts=ts,
+            operation=proposal.operation,
+            targets=executed,
+            confirmation=confirmation,
+            sensitivity=proposal.sensitivity,
+            outcome="partial",
+        )
+        return OpResult(
+            op_id=op_id,
+            exit_code=2,
+            journal_entry=entry,
+            status="partial",
+            error=reason,
+        )
+    journal.append(entry)
+    _audit_append(
+        audit,
+        op_id=op_id,
+        ts=ts,
+        operation=proposal.operation,
+        targets=executed,
+        confirmation=confirmation,
+        sensitivity=proposal.sensitivity,
+        outcome="ok",
+    )
+    return OpResult(op_id=op_id, exit_code=0, journal_entry=entry, status="ok")
