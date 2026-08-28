@@ -13,13 +13,13 @@ know: what exists, decisions already made, rulings, and deferred items.
 
 ## Status
 
-**17 / 34 tasks complete, review-clean.** Phases 0–4 (scaffold, foundations,
-config, capabilities, routing) + Task 5.1 (sensitivity) are DONE and committed
-on branch `impl/kgent-packaging`.
+**22 / 34 tasks complete, review-clean.** Phases 0–4 (scaffold, foundations,
+config, capabilities, routing) and **Phase 5 (policy enforcement — the
+FM1–FM12 enforcement core) are DONE** and committed on branch
+`impl/kgent-packaging`.
 
 Remaining:
 
-- **Phase 5** (policy core): 5.2 write proposal+confirmation (S1–S4), 5.3 concurrency (S5–S7), 5.4 journal/undo (S43/S44/S51/S52), 5.5 audit (S45), 5.6 approval gates (S22–S28)
 - **Phase 6** (search): 6.1 fanout/timeouts (S33), 6.2 clamp+preflight (S31/S32/S48), 6.3 RRF (S34), 6.4 dedupe/staleness (S35–S38/S55/S56), 6.5 decompose (S57)
 - **Phase 7** (adapters): 7.1 argv-safety+rate budget (S40/S41/S47/N13), 7.2 lark/dingtalk/wecom, 7.3 fidelity (S49)
 - **Phase 8** (CLI): 8.1 CLI+exit codes, 8.2 store workflow, 8.3 delete/archive/undo/sync (S8–S12/S29/S30/S50), 8.4 auth+secrets (S46)
@@ -47,13 +47,17 @@ Remaining:
 - `src/kgent/fingerprint.py` — `normalize` (per-field whitespace collapse to avoid \x1f boundary collision), `content_fingerprint` (sha256 hex), `fingerprints_equal`.
 - `src/kgent/config/` — `schema.py` (`Config` dataclass + `load_config_dict`, `dict[str, object]` defaults; exact-key ConfigErrors), `loader.py` (`load_effective_config(global_path, project_dir, cli_overrides)->(Config, warnings)`; precedence CLI>trusted project>global; `FORBIDDEN_PROJECT_KEYS`), `trusted.py` (`trust_directory`/`is_trusted`, dir-hash→trusted.json), `validate.py` (`validate_config`, `doctor(home)->(findings, exit_code)` — **flags forbidden patterns in GLOBAL config, ruling below**), `migrate.py`, `_yaml.py` (restricted YAML-subset parser; anchors/tags → ConfigError; empty flow `{}` OK).
 - `src/kgent/capabilities/` — `interface.py` (Protocols `DocumentStorage`/`DocumentSearch`/`ApprovalFlow`, `BUILTIN_FALLBACK`, `resolve_mode`), `declaration.py` (`CapabilityDeclaration.supports`), `cache.py` (`effective_capabilities` intersection — config only narrows; `read_cache`/`write_cache` on `~/.kgent/capabilities.cache.yaml` 0600/0700), `detect.py` (`discover(home, env)->DiscoveryReport{backends: dict[str,dict] keys: auth/capabilities/found_via/adapter_name}`, `setup(home)->(report, int)`, structured-manifests-only = N12).
-- `src/kgent/router/` — `resolve.py` (`resolve_backends` precedence chain + grammar, shared `capabilities_needed(operation)`, `resolve_intent(...)->RoutingIntent` w/ adapter preference skill→cli→mcp, policy_gates descriptors, provenance; N17 guard raises ConfigError for unknown/disabled backends), `sensitivity.py` (`TIER_ORDER`, `analyze_sensitivity`, `enforce_floor`, `enforce_zone(tier, zone, name, fallback_chain=False)` — exact S13 message; `warn_query_leakage(targets, session)` once-per-session).
+- `src/kgent/router/` — `resolve.py` (`resolve_backends` + `resolve_intent` + shared `capabilities_needed`; N17 guard), `sensitivity.py` (`TIER_ORDER`, `analyze_sensitivity`, `enforce_floor`, `enforce_zone(..., fallback_chain=False)`, `warn_query_leakage` once-per-session), **`policy.py`** (`confirm(proposal, mode, *, answer, explicit_backends) → "interactive-yes"|"--yes"|"rejected"`; `execute_confirmed(prop, confirmation, *, backends, journal, audit) -> OpResult(op_id, exit_code=0/2/3/4, journal_entry, status="ok"|"partial"|"blocked"|"conflict", error)` — zone preflight before ANY write, N1 executed==journaled targets, op_id=`op-<yyyymmdd>-<seq>` module counter, approval gate, snapshot capture, audit writes), **`concurrency.py`** (`check_version` token/updated_at paths, `no_token_warning`), **`journal.py`** (`Journal.append/.get/.list_failed/.list_partial`, `build_entry` schema-allowlist + S51 nested-snapshot confidentiality guard, `undo(op_id)`, `prune_older_than`; NDJSON `~/.kgent/journal/journal.ndjson` 0700/0600), **`audit.py`** (`AuditLog.append` allowlist + S45 query redaction, `redact_query`, `AUDIT_REDACT_QUERY_WARNING`), **`approval.py`** (`bind_approval` HMAC, `request_approval`/`check_approval`/`decide`/`execute_approved` with TTL + binding mismatch, `self_approval_allowed(owner, requester, policy)`, `fanout_approvals`; `SECRET_KEY`/`DEFAULT_TTL_HOURS` placeholders → Task 8.4).
 - `tests/` — `conftest.py` (`tmp_home` via KGENT_HOME, `test_world` = lark internal+full via **FakeBackend** with `write_calls`+`fault()` hook, dingtalk/wecom external keyword-only; config dicts), `tests/fakes/fake_backend.py` (`FakeBackend` implements capability interface; uses `dataclasses.replace` on metadata for version bumps).
 - **Router facade** `src/kgent/router/core.py` with `Router(config, backends, journal, audit, session)` is authored in plan Task 9.4 — NOT yet created; Tasks 5.2–5.6 currently stand alone until then.
 
 ---
 
 ## Decisions & rulings (binding for later tasks)
+
+8. **Approval gate is router-enforced:** `execute_confirmed` verifies each gated target's token via `execute_approved` before any adapter call; blocked legs journal `status "blocked"` (exit 3), mixed success `"partial"` (exit 2). `OpResult.status` ∈ {ok, partial, blocked, conflict}. Partial ops journal two entries under one op_id — `journal.get` returns the blocked one; Task 8.3 (sync/undo) must handle this (empty-snapshot risk).
+9. **Write proposal lives in types.py** (frozen) with `content`, `expected_version`, `expected_updated_at` fields; `execute_confirmed` currently wires create+update (delete/archive/unarchive = warned no-ops until Task 8.3).
+10. **S52 guarantee implemented as schema-allowlist** in journal/audit `build_entry` (unknown kwargs silently dropped) — do NOT add free-form pass-through fields later.
 
 1. **Doctor global-vs-project forbidden keys (Task 9.4 + final review):** `doctor(home)` applies `FORBIDDEN_PROJECT_KEYS` patterns to whatever config it reads — forced by the committed S54 test (writes the forbidden key INTO global config.yaml and expects a finding). Consequence: a REAL global config with `backends.<name>.type/skill_name/trust_zone` is flagged unhealthy. **Ruling:** Task 9.4's e2e doctor test asserts `main(["doctor"]) == 0` against a MINIMAL clean config (`version: 1\nbackends: {}`), and asserts exit 1 + `backends.lark.skill_name` finding against a config WITH the pattern. Never assert doctor==0 on the standard-world config (it contains skill_name/trust_zone). A future refinement may add project_dir context, but the committed S54 test semantics must be preserved.
 2. **Capability checks use declared caps only** (runtime-detected intersection is the owner of live wiring in 7.x). All `resolve_*` logic is deterministic, no LLM.
