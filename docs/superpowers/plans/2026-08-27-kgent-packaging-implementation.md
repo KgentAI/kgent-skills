@@ -1343,11 +1343,11 @@ def test_s47_retry_after_queued_not_retried():
 **Interfaces:**
 - Produces: `LarkAdapter` (skill `lark-doc` primary, `lark-cli` fallback when skill lacks capability), `DingTalkAdapter`, `WeComAdapter` — all implementing the capability interface by delegating to their fake/test CLI; URI ↔ native-id translation at the boundary.
 
-- [ ] **Step 1: Write the adapter conformance test (shared across backends)** — run create/read/update/delete/archive/unarchive/search through each adapter against a fake CLI and assert canonical URIs in/out.
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** each adapter as a thin mapping onto `run_cli`; Lark resolves skill-vs-CLI per §1.5.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: lark/dingtalk/wecom adapters + conformance suite`
+- [x] **Step 1: Write the adapter conformance test (shared across backends)** — run create/read/update/delete/archive/unarchive/search through each adapter against a fake CLI and assert canonical URIs in/out.
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** each adapter as a thin mapping onto `run_cli`; Lark resolves skill-vs-CLI per §1.5.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: lark/dingtalk/wecom adapters + conformance suite`
 
 ### Task 7.3: Fidelity classes + lossy conversion warnings (§6.9, S49, S50)
 
