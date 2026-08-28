@@ -736,7 +736,7 @@ def test_defaults_applied():
   - `trust_directory(path, trusted_path) -> None` / `is_trusted(path, trusted_path) -> bool` (directory-hash records in `trusted.json`).
   - `load_effective_config(global_path, project_dir, cli_overrides) -> tuple[Config, list[str]]` returning config + warnings, applying precedence (CLI flags > trusted project-local > global), ignoring untrusted project config with warning (S17), rejecting forbidden keys by name (S18).
 
-- [ ] **Step 1: Write failing tests for S17, S18, S19**
+- [x] **Step 1: Write failing tests for S17, S18, S19**
 
 ```python
 import pytest
@@ -781,10 +781,10 @@ def test_s19_trusted_routing_overrides_work(tmp_home, tmp_path):
     assert cfg.content_type_mapping["meeting_notes"] == "dingtalk"
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `trusted.py`** (hash the resolved dir path via sha256 → `trusted.json` map `{hash: path}`) then `loader.py` (yaml-safe load with `yaml.safe_load` if available else a minimal embedded parser is NOT allowed — use `yaml` from PyYAML? No: runtime deps are stdlib-only. **Use a JSON-compatible subset + accept YAML via `yaml` only if vendored is disallowed — therefore: config files are parsed with `yaml` is NOT stdlib.** Resolution: support `.kgent-config.yaml` and `config.yaml` as YAML by implementing a small restricted YAML subset parser is overkill. Per spec §2.1 config is YAML. Since runtime deps are stdlib-only, add `PyYAML` as a **runtime** dep would violate §6. **Decision recorded in EVIDENCE:** the plan ships a tiny YAML-subset loader for the config schema (mappings/lists/scalars/comments) in `config/_yaml.py` (~120 lines), sufficient for Appendix C; full YAML (anchors, tags) rejected with ConfigError. This is a spec-noted limitation.)
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: config precedence + trust model (S17/S18/S19)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `trusted.py`** (hash the resolved dir path via sha256 → `trusted.json` map `{hash: path}`) then `loader.py` (yaml-safe load with `yaml.safe_load` if available else a minimal embedded parser is NOT allowed — use `yaml` from PyYAML? No: runtime deps are stdlib-only. **Use a JSON-compatible subset + accept YAML via `yaml` only if vendored is disallowed — therefore: config files are parsed with `yaml` is NOT stdlib.** Resolution: support `.kgent-config.yaml` and `config.yaml` as YAML by implementing a small restricted YAML subset parser is overkill. Per spec §2.1 config is YAML. Since runtime deps are stdlib-only, add `PyYAML` as a **runtime** dep would violate §6. **Decision recorded in EVIDENCE:** the plan ships a tiny YAML-subset loader for the config schema (mappings/lists/scalars/comments) in `config/_yaml.py` (~120 lines), sufficient for Appendix C; full YAML (anchors, tags) rejected with ConfigError. This is a spec-noted limitation.)
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: config precedence + trust model (S17/S18/S19)`
 
 ### Task 2.3: `kgent config validate | migrate` + `kgent doctor` (§2.6, S54)
 
