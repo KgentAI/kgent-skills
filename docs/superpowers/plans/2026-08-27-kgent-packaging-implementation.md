@@ -572,7 +572,7 @@ class PartialFailure(KgentError):
 **Interfaces:**
 - Produces: frozen dataclasses `DocumentMetadata`, `Document`, `SearchResult`, `ApproverDecision`, `ApprovalStatus`, `FilterSpec`, `BackendResolution`, `PolicyGate`, `WriteProposal`, `RoutingIntent` exactly matching spec §3.8 and §1.5 field names/types.
 
-- [ ] **Step 1: Write the failing tests** (assert field names + types via `dataclasses.fields`)
+- [x] **Step 1: Write the failing tests** (assert field names + types via `dataclasses.fields`)
 
 ```python
 import dataclasses
@@ -603,11 +603,11 @@ def test_routing_intent_shape():
     assert ri.targets[0].adapter_name == "lark-doc"
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `types.py`** — transcribe §3.8 + §1.5 verbatim as `@dataclass(frozen=True)` (with `slots=True`), using `datetime | None`, `str | None`, `list[str]` types; give every field with a default a default, required fields before defaults.
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `types.py`** — transcribe §3.8 + §1.5 verbatim as `@dataclass(frozen=True)` (with `slots=True`), using `datetime | None`, `str | None`, `list[str]` types; give every field with a default a default, required fields before defaults.
 
-- [ ] **Step 4: Run → PASS**; then `mypy src` clean.
-- [ ] **Step 5: Commit** `feat: core data schemas (types.py) per §3.8/§1.5`
+- [x] **Step 4: Run → PASS**; then `mypy src` clean.
+- [x] **Step 5: Commit** `feat: core data schemas (types.py) per §3.8/§1.5`
 
 ### Task 1.3: Canonical URIs (`uri.py`) — §3.6
 
