@@ -7,13 +7,16 @@ stdlib ``asyncio.run``.
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
+from kgent.search.aggregate import assess_staleness, classify_read_failure, verify_results
 from kgent.search.fanout import build_footer, exit_code_for_failures, fanout, truncate
 from kgent.search.rank import rank_and_truncate, rrf
 from kgent.types import Document, DocumentMetadata, SearchResult
@@ -326,3 +329,183 @@ def test_s32_per_backend_clamp_with_limits():
     # coverage fidelity: dingtalk contributes at most its clamped fetch
     assert sum(1 for r in successes if r.metadata.backend == "dingtalk") == 50
     assert sum(1 for r in successes if r.metadata.backend == "lark") == 100
+
+
+# -- Staleness + verification (§8.6; S35, S36) ---------------------------------
+
+
+def _hit_result(uri: str, backend: str, *, snippet: str | None = None) -> SearchResult:
+    """Minimal SearchResult for staleness verification tests."""
+    meta = DocumentMetadata(doc_uri=uri, title=f"{backend} {uri}", backend=backend)
+    return SearchResult(doc_uri=uri, metadata=meta, rank=1, snippet=snippet, access="ok")
+
+
+def _read_idmap(tmp_home) -> dict:
+    idmap_file = Path(tmp_home) / "idmap.json"
+    assert idmap_file.exists(), "idmap.json should have been written"
+    return json.loads(idmap_file.read_text(encoding="utf-8"))
+
+
+def test_s35_deleted_uri_flagged_stale_still_present_idmap(tmp_home):
+    """S35: a result whose URI was deleted externally → access == "stale"
+    (visibly flagged, demoted), still present in the verified list (never
+    dropped), and the URI is marked stale in idmap.json."""
+    backend = FakeBackend("lark", "internal", {})
+    gone = _hit_result("kgent://lark/docGone", "lark", snippet="was here")
+
+    verified, failures = verify_results([gone], {"lark": backend})
+
+    assert len(verified) == 1  # never dropped
+    assert verified[0].access == "stale"
+    assert len(failures) == 1
+    assert failures[0]["kind"] == "not_found"
+    assert failures[0]["uri"] == gone.doc_uri
+
+    idmap = _read_idmap(tmp_home)
+    assert idmap[gone.doc_uri]["stale"] is True
+    # fingerprint slot exists and is None (nothing recorded for an unknown doc)
+    assert idmap[gone.doc_uri]["fingerprint"] is None
+
+
+def test_s35_ok_result_untouched_no_idmap(tmp_home):
+    """A live result keeps access == "ok", records no failure, and writes no
+    idmap (no staleness to record)."""
+    backend = FakeBackend("lark", "internal", {})
+    uri = "kgent://lark/docLive"
+    backend.docs[uri] = Document(
+        doc_uri=uri,
+        title="Live",
+        content="body",
+        metadata=DocumentMetadata(doc_uri=uri, title="Live", backend="lark"),
+    )
+    live = _hit_result(uri, "lark", snippet="body")
+
+    verified, failures = verify_results([live], {"lark": backend})
+
+    assert [r.access for r in verified] == ["ok"]
+    assert failures == []
+    assert not (Path(tmp_home) / "idmap.json").exists()
+
+
+def test_verify_permission_denied_demoted_not_stale(tmp_home):
+    """permission_denied → access == "denied", failure carries the actionable
+    message, and the URI is NOT marked stale in idmap."""
+
+    def deny(method, kwargs):
+        if method == "read_document":
+            raise PermissionError("no read access")
+
+    backend = FakeBackend("dingtalk", "external", {}, fault=deny)
+    denied = _hit_result("kgent://dingtalk/doc1", "dingtalk", snippet="s")
+
+    verified, failures = verify_results([denied], {"dingtalk": backend})
+
+    assert [r.access for r in verified] == ["denied"]
+    assert len(failures) == 1
+    assert failures[0]["kind"] == "permission_denied"
+    assert "request access on the platform" in failures[0]["error"]
+    assert not (Path(tmp_home) / "idmap.json").exists()  # never marked stale
+
+
+def test_classify_read_failure_contract(tmp_home):
+    """§8.6 classification: not_found → stale (idmap written); permission_denied
+    → actionable message (no idmap write); other kinds → unknown-failure."""
+    vanished = "kgent://lark/gone"
+    assert classify_read_failure("not_found", vanished) == "stale"
+    assert _read_idmap(tmp_home)[vanished]["stale"] is True
+
+    secret = "kgent://wecom/token-doc"
+    message = classify_read_failure("permission_denied", secret)
+    assert message == f"permission denied on {secret} — request access on the platform"
+    idmap = _read_idmap(tmp_home)
+    assert secret not in idmap  # permission failures never mark stale
+
+    assert classify_read_failure("timeout", "kgent://lark/x") == "unknown-failure"
+
+
+def test_verify_backend_mapping_or_sequence(tmp_home):
+    """verify_results accepts a name→backend mapping or an iterable of backends
+    exposing .name."""
+    backend = FakeBackend("lark", "internal", {})
+    gone = _hit_result("kgent://lark/docGone", "lark")
+
+    verified, _ = verify_results([gone], [backend])
+    assert verified[0].access == "stale"
+
+
+def test_s36_bulk_staleness_invalidates_backend(tmp_home):
+    """S36: >20% of one backend's results fail verification → that backend is in
+    the invalidate set and a warning names it (computed here; the capability
+    cache owner invalidates)."""
+    lark = FakeBackend("lark", "internal", {})
+    dingtalk = FakeBackend("dingtalk", "external", {})
+    # lark: all 3 docs live; dingtalk: 3 results but only doc1 still exists
+    # → doc2/doc3 fail verification (2/3 ≈ 67% > 20%)
+    lark_results = []
+    for i in range(1, 4):
+        uri = f"kgent://lark/doc{i}"
+        lark.docs[uri] = Document(
+            doc_uri=uri,
+            title=f"lark {i}",
+            content="body",
+            metadata=DocumentMetadata(doc_uri=uri, title=f"lark {i}", backend="lark"),
+        )
+        lark_results.append(_hit_result(uri, "lark"))
+    dingtalk.docs["kgent://dingtalk/doc1"] = Document(
+        doc_uri="kgent://dingtalk/doc1",
+        title="dingtalk 1",
+        content="body",
+        metadata=DocumentMetadata(
+            doc_uri="kgent://dingtalk/doc1", title="dingtalk 1", backend="dingtalk"
+        ),
+    )
+    ding_results = [
+        _hit_result("kgent://dingtalk/doc1", "dingtalk"),
+        _hit_result("kgent://dingtalk/doc2", "dingtalk"),  # deleted externally
+        _hit_result("kgent://dingtalk/doc3", "dingtalk"),  # deleted externally
+    ]
+
+    verified, failures = verify_results(
+        lark_results + ding_results, {"lark": lark, "dingtalk": dingtalk}
+    )
+
+    assert sum(1 for r in verified if r.access == "stale") == 2
+    invalidate, warnings = assess_staleness(failures)
+
+    assert invalidate == {"dingtalk"}  # 2/3 ≈ 67% > 20%
+    assert any("dingtalk" in w for w in warnings)
+
+
+def test_assess_staleness_threshold_strictly_above():
+    """The rule is STRICTLY > warning_threshold: exactly 20% (1 of 5) does NOT
+    invalidate; 2 of 5 (40%) does."""
+    one_of_five = [
+        {"uri": f"kgent://lark/{i}", "backend": "lark", "kind": "not_found", "total": 5}
+        for i in range(1, 2)
+    ]
+
+    invalidate, warnings = assess_staleness(one_of_five, warning_threshold=0.2)
+    assert invalidate == set()
+    assert warnings == []
+
+    two_of_five = one_of_five + [
+        {"uri": "kgent://lark/6", "backend": "lark", "kind": "not_found", "total": 5}
+    ]
+    invalidate, warnings = assess_staleness(two_of_five, warning_threshold=0.2)
+    assert invalidate == {"lark"}
+    assert any("lark" in w for w in warnings)
+
+
+def test_assess_staleness_mapping_shape_and_missing_total():
+    """failures_per_backend may be a per-backend mapping; when a record carries
+    no "total" the backend conservatively counts all its results as failed."""
+    failures_per_backend = {
+        "wecom": [{"uri": "kgent://wecom/a", "kind": "not_found"}],
+        "lark": [{"uri": "kgent://lark/a", "kind": "not_found", "total": 10}],
+    }
+
+    invalidate, warnings = assess_staleness(failures_per_backend)
+
+    assert invalidate == {"wecom"}  # conservative: 1/1
+    assert "lark" not in invalidate  # 1/10 = 10% ≤ 20%
+    assert any("wecom" in w for w in warnings)
