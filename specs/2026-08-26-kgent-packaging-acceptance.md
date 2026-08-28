@@ -1,7 +1,7 @@
 # kgent Packaging — Executable Acceptance Specification
 
 **Date**: 2026-08-26
-**Version**: 1.2
+**Version**: 1.3
 **Status**: Pending approval (implementation is forbidden until §9 records approval)
 **Companion to**: [2026-08-26-kgent-packaging-design.md](2026-08-26-kgent-packaging-design.md) (v1.6)
 **Methodology**: old-coder (spec-first; trust from constraints, not inspection)
@@ -546,6 +546,97 @@ Scenario: S59-platform-skill-preferred-over-cli
   And   lark-cli is chosen only when lark-doc lacks the required capability
 ```
 
+### F16 — Knowledge-storage skill (FM2, FM4)
+
+```gherkin
+Feature: Store workflow is skill-orchestrated: provenance, update-first, confirmed
+
+Scenario: S60-context-gathering-records-provenance
+  Given a conversation just discussed "API design guidelines v2"
+  And   an existing doc kgent://lark/docxAAA "API Design Guidelines v1" matches
+  When  the knowledge-storage skill handles "save this"
+  Then  it builds a proposal (not an execution) whose provenance records:
+        intent=update ← "conversation + existing doc", target=lark ← "preferences"
+  And   the proposal displays each inferred field's source
+  And   zero writes occur until confirmation
+
+Scenario: S61-update-first-proposes-update-not-create
+  Given an existing doc kgent://lark/docxAAA matching the content title
+  When  the knowledge-storage skill stores new content
+  Then  it proposes UPDATE of kgent://lark/docxAAA
+  And   it never proposes CREATE while a match exists
+  And   the proposal cites the existing URI
+
+Scenario: S62-multiple-matches-offer-per-copy-options
+  Given two near-duplicate matches (kgent://lark/docxAAA and kgent://dingtalk/d_456)
+  When  the knowledge-storage skill stores content
+  Then  the proposal offers per-copy options (update lark / update dingtalk /
+        update both / merge-with-confirmation)
+  And   no copy is merged or deleted without a separate confirmation
+
+Scenario: S63-skill-invokes-primitives-via-routing-intent
+  Given the knowledge-storage skill resolves a confirmed store operation
+  When  it executes the proposal
+  Then  it calls resolve_intent and consumes the returned RoutingIntent
+        (targets[0].adapter_name) to invoke the create/update primitive
+  And   it does not perform the backend write itself outside router policy
+        enforcement
+  And   a multi-backend fan-out carries one idempotency key (op id) (§6.4)
+
+Scenario: S64-skill-write-requires-confirmation
+  Given a skill-originated write proposal
+  When  the skill attempts to proceed without user confirmation
+  Then  the router blocks the write (no journal entry, no backend call)
+  And   the skill receives a confirmation-required gate (§5.6)
+```
+
+### F17 — Skill ↔ router / agent-loop contract (FM6, FM7)
+
+```gherkin
+Feature: Skills are backend-agnostic; the agent loop drives backends via intent
+
+Scenario: S65-skill-is-backend-agnostic
+  Given the same knowledge-storage skill
+  When  the resolved backend is lark vs dingtalk vs wecom
+  Then  the skill's orchestration code is identical (only the resolved
+        adapter differs in the RoutingIntent)
+  And   the adapter conformance suite runs the skill against each backend
+
+Scenario: S66-agent-loop-invokes-resolved-platform-skill
+  Given resolve_intent returns targets[0] = {backend: lark, adapter_type: skill,
+        adapter_name: lark-doc}
+  When  the agent loop executes the intent
+  Then  it invokes the lark-doc skill (not lark-cli, not a generic write)
+  And   the parameters passed match the structured intent fields
+
+Scenario: S67-resolution-priority-explicit-user-input-wins
+  Given user preferences default_backend == lark
+  And   conversation context suggests dingtalk
+  When  the user explicitly says "store this to dingtalk"
+  Then  the proposal targets dingtalk (explicit input outranks preferences
+        and conversation — §5.2)
+  And   provenance records "explicit user input"
+```
+
+### F18 — Question-answering & wiki-setup skills (FM3, FM8, FM11)
+
+```gherkin
+Feature: QA answers are grounded; wiki setup orchestrates and drives approvals
+
+Scenario: S68-qa-answer-cites-sources
+  Given the QA skill answers from aggregated results
+  Then  every factual claim in the answer carries a source citation (doc_uri)
+        from a result (§7.4)
+  And   any claim without a source is marked as unsupported (never fabricated)
+
+Scenario: S69-wiki-setup-drives-approvals-and-journals
+  Given a wiki-setup task spanning lark (gated) and dingtalk
+  When  the wiki-setup skill runs
+  Then  it creates one approval request per gated target via the router (§3.4)
+  And   each created document is confirmed, journaled, and undoable
+  And   a failed leg is reported per-backend and repairable via `kgent sync`
+```
+
 ---
 
 ## 3. Negative Constraints (Must NOT)
@@ -572,6 +663,8 @@ skipped-with-reason. Never silently absent.
 | N15 | Prompt for credentials during discovery | S53 |
 | N16 | Persist confidential snapshots or secrets to an unencrypted journal | S51, S52 |
 | N17 | Name an adapter in a routing intent that is disabled or fails capability verification | S58, S59 + adapter-resolution unit tests |
+| N18 | Propose CREATE when a matching existing document exists (update-first bias) | S61, S62 |
+| N19 | Execute a backend write directly, outside resolve_intent/router enforcement | S63, S64 |
 
 ---
 
@@ -669,8 +762,8 @@ or **n-a** with reason — never blank, never "pass" for a skipped row.
 
 | ID | Scenario / constraint | Test | Status |
 |---|---|---|---|
-| S1–S59 | §2 scenarios | tests named after scenario ids | pending |
-| N1–N17 | §3 constraints | per-table mapping | pending |
+| S1–S69 | §2 scenarios | tests named after scenario ids | pending |
+| N1–N19 | §3 constraints | per-table mapping | pending |
 | P1–P7 | §4 properties | `tests/properties/` | pending |
 | FM1–FM12 | §1 layers | §5 rehearsals + scenario refs | pending |
 
@@ -678,6 +771,7 @@ or **n-a** with reason — never blank, never "pass" for a skipped row.
 
 ## 8. Honest Notes (append-only during implementation)
 
+- v1.3 adds explicit skill-layer scenarios (F16–F18, S60–S69, N18–N19): knowledge-storage (provenance, update-first, primitive invocation, confirmation), skill↔router/agent contract (backend-agnostic, intent consumption, resolution priority), QA (grounded citations), and wiki-setup (approval driving + journaling).
 - v1.2 aligned with design v1.6 (second PR #1 review round): router returns structured `RoutingIntent` to the agent loop; adapter resolution prefers the platform skill (`lark-doc`) over the CLI.
 - v1.1 aligned with design v1.5 (PR #1 review): platform-native archive; three initial backends (Lark/Feishu, DingTalk, WeCom); lazy auth; `kgent doctor`; snippet-level dedup; conflict resolution; query decomposition; journal confidentiality guard.
 - No implementation exists; all rows remain pending.
