@@ -320,7 +320,7 @@ git commit -m "chore: add gauntlet entry point + manual-mutation fallback"
   - `FakeBackend(name, trust_zone, capabilities, *, owner=None)` implementing the full capability interface (create/read/update/delete/archive/unarchive/list/search), with `write_calls: list[dict]`, `fault: Callable | None`, and `clock` hooks for version tokens and `Retry-After`.
   - Fixtures: `tmp_home` (isolated `~/.kgent`), `test_world` (three fake backends + config dict), `user="alice"`.
 
-- [ ] **Step 1: Write `tests/fakes/fake_backend.py`**
+- [x] **Step 1: Write `tests/fakes/fake_backend.py`**
 
 ```python
 from __future__ import annotations
@@ -412,7 +412,7 @@ class FakeBackend:
         return out
 ```
 
-- [ ] **Step 2: Write `tests/conftest.py`**
+- [x] **Step 2: Write `tests/conftest.py`**
 
 ```python
 from __future__ import annotations
@@ -470,12 +470,12 @@ def test_world(tmp_home):
     return {"backends": backends, "config": config, "user": "alice"}
 ```
 
-- [ ] **Step 3: Run a trivial sanity test**
+- [x] **Step 3: Run a trivial sanity test**
 
 Create `tests/test_types.py` (Task 1.1 will expand it) with one test importing `test_world`; run `pytest tests/test_types.py -v`.
 Expected: collection works; fixture returns three `FakeBackend`s.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/conftest.py tests/fakes/fake_backend.py tests/test_types.py
