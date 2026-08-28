@@ -1,9 +1,9 @@
 # kgent Packaging — Executable Acceptance Specification
 
 **Date**: 2026-08-26
-**Version**: 1.1
+**Version**: 1.2
 **Status**: Pending approval (implementation is forbidden until §9 records approval)
-**Companion to**: [2026-08-26-kgent-packaging-design.md](2026-08-26-kgent-packaging-design.md) (v1.5)
+**Companion to**: [2026-08-26-kgent-packaging-design.md](2026-08-26-kgent-packaging-design.md) (v1.6)
 **Methodology**: old-coder (spec-first; trust from constraints, not inspection)
 
 This is the artifact the human approves **before any implementation code is
@@ -525,6 +525,27 @@ Scenario: S57-compound-query-decomposed
   And   the decomposition is shown to the user
 ```
 
+### F15 — Routing intent & adapter resolution
+
+```gherkin
+Feature: Router returns structured intent; platform skill is preferred
+
+Scenario: S58-router-returns-structured-intent
+  Given a write operation targeting lark
+  When  the agent loop calls resolve_intent(operation=update, doc=kgent://lark/docA)
+  Then  the returned RoutingIntent has operation, doc_uri, targets (with
+        backend + adapter_type + adapter_name), and policy_gates populated
+  And   the router does NOT execute the write itself
+  And   the agent loop uses the intent to invoke the resolved adapter
+
+Scenario: S59-platform-skill-preferred-over-cli
+  Given both lark-doc (skill) and lark-cli (cli) are available for lark
+  And   lark-doc satisfies the required capability (document_storage.update)
+  When  resolve_intent resolves lark
+  Then  targets[0].adapter_type == "skill" and adapter_name == "lark-doc"
+  And   lark-cli is chosen only when lark-doc lacks the required capability
+```
+
 ---
 
 ## 3. Negative Constraints (Must NOT)
@@ -550,6 +571,7 @@ skipped-with-reason. Never silently absent.
 | N14 | Send telemetry/metrics off-machine (content, queries, URIs) | network-capture layer during full suite run |
 | N15 | Prompt for credentials during discovery | S53 |
 | N16 | Persist confidential snapshots or secrets to an unencrypted journal | S51, S52 |
+| N17 | Name an adapter in a routing intent that is disabled or fails capability verification | S58, S59 + adapter-resolution unit tests |
 
 ---
 
@@ -647,8 +669,8 @@ or **n-a** with reason — never blank, never "pass" for a skipped row.
 
 | ID | Scenario / constraint | Test | Status |
 |---|---|---|---|
-| S1–S57 | §2 scenarios | tests named after scenario ids | pending |
-| N1–N16 | §3 constraints | per-table mapping | pending |
+| S1–S59 | §2 scenarios | tests named after scenario ids | pending |
+| N1–N17 | §3 constraints | per-table mapping | pending |
 | P1–P7 | §4 properties | `tests/properties/` | pending |
 | FM1–FM12 | §1 layers | §5 rehearsals + scenario refs | pending |
 
@@ -656,6 +678,7 @@ or **n-a** with reason — never blank, never "pass" for a skipped row.
 
 ## 8. Honest Notes (append-only during implementation)
 
+- v1.2 aligned with design v1.6 (second PR #1 review round): router returns structured `RoutingIntent` to the agent loop; adapter resolution prefers the platform skill (`lark-doc`) over the CLI.
 - v1.1 aligned with design v1.5 (PR #1 review): platform-native archive; three initial backends (Lark/Feishu, DingTalk, WeCom); lazy auth; `kgent doctor`; snippet-level dedup; conflict resolution; query decomposition; journal confidentiality guard.
 - No implementation exists; all rows remain pending.
 

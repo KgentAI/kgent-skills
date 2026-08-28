@@ -1,9 +1,15 @@
 # kgent Service Packaging Design Spec
 
 **Date**: 2026-08-26
-**Last Revised**: 2026-08-27 (v1.5 — PR #1 review applied)
+**Last Revised**: 2026-08-28 (v1.6 — routing-intent review applied)
 **Status**: Draft
-**Version**: 1.5
+**Version**: 1.6
+
+## Changes in v1.6
+
+Second PR #1 review round (1 comment):
+
+- **Routing intent + adapter preference**: the router returns a structured `RoutingIntent` (operation, resolved backends + adapter, required capabilities, policy gates, proposal) to the agent loop, which then invokes the resolved platform skill/CLI. Adapter resolution prefers a platform skill (e.g., `lark-doc`) over the CLI when both satisfy the required capability (§1.2, §1.4, §1.5, §3.8). Lark/Feishu integrates via the `lark-doc` skill with `lark-cli` as fallback (§1.3, §2.1, §2.2, §9).
 
 ## Changes in v1.5
 
@@ -115,8 +121,8 @@ This document defines the architecture for packaging the kgent knowledge managem
 ┌─────────────────────────────────────────────────────────┐
 │              Backend Implementation Layer                │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
-│  │ lark-cli │  │dingtalk- │  │ wecom-   │  │kgent-  │ │
-│  │          │  │   cli    │  │  cli     │  │  cli   │ │
+│  │lark-doc │  │dingtalk- │  │ wecom-   │  │kgent-  │ │
+│  │ (skill) │  │   cli    │  │  cli     │  │  cli   │ │
 │  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
 └─────────────────────────────────────────────────────────┘
                  │
@@ -142,6 +148,7 @@ This document defines the architecture for packaging the kgent knowledge managem
 - Aggregate and deduplicate results
 - Handle capability mismatches (e.g., backend doesn't support semantic search)
 - Implement fallback strategies
+- Return a structured routing intent to the agent loop and guide it to the resolved platform skill/CLI (§1.5)
 - **Enforce policy (not merely advise)**: approval gates (§3.4), sensitivity tiers (§2.5), write journal (§6.7), audit log (§8.4), timeouts and concurrency limits (§7.1)
 
 **Backend Implementation Layer:**
@@ -161,11 +168,11 @@ This document defines the architecture for packaging the kgent knowledge managem
 
 ### 1.3 Initial Backend Scope
 
-**Initial phase backends** (all have official CLIs, integrated via `type: cli` adapters):
+**Initial phase backends** (all have official CLIs; integrated via their platform skill where available, else the CLI — §1.5):
 
-- **Lark / Feishu** (same platform family, regional variants)
-- **DingTalk**
-- **WeCom** (WeChat Work)
+- **Lark / Feishu** (same platform family; integrated via the `lark-doc` skill, `lark-cli` fallback)
+- **DingTalk** (CLI)
+- **WeCom** (CLI)
 
 The **kgent-hosted backend** is supported in a **later phase**; however, the `kgent` CLI itself is developed in the initial phase because it powers kgent skill setup (`kgent setup`, discovery, config, doctor). Confluence, Notion, Google Docs, and SharePoint are future extensions (§10.1).
 
@@ -177,6 +184,34 @@ The **kgent-hosted backend** is supported in a **later phase**; however, the `kg
 - **The router is deterministic.** Routing precedence (§4.1), policy enforcement (approval §3.4, sensitivity §2.5, journal §6.7, audit §8.4), deduplication, and ranking (§7.3) are pure code — **the router never invokes an LLM**.
 - **Smart routing's LLM assistance lives in the skill layer.** Content-type and sensitivity classification (§4.3, §6.3), query decomposition (§7.4), and conflict detection (§7.5) are computed by skills (or the CLI's skill-backed `store` workflow), then passed to the router as *inputs*. The router validates and enforces; it never reasons.
 - Skills may call the router's deterministic `resolve_backends()` and policy checks directly; classification results always appear in the write proposal and are user-correctable (§5.6).
+- The router's primary interface is `resolve_intent(...) → RoutingIntent` (§1.5): it returns structured intent the agent loop consumes, rather than only executing operations itself.
+
+### 1.5 Routing Intent (Router → Agent Loop)
+
+The router does not only execute; it also **returns a structured intent** to the agent loop, which the agent uses to invoke the resolved platform skill or CLI.
+
+- **Adapter preference**: when a backend has both a platform skill (e.g., `lark-doc`) and an official CLI, the router resolves the **platform skill** when it satisfies the required capabilities, otherwise the CLI. The resolved adapter is named explicitly in the intent.
+- **`RoutingIntent`** (structured data):
+
+```python
+RoutingIntent:
+  operation: str                    # create | update | delete | archive | unarchive | read | search
+  doc_uri: str | None               # canonical URI (§3.6) for single-document ops
+  query: str | None                 # for search
+  targets: list[BackendResolution]  # resolved backends + adapters
+  proposal: WriteProposal | None    # for writes (§5.6)
+  policy_gates: list[PolicyGate]    # approval (§3.4), sensitivity (§2.5), journal/audit — enforced
+  provenance: dict[str, str]        # which source decided each field (§5.3)
+
+BackendResolution:
+  backend: str                      # e.g. "lark"
+  adapter_type: str                 # skill | cli | mcp (§1.2)
+  adapter_name: str                 # e.g. "lark-doc" or "lark-cli"
+  capabilities_needed: list[str]    # e.g. ["document_storage.update"]
+```
+
+- The agent loop consumes the intent and invokes the named platform skill/CLI; the router still **enforces** policy gates around any write (approval, sensitivity, journal, audit — §1.2). Enforcement is never delegated to the agent.
+- `kgent --dry-run` and `kgent config show-effective` expose the same intent as JSON for scripts (§12).
 
 ---
 
@@ -207,8 +242,9 @@ defaults:
 backends:
   lark:            # Lark / Feishu (same platform family)
     enabled: true
-    type: cli      # skill | cli | mcp (see §1.2 adapter semantics)
-    cli_name: lark-cli
+    type: skill    # skill | cli | mcp (see §1.2 adapter semantics)
+    skill_name: lark-doc
+    # Platform skill preferred (§1.5); CLI alternative is lark-cli.
 
     # Trust zone for data-leakage policy (§2.5)
     trust_zone: internal   # internal | external
@@ -437,7 +473,7 @@ The `kgent-setup` skill automatically detects available backends and their capab
    - Probe with read-only operations only
 
 2. **Discover available CLIs**
-   - Check PATH for `lark-cli`, `dingtalk-cli`, `wecom-cli`
+   - Check PATH for `dingtalk-cli`, `wecom-cli`, and `lark-cli` (Lark's CLI fallback when the skill is unavailable, §1.5)
    - Run `--version` to verify installation
    - Query a structured `capabilities`/`--describe` output if available; otherwise mark capabilities as *unverified* rather than parsing help text
    - Probe with read-only operations only
@@ -464,12 +500,13 @@ $ kgent-setup
 
 🔍 Detecting available backends (read-only probes)...
 
-✅ Found Lark CLI (lark-cli v2.0.1)
+✅ Found Lark skill (lark-doc)
    Capabilities (verified):
    - document_storage: ✅ (create, read, update, delete, list, archive, unarchive)
    - document_search: ✅ (keyword ✅, semantic ✅, hybrid ✅)
    - approval_flow: ✅ (request, check, execute)
    Auth: deferred (checked on first use)
+   Note: lark-cli also available; platform skill preferred (§1.5)
 
 ✅ Found DingTalk CLI (dingtalk-cli v1.2.3)
    Capabilities (verified):
@@ -794,6 +831,8 @@ ApproverDecision:
   decision: str                    # accept | reject | pending
   decided_at: datetime | None
 ```
+
+`RoutingIntent` and `BackendResolution` — the router's structured output to the agent loop — are defined in §1.5.
 
 ### 3.9 Optimistic Concurrency Control
 
@@ -1402,7 +1441,7 @@ Search indexes lie: documents get deleted or moved externally, and permissions g
    - Policy enforcement points: approval gate (§3.4), sensitivity rules (§2.5), write journal (§6.7), audit log (§8.4), optimistic concurrency (§3.9)
 
 2. **Backend Adapters** (initial phase, §1.3)
-   - `lark-cli`, `dingtalk-cli`, `wecom-cli` adapters (official CLIs)
+   - `lark-doc` skill adapter (preferred) with `lark-cli` fallback; `dingtalk-cli`, `wecom-cli` adapters
    - Adapter contract incl. argv safety, timeouts, error normalization (§1.2, §8.5), fidelity classes (§6.9)
    - kgent-hosted MCP adapter in a later phase
 
@@ -1586,8 +1625,8 @@ defaults:
 backends:
   lark:
     enabled: true
-    type: cli
-    cli_name: lark-cli
+    type: skill
+    skill_name: lark-doc     # platform skill preferred (§1.5)
     trust_zone: internal
     capabilities:
       document_storage:
@@ -1607,8 +1646,8 @@ defaults:
 backends:
   lark:
     enabled: true
-    type: cli
-    cli_name: lark-cli
+    type: skill
+    skill_name: lark-doc     # platform skill preferred (§1.5)
     trust_zone: internal
     capabilities:
       document_storage: {supported: true}
