@@ -502,7 +502,7 @@ git commit -m "test: add fake backend harness + standard test world"
   - `class ApprovalBindingMismatch(KgentError)` exit 3
   - `class PartialFailure(KgentError)` exit 2
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 import pytest
@@ -523,8 +523,8 @@ def test_version_conflict_message():
     assert "expected v17" in str(err) and "found v19" in str(err)
 ```
 
-- [ ] **Step 2: Run → FAIL** (`ImportError`)
-- [ ] **Step 3: Implement `errors.py`**
+- [x] **Step 2: Run → FAIL** (`ImportError`)
+- [x] **Step 3: Implement `errors.py`**
 
 ```python
 class KgentError(Exception):
@@ -560,8 +560,8 @@ class PartialFailure(KgentError):
     exit_code = 2
 ```
 
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: error hierarchy with spec exit-code mapping`
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: error hierarchy with spec exit-code mapping`
 
 ### Task 1.2: Core data types (`types.py`) — §3.8, §1.5
 
