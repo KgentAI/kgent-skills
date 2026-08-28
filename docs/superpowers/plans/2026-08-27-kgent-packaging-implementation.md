@@ -982,7 +982,7 @@ def test_all_is_alias_of_all_enabled():
 **Interfaces:**
 - Produces: `resolve_intent(config, operation, *, doc_uri=None, query=None, selection=None, content_type=None, proposal=None) -> RoutingIntent` populating `operation, doc_uri, query, targets, proposal, policy_gates, provenance`; each `BackendResolution` carries `backend, adapter_type, adapter_name, capabilities_needed`. Platform skill preferred over CLI when it satisfies capabilities (S59).
 
-- [ ] **Step 1: Write failing tests for S58 + S59**
+- [x] **Step 1: Write failing tests for S58 + S59**
 
 ```python
 def test_s58_router_returns_structured_intent():
@@ -1001,10 +1001,10 @@ def test_s59_platform_skill_preferred_over_cli():
     assert t.adapter_type == "skill" and t.adapter_name == "lark-doc"
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** `resolve_intent`; adapter resolution: if `skill_name` set and its detected capabilities satisfy `capabilities_needed`, choose `(skill, skill_name)`; else `(cli, cli_name)`; else `(mcp, mcp_url)`. Populate `policy_gates` with sensitivity/journal/audit/approval gate descriptors (Task 5.x fills actual gate objects).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: resolve_intent → RoutingIntent + adapter preference (S58/S59)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** `resolve_intent`; adapter resolution: if `skill_name` set and its detected capabilities satisfy `capabilities_needed`, choose `(skill, skill_name)`; else `(cli, cli_name)`; else `(mcp, mcp_url)`. Populate `policy_gates` with sensitivity/journal/audit/approval gate descriptors (Task 5.x fills actual gate objects).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: resolve_intent → RoutingIntent + adapter preference (S58/S59)`
 
 ---
 
