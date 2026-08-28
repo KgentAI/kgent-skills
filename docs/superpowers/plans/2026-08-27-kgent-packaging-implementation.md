@@ -1358,11 +1358,11 @@ def test_s47_retry_after_queued_not_retried():
 **Interfaces:**
 - Produces: `FidelityClass = Literal["lossless", "lossy"]`; `declare_lossy(backend, direction, elements: list[str]) -> list[str]` (degraded-elements list); `to_canonical(native, direction) -> tuple[str, list[str]]` emitting `[unsupported: <name>]` placeholders, never dropping silently (N11).
 
-- [ ] **Step 1: Write failing test for S49** (Lark vote block → fan-out to DingTalk → proposal lists `"vote block"` under degraded elements and requires confirmation; S50 archive/unarchive byte-equivalence covered in Task 8.3).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** conversion with explicit placeholders.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: fidelity classes + lossy warnings (S49)`
+- [x] **Step 1: Write failing test for S49** (Lark vote block → fan-out to DingTalk → proposal lists `"vote block"` under degraded elements and requires confirmation; S50 archive/unarchive byte-equivalence covered in Task 8.3).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** conversion with explicit placeholders.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: fidelity classes + lossy warnings (S49)`
 
 ---
 
