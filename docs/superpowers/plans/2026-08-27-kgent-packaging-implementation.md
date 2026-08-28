@@ -1273,11 +1273,11 @@ def test_s45_queries_redacted_by_default(test_world):
   - `classify_read_failure(kind, uri) -> None` (`not_found` → mark stale in idmap; `permission_denied` → actionable error)
   - `snippet_overlap(a, b) -> bool` (S56) and `detect_conflicts(results) -> list[Conflict]` with recommended strategy from `conflict_resolution.strategies` (S55)
 
-- [ ] **Step 1: Write failing tests for S35–S38, S55, S56**.
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** aggregate + idmap staleness (write `~/.kgent/idmap.json` 0600) + `>20%` staleness → cache invalidation + warning (S36).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: dedupe + near-dup clustering + staleness + conflicts (S35–S38/S55/S56)`
+- [x] **Step 1: Write failing tests for S35–S38, S55, S56**.
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** aggregate + idmap staleness (write `~/.kgent/idmap.json` 0600) + `>20%` staleness → cache invalidation + warning (S36).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: dedupe + near-dup clustering + staleness + conflicts (S35–S38/S55/S56)`
 
 ### Task 6.5: Query decomposition (§7.4, S57)
 
