@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from kgent.types import Document, DocumentMetadata, SearchResult
@@ -30,9 +30,8 @@ class FakeBackend:
     def create_document(self, title: str, content: str, metadata: DocumentMetadata) -> str:
         self._check("create_document", title=title, content=content, metadata=metadata)
         uri = f"kgent://{self.name}/doc{len(self.docs) + 1}"
-        self.docs[uri] = Document(
-            doc_uri=uri, title=title, content=content, metadata=metadata, version=self._bump()
-        )
+        meta = replace(metadata, version=self._bump())
+        self.docs[uri] = Document(doc_uri=uri, title=title, content=content, metadata=meta)
         self.write_calls.append({"method": "create_document", "uri": uri})
         return uri
 
@@ -53,13 +52,15 @@ class FakeBackend:
     ) -> None:
         self._check("update_document", doc_uri=doc_uri, expected_version=expected_version)
         doc = self.docs[doc_uri]
-        if expected_version is not None and doc.version != expected_version:
+        if expected_version is not None and doc.metadata.version != expected_version:
             from kgent.errors import VersionConflict
 
-            raise VersionConflict(doc_uri, expected_version, doc.version)
-        doc.content = content
-        doc.metadata = metadata
-        doc.version = self._bump()
+            raise VersionConflict(doc_uri, expected_version, doc.metadata.version)
+        self.docs[doc_uri] = replace(
+            doc,
+            content=content,
+            metadata=replace(metadata, version=self._bump()),
+        )
         self.write_calls.append({"method": "update_document", "uri": doc_uri})
 
     def delete_document(
