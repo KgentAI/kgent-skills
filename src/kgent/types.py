@@ -133,6 +133,7 @@ class WriteProposal:
     degraded: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     snapshot_note: str = ""
+    content: str = ""
 
 
 @dataclass(frozen=True, slots=True)
