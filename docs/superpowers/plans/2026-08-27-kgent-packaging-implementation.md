@@ -1182,7 +1182,7 @@ def test_s52_secrets_never_in_journal():
 **Interfaces:**
 - Produces: `class AuditLog` with `.append(entry: dict) -> None` and `redact_query(q: str) -> str`; `audit.redact_queries: true` means query bodies never appear in `audit.ndjson` (S45).
 
-- [ ] **Step 1: Write failing tests for S45**
+- [x] **Step 1: Write failing tests for S45**
 
 ```python
 def test_s45_queries_redacted_by_default(test_world):
@@ -1192,10 +1192,10 @@ def test_s45_queries_redacted_by_default(test_world):
     assert "phoenix" not in raw
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** `redact_query` (returns `"<redacted>"` when enabled), append 0600.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: audit log + query redaction (S45)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** `redact_query` (returns `"<redacted>"` when enabled), append 0600.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: audit log + query redaction (S45)`
 
 ### Task 5.6: Approval gates (§3.4, S22–S28)
 
