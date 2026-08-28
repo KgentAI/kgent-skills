@@ -618,7 +618,7 @@ def test_routing_intent_shape():
 **Interfaces:**
 - Produces: `parse_uri(s: str) -> tuple[str, str]` (raises `ConfigError` on malformed/bare IDs), `format_uri(backend: str, native_id: str) -> str`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 import pytest
@@ -637,10 +637,10 @@ def test_rejects_noncanonical(bad):
         parse_uri(bad)
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `parse_uri`** with `urllib.parse` on `kgent://` scheme; backend and native-id must be single non-empty path segments (no extra `/`).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: canonical URI parse/format (§3.6)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `parse_uri`** with `urllib.parse` on `kgent://` scheme; backend and native-id must be single non-empty path segments (no extra `/`).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: canonical URI parse/format (§3.6)`
 
 ### Task 1.4: Fingerprints (`fingerprint.py`) — §6.5, P7
 
