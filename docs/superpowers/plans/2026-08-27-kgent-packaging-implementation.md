@@ -1118,11 +1118,11 @@ def test_s3_yes_without_backends_does_not_bypass():
 **Interfaces:**
 - Produces: `check_version(expected: str | None, current: str | None, updated_at: datetime | None, current_updated_at: datetime | None, doc_uri: str) -> None` raising `VersionConflict`; `no_token_warning(backend: str) -> str` = `"no hard concurrency protection on <backend>"`.
 
-- [ ] **Step 1: Write failing tests for S5–S7** (fake backend version bump between proposal and confirm → conflict; exit 4; journal `status == "conflict"`; a fresh proposal offered; dingtalk no-token → `updated_at` comparison + warning).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** `check_version` (token path vs updated_at path).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: optimistic concurrency (S5–S7)`
+- [x] **Step 1: Write failing tests for S5–S7** (fake backend version bump between proposal and confirm → conflict; exit 4; journal `status == "conflict"`; a fresh proposal offered; dingtalk no-token → `updated_at` comparison + warning).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** `check_version` (token path vs updated_at path).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: optimistic concurrency (S5–S7)`
 
 ### Task 5.4: Write journal + undo + confidentiality guard (§6.7, S43, S44, S51, S52)
 
