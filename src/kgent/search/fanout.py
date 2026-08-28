@@ -22,7 +22,7 @@ from typing import Any, Protocol
 
 from kgent.types import SearchResult
 
-__all__ = ["build_footer", "exit_code_for_failures", "fanout"]
+__all__ = ["build_footer", "exit_code_for_failures", "fanout", "truncate"]
 
 
 class SearchBackend(Protocol):
@@ -30,6 +30,7 @@ class SearchBackend(Protocol):
 
     name: str
     trust_zone: str
+    capabilities: dict[str, Any]
 
     def search(self, query: str, mode: str, top_k: int, timeout: float) -> list[SearchResult]: ...
 
@@ -41,31 +42,59 @@ async def fanout(
     top_k: int,
     timeout: float,
     concurrency: int,
-) -> tuple[list[SearchResult], list[dict[str, Any]]]:
+) -> tuple[list[SearchResult], list[dict[str, Any]], dict[str, dict[str, int | bool]]]:
     """Fan ``query`` out to every backend, bounded by ``concurrency``.
 
-    Returns ``(successes, failures)``. A backend that raises is recorded as a
-    failure with ``timed_out=False``; a backend still running after ``timeout``
-    seconds is cancelled and recorded with ``timed_out=True`` (S33: visible in
-    the result footer, never silently dropped). Results from the remaining
-    backends are always returned.
+    Returns ``(successes, failures, clamps)``. A backend that raises is recorded
+    as a failure with ``timed_out=False``; a backend still running after
+    ``timeout`` seconds is cancelled and recorded with ``timed_out=True`` (S33:
+    visible in the result footer, never silently dropped). Results from the
+    remaining backends are always returned.
+
+    ``clamps`` records, per backend, the fetch-k applied: ``{"requested": top_k,
+    "fetch": min(top_k, backend limit), "clamped": fetch < requested}``
+    (§3.7). Backends declaring no ``document_search.limits.max_results`` are not
+    clamped (requested == fetch, clamped=False). Stored OUTSIDE ``SearchResult``
+    so the ranking step (RRF, Task 6.3) knows each backend's true coverage.
     """
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
     semaphore = asyncio.Semaphore(concurrency)
 
-    async def call_one(backend: SearchBackend) -> tuple[str, list[SearchResult] | BaseException]:
+    def clamp_fetch(backend: SearchBackend) -> tuple[int, int, bool]:
+        """Per-backend fetch-k: min(top_k, declared max_results) (§3.7)."""
+        search = (backend.capabilities or {}).get("document_search")
+        limits = search.get("limits") if isinstance(search, dict) else None
+        limit = limits.get("max_results") if isinstance(limits, dict) else None
+        if limit is None:
+            return top_k, top_k, False
+        fetch = min(top_k, int(limit))
+        return top_k, fetch, fetch < top_k
+
+    clamps: dict[str, dict[str, int | bool]] = {}
+
+    async def call_one(
+        backend: SearchBackend,
+    ) -> tuple[str, list[SearchResult] | BaseException]:
         async with semaphore:
             try:
                 results = await asyncio.wait_for(
                     asyncio.to_thread(
-                        backend.search, query, mode=mode, top_k=top_k, timeout=timeout
+                        backend.search,
+                        query,
+                        mode=mode,
+                        top_k=clamps[backend.name]["fetch"],
+                        timeout=timeout,
                     ),
                     timeout=timeout,
                 )
             except BaseException as exc:  # noqa: BLE001 — classified per-backend below
                 return backend.name, exc
             return backend.name, results
+
+    for backend in targets:
+        requested, fetch, clamped = clamp_fetch(backend)
+        clamps[backend.name] = {"requested": requested, "fetch": fetch, "clamped": clamped}
 
     outcomes = await asyncio.gather(
         *(call_one(backend) for backend in targets), return_exceptions=True
@@ -90,7 +119,20 @@ async def fanout(
             )
         else:
             successes.extend(payload)
-    return successes, failures
+    return successes, failures, clamps
+
+
+def truncate(results: Sequence[SearchResult], top_k: int) -> list[SearchResult]:
+    """Slice an already-ranked result list to the top ``top_k`` (S31).
+
+    Contract: the caller hands in a fully ranked (fused) list — truncation to
+    the global ``--top-k`` total happens AFTER fusion, never per backend. Order
+    is preserved, ``top_k=0`` yields ``[]``, and lists already within budget
+    are returned unchanged (a copy).
+    """
+    if top_k < 0:
+        raise ValueError("top_k must be >= 0")
+    return list(results[:top_k])
 
 
 def _describe(exc: BaseException, timeout: float) -> str:

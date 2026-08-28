@@ -11,9 +11,21 @@ import threading
 import time
 from collections.abc import Callable
 
-from kgent.search.fanout import build_footer, exit_code_for_failures, fanout
-from kgent.types import Document, DocumentMetadata
+import pytest
+
+from kgent.search.fanout import build_footer, exit_code_for_failures, fanout, truncate
+from kgent.types import Document, DocumentMetadata, SearchResult
+from tests.conftest import _full_caps, _kw_caps
 from tests.fakes.fake_backend import FakeBackend
+
+
+def _populate(backend: FakeBackend, docs: int) -> None:
+    for i in range(1, docs + 1):
+        uri = f"kgent://{backend.name}/doc{i}"
+        meta = DocumentMetadata(doc_uri=uri, title=f"{backend.name} doc {i}", backend=backend.name)
+        backend.docs[uri] = Document(
+            doc_uri=uri, title=meta.title, content=f"body {i}", metadata=meta
+        )
 
 
 def _backend(
@@ -39,7 +51,7 @@ def test_s33_timeout_is_visible_partial():
     dingtalk = _backend("dingtalk", fault=hang)
     wecom = _backend("wecom")
 
-    successes, failures = asyncio.run(
+    successes, failures, _ = asyncio.run(
         fanout(
             targets=[lark, dingtalk, wecom],
             query="retro",
@@ -68,7 +80,7 @@ def test_fanout_records_backend_error_as_non_timeout():
     dingtalk = _backend("dingtalk", fault=explode)
     wecom = _backend("wecom")
 
-    successes, failures = asyncio.run(
+    successes, failures, _ = asyncio.run(
         fanout(
             targets=[lark, dingtalk, wecom],
             query="retro",
@@ -101,7 +113,7 @@ def test_fanout_bounded_concurrency():
 
     backends = [_backend(n, fault=track) for n in ("lark", "dingtalk", "wecom")]
 
-    successes, failures = asyncio.run(
+    successes, failures, _ = asyncio.run(
         fanout(
             targets=backends,
             query="q",
@@ -148,3 +160,85 @@ def test_footer_plural_and_exit_codes():
     )
     assert exit_code_for_failures([{"backend": "a", "error": "boom", "timed_out": False}]) == 2
     assert exit_code_for_failures([]) == 0
+
+
+def test_s31_truncate_enforces_top_k_total():
+    """S31: 3 backends x <=10 results each, top_k=10 -> EXACTLY 10 merged.
+
+    6.2 stage: `truncate` slices an already-ranked list; the RRF step (6.3)
+    applies it after fusion — here we assert the contract directly.
+    """
+    ranked: list[SearchResult] = []
+    for name in ("lark", "dingtalk", "wecom"):
+        for i in range(1, 11):  # 10 docs per backend
+            uri = f"kgent://{name}/doc{i}"
+            meta = DocumentMetadata(doc_uri=uri, title=f"{name} doc {i}", backend=name)
+            ranked.append(SearchResult(doc_uri=uri, metadata=meta, rank=len(ranked) + 1))
+
+    assert len(ranked) == 30
+    top = truncate(ranked, 10)
+    assert len(top) == 10
+    assert [r.doc_uri for r in top] == [r.doc_uri for r in ranked[:10]]  # order preserved
+    assert truncate(ranked, 100) == ranked  # within budget -> unchanged
+    assert truncate(ranked, 0) == []
+    assert truncate([], 5) == []
+    with pytest.raises(ValueError):
+        truncate(ranked, -1)
+
+
+def test_s32_per_backend_clamp_with_limits():
+    """S32: lark max_results=200, dingtalk max_results=50, top_k=100.
+
+    dingtalk must be fetched with 50 (clamped) and the clamp recorded in the
+    clamps metadata; lark is unclamped at 100.
+    """
+    lark_caps = _full_caps()
+    lark_caps["document_search"]["limits"] = {"max_results": 200, "max_content_bytes": 2_000_000}
+    lark = FakeBackend("lark", "internal", lark_caps)
+    _populate(lark, 200)
+
+    no_limit_caps = _full_caps()
+    no_limit_caps["document_search"].pop("limits")
+    wecom = FakeBackend("wecom", "external", no_limit_caps)
+    _populate(wecom, 10)
+
+    seen: dict[str, int] = {}
+
+    def track(name: str):
+        def _fault(method: str, kwargs: dict) -> None:
+            if method == "search":
+                seen[name] = int(kwargs["top_k"])
+
+        return _fault
+
+    dingtalk = FakeBackend("dingtalk", "external", _kw_caps(), fault=track("dingtalk"))
+    _populate(dingtalk, 60)
+    lark.fault = track("lark")
+    wecom.fault = track("wecom")
+
+    successes, failures, clamps = asyncio.run(
+        fanout(
+            targets=[lark, dingtalk, wecom],
+            query="retro",
+            mode="hybrid",
+            top_k=100,
+            timeout=1.0,
+            concurrency=4,
+        )
+    )
+
+    assert failures == []
+    assert clamps["lark"] == {"requested": 100, "fetch": 100, "clamped": False}
+    assert clamps["dingtalk"] == {"requested": 100, "fetch": 50, "clamped": True}
+    assert clamps["wecom"] == {
+        "requested": 100,
+        "fetch": 100,
+        "clamped": False,
+    }  # no limit -> no clamp
+    # actual per-backend fetch as observed by the backends themselves
+    assert seen["lark"] == 100
+    assert seen["dingtalk"] == 50
+    assert seen["wecom"] == 100
+    # coverage fidelity: dingtalk contributes at most its clamped fetch
+    assert sum(1 for r in successes if r.metadata.backend == "dingtalk") == 50
+    assert sum(1 for r in successes if r.metadata.backend == "lark") == 100
