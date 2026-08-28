@@ -873,7 +873,7 @@ def test_unsupported_returns_none():
 **Interfaces:**
 - Produces: `effective_capabilities(detected: dict, declared: dict) -> dict` (intersection; config only narrows; warn + treat as unsupported on over-assertion), `read_cache(home) -> dict`, `write_cache(home, caps, detected_at) -> None` (0600).
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_config_cannot_assert_unsupported():
@@ -890,10 +890,10 @@ def test_config_narrows():
     assert eff["document_search"]["features"]["search_by_semantics"] is False
 ```
 
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** intersection helper.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: capability cache + effective-capability intersection (§3.5)`
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** intersection helper.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: capability cache + effective-capability intersection (§3.5)`
 
 ### Task 3.3: Read-only discovery + `kgent setup` (§2.2, S42, S53)
 
