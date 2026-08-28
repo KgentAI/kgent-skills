@@ -1255,11 +1255,11 @@ def test_s45_queries_redacted_by_default(test_world):
 - Create: `src/kgent/search/rank.py`
 - Test: `tests/test_search_aggregation.py`
 
-- [ ] **Step 1: Write failing test for S34** (docX rank5 score0.99 vs docY rank1 score0.40 → docY ranks above docX; native scores never compared).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement `rrf(ranked_lists, k=60)` + tiebreakers (recency band, then backend priority).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: reciprocal rank fusion (S34)`
+- [x] **Step 1: Write failing test for S34** (docX rank5 score0.99 vs docY rank1 score0.40 → docY ranks above docX; native scores never compared).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement `rrf(ranked_lists, k=60)` + tiebreakers (recency band, then backend priority).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: reciprocal rank fusion (S34)`
 
 ### Task 6.4: Dedupe + near-dup clustering + staleness (§7.2, §8.6, S35–S38, S55, S56)
 
