@@ -37,6 +37,7 @@ from typing import Any, Protocol, cast
 
 from kgent.errors import PolicyError, VersionConflict
 from kgent.router.concurrency import check_version
+from kgent.router.journal import Journal, build_entry
 from kgent.router.sensitivity import enforce_zone
 from kgent.types import Document, DocumentMetadata, WriteProposal
 
@@ -104,6 +105,31 @@ def _metadata(proposal: WriteProposal, backend_name: str, *, doc_uri: str) -> Do
         content_type=proposal.content_type,
         sensitivity=proposal.sensitivity,
     )
+
+
+def _capture_before(
+    backend: WriteTarget, uri: str
+) -> tuple[str | None, dict[str, Any]]:
+    """Re-read the document to snapshot its pre-write state (S44, best-effort).
+
+    Returns ``(content, metadata_dict)``; on any read failure returns
+    ``(None, {})`` and the write proceeds without a snapshot (the adapter
+    remains the source of truth).
+    """
+    try:
+        current = backend.read_document(uri)
+    except Exception:  # noqa: BLE001 — best-effort snapshot: any failure falls
+        # through to a snapshot-less write.
+        return None, {}
+    meta = current.metadata
+    metadata_before: dict[str, Any] = {
+        "doc_uri": meta.doc_uri,
+        "title": meta.title,
+        "backend": meta.backend,
+        "version": meta.version,
+        "updated_at": meta.updated_at.isoformat() if meta.updated_at is not None else None,
+    }
+    return current.content, metadata_before
 
 
 def _no_token_guard(proposal: WriteProposal, backend: WriteTarget, uri: str) -> None:
@@ -209,7 +235,7 @@ def execute_confirmed(
     confirmation: str,
     *,
     backends: dict[str, WriteTarget],
-    journal: JournalAppender,
+    journal: JournalAppender | None = None,
     audit: object | None = None,
 ) -> OpResult:
     """Execute the confirmed write and journal one entry (S1–S4, N1).
@@ -218,9 +244,14 @@ def execute_confirmed(
     journal entries) — this is the last line of defense for N1. Otherwise all
     zone checks run before the first write (N4), then only the confirmed
     targets execute, and the journal records exactly the executed uris (N1).
-    If ``audit`` exposes an ``append`` method it is called with a minimal
-    entry (Task 5.5 replaces this; otherwise audit is skipped, duck-typed).
+    ``journal`` defaults to the real :class:`~kgent.router.journal.Journal`
+    (home from ``KGENT_HOME``/``~/.kgent``); update legs capture the pre-write
+    ``content_before`` snapshot before the write (S44). If ``audit`` exposes
+    an ``append`` method it is called with a minimal entry (Task 5.5 replaces
+    this; otherwise audit is skipped, duck-typed).
     """
+    if journal is None:
+        journal = Journal()
     if confirmation == "rejected":
         raise PolicyError("refusing to execute write: confirmation was rejected")
 
@@ -237,6 +268,7 @@ def execute_confirmed(
     ts = datetime.now(UTC).isoformat()
     op_id = _next_op_id()
     executed: list[str] = []
+    snapshots: dict[str, dict[str, Any]] = {}
     for backend_name, uri in proposal.targets:
         backend = backends[backend_name]
         if proposal.operation == "create":
@@ -247,6 +279,7 @@ def execute_confirmed(
             )
             executed.append(created_uri)
         elif proposal.operation == "update" and uri is not None:
+            content_before, metadata_before = _capture_before(backend, uri)
             try:
                 if proposal.expected_version is None:
                     # No-token path (§3.9.4): the backend has no revision
@@ -262,6 +295,11 @@ def execute_confirmed(
                     expected_version=proposal.expected_version,
                 )
                 executed.append(uri)
+                if content_before is not None:
+                    snapshots[uri] = {
+                        "content_before": content_before,
+                        "metadata_before": metadata_before,
+                    }
             except VersionConflict as exc:
                 # F2 (S6/S7): a stale write journals ``status: conflict`` and
                 # exits 4 — the conflict is surfaced, never re-raised as a
@@ -301,19 +339,26 @@ def execute_confirmed(
                 f"no-op for '{backend_name}' (create/update only)"
             )
 
-    entry: dict[str, object] = {
-        "schema_version": 1,
-        "op_id": op_id,
-        "ts": ts,
-        "operation": proposal.operation,
-        "targets": executed,
-        "idempotency_key": op_id,
-        "snapshot": {},
-        "proposal_hash": hashlib.sha256(repr(proposal).encode("utf-8")).hexdigest(),
-        "confirmation": confirmation,
-        "sensitivity": proposal.sensitivity,
-        "status": "ok",
-    }
+    snapshot: dict[str, Any]
+    if len(snapshots) == 1:
+        snapshot = dict(next(iter(snapshots.values())))
+    elif len(snapshots) > 1:
+        snapshot = {"targets": dict(snapshots)}
+    else:
+        snapshot = {}
+    entry = build_entry(
+        op_id=op_id,
+        ts=ts,
+        operation=proposal.operation,
+        targets=executed,
+        idempotency_key=op_id,
+        snapshot=snapshot,
+        proposal_hash=hashlib.sha256(repr(proposal).encode("utf-8")).hexdigest(),
+        confirmation=confirmation,
+        sensitivity=proposal.sensitivity,
+        status="ok",
+        encrypt=getattr(journal, "encrypt", False),
+    )
     journal.append(entry)
     if audit is not None and hasattr(audit, "append"):
         cast(Any, audit).append(

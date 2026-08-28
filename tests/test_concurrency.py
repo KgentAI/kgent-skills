@@ -18,10 +18,10 @@ import pytest
 
 from kgent.errors import VersionConflict
 from kgent.router.concurrency import check_version, no_token_warning
+from kgent.router.journal import Journal
 from kgent.router.policy import execute_confirmed
 from kgent.types import Document, DocumentMetadata, WriteProposal
 from tests.fakes.fake_backend import FakeBackend
-from tests.fakes.inmemory_journal import InMemoryJournal
 
 _URI = "kgent://lark/docA"
 
@@ -112,7 +112,7 @@ def test_no_token_warning_exact_string():
 
 def test_s5_update_with_current_version_succeeds(test_world):
     lark: FakeBackend = test_world["backends"]["lark"]
-    journal = InMemoryJournal()
+    journal = Journal()
     lark.version_counter = 17  # platform at v17 → the write lands at v18
     _seed(lark, _URI, "v17")
     op = execute_confirmed(
@@ -138,7 +138,7 @@ def test_s5_update_with_current_version_succeeds(test_world):
 
 def test_s6_stale_version_aborts_with_conflict(test_world):
     lark: FakeBackend = test_world["backends"]["lark"]
-    journal = InMemoryJournal()
+    journal = Journal()
     _seed(lark, _URI, "v17")
     prop = _prop(expected_version="v17")
     # a concurrent session bumps the platform to v19 before our confirm lands
@@ -180,7 +180,7 @@ def test_s6_stale_version_aborts_with_conflict(test_world):
 
 def test_s7_no_token_falls_back_to_updated_at(test_world):
     dingtalk: FakeBackend = test_world["backends"]["dingtalk"]
-    journal = InMemoryJournal()
+    journal = Journal()
     uri = "kgent://dingtalk/d1"
     t0 = datetime(2026, 8, 26, 9, 0, tzinfo=UTC)
     _seed(dingtalk, uri, "v1", updated_at=t0)
