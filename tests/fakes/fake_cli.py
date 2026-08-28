@@ -14,7 +14,10 @@ Two behaviors, selected by the invocation:
    cross-call memory: every invocation loads it, mutates, saves it back.
 
    Protocol (stdout is always a single JSON object; ``--json`` is accepted as
-   a trailing marker and never part of the payload):
+   a trailing marker and never part of the payload). Known limitation: a
+   title/content value literally equal to ``--json`` is indistinguishable
+   from the marker and is stripped by the fake — real CLI wrappers will own
+   their own argv contracts.
 
        documents create --title <t> --content <c>      → {"id": "<native-id>"}
        documents read <native-id>                       → {"id","title","content",
@@ -43,7 +46,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 ARGV_OUT_ENV = "FAKE_CLI_ARGV_OUT"
@@ -244,7 +247,7 @@ def _bump_version(doc: dict[str, Any]) -> None:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _fail(message: str, exit_code: int = 1) -> int:

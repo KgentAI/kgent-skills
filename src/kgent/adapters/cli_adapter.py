@@ -26,7 +26,7 @@ from kgent.errors import AdapterError, AdapterTimeoutError, SubprocessError
 from kgent.types import Document, DocumentMetadata, FilterSpec, SearchResult
 from kgent.uri import format_uri, parse_uri
 
-__all__ = ["SubprocessResult", "run_cli", "CliCapabilityAdapter"]
+__all__ = ["CliCapabilityAdapter", "SubprocessResult", "run_cli"]
 
 
 class SubprocessResult(NamedTuple):
@@ -220,6 +220,16 @@ class CliCapabilityAdapter(Adapter):
         idempotency_key: str,
         expected_version: str | None,
     ) -> None:
+        """Update ``doc_uri``'s content; pass ``expected_version`` for OCC (§3.9).
+
+        No-token OCC note (wire v1): when ``expected_version`` is ``None`` the
+        CLI overwrites **unconditionally** — protocol v1 carries no
+        ``updated_at`` precondition, so the ``updated_at`` guard that saves
+        no-token backends (§3.9, S7 fallback) lives router/FakeBackend-side,
+        not here. Protocol v1's update also sends content and ``--version``
+        only — ``metadata.title`` is not pushed (documented; a real CLI
+        wrapper would need a title leg).
+        """
         native_id = self._native_id(doc_uri)
         args = ["documents", "update", native_id, "--content", content]
         if expected_version is not None:

@@ -19,12 +19,12 @@ from kgent.adapters.wecom import WeComAdapter
 
 __all__ = [
     "Adapter",
+    "CliCapabilityAdapter",
+    "DingTalkAdapter",
+    "LarkAdapter",
     "RetryBudget",
     "SubprocessResult",
+    "WeComAdapter",
     "escape_query",
     "run_cli",
-    "CliCapabilityAdapter",
-    "LarkAdapter",
-    "DingTalkAdapter",
-    "WeComAdapter",
 ]
