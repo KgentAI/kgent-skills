@@ -94,11 +94,12 @@ Implementation is complete. Key deliverables:
 
 - **CLI**: `kgent` with 19 subcommands (see `EVIDENCE.md` for full list)
 - **Skills**: `store_workflow`, `answer`, `setup_wiki` (see README for usage)
+- **Backend adapters**: Lark, DingTalk, WeCom, CLI adapter (see `src/kgent/adapters/`)
 - **Test coverage**: 377 tests across negative constraints, property invariants, adversarial corpus, e2e
 - **Documentation**: README.md (installation + usage), EVIDENCE.md (spec→test mapping)
 
 For future work, consider:
-- Implementing real backend adapters (Lark/DingTalk/WeCom APIs)
-- Adding integration tests against live backends
+- Adding integration tests against live backend APIs
 - Expanding property-based tests with more complex scenarios
 - Performance benchmarks for search aggregation
+- Real backend credential management (encrypted storage is implemented)
