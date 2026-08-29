@@ -141,6 +141,24 @@ class CliCapabilityAdapter(Adapter):
         self.name = name
         self.timeout = timeout
 
+    @property
+    def capabilities(self) -> dict[str, Any]:
+        """Declare §3.1 capabilities for this CLI-backed backend."""
+        return {
+            "document_storage": {
+                "supported": True,
+                "features": ["create", "read", "update", "delete", "archive", "unarchive", "list"],
+            },
+            "document_search": {
+                "supported": True,
+                "features": {"search_by_keywords": True},
+            },
+            "approval_flow": {
+                "supported": True,
+                "features": ["request_approval", "check_status", "execute_approved"],
+            },
+        }
+
     # ---- transport internals ---------------------------------------------
 
     def _run(self, args: list[str]) -> dict[str, Any]:
@@ -254,6 +272,25 @@ class CliCapabilityAdapter(Adapter):
         self, doc_uri: str, approval_token: str | None, idempotency_key: str
     ) -> None:
         self._run(["documents", "unarchive", self._native_id(doc_uri)])
+
+    def search(
+        self,
+        query: str,
+        *,
+        mode: str = "keyword",
+        top_k: int = 10,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> list[SearchResult]:
+        """Dispatch search by mode (keyword/semantic/hybrid) to the right method."""
+        if mode == "keyword":
+            return self.search_by_keywords(query, top_k=top_k)
+        elif mode == "semantic":
+            return self.search_by_semantics(query, top_k=top_k)
+        elif mode == "hybrid":
+            return self.search_hybrid(query, top_k=top_k)
+        else:
+            raise AdapterError(f"unknown search mode: {mode!r}")
 
     def search_by_keywords(
         self,

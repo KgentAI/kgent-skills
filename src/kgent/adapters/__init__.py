@@ -30,6 +30,11 @@ from kgent.adapters.fidelity import (
 from kgent.adapters.lark import LarkAdapter
 from kgent.adapters.wecom import WeComAdapter
 
+# Register default adapters
+registry.register("lark", LarkAdapter())
+registry.register("dingtalk", DingTalkAdapter())
+registry.register("wecom", WeComAdapter())
+
 __all__ = [
     "FIDELITY_REGISTRY",
     "Adapter",
