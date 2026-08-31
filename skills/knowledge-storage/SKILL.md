@@ -8,7 +8,7 @@ metadata:
 
 # Knowledge Storage
 
-Save knowledge from conversations to the knowledge base using the kgent CLI. This skill orchestrates the `kgent store` and `kgent create`/`kgent update` commands with update-first semantics, provenance tracking, and native URL presentation.
+Save knowledge from conversations to the knowledge base using the kgent CLI. This skill orchestrates the `kgent create` and `kgent update` primitive commands with update-first semantics, provenance tracking, and native URL presentation.
 
 ## When to Use
 
@@ -117,17 +117,14 @@ Which? (a/b/c/d/no/edit)
 
 ### 4. Execute (After User Approval)
 
-**Create new document:**
-```bash
-python -m kgent store --title "<title>" --content "<content>" --backends <backend> --yes --json
-```
+The skill has already performed update-first search in Step 2, so call the **primitive operations** directly — don't use `kgent store` (which would search again).
 
-Or for explicit create (when you want to bypass update-first):
+**Create new document** (when Step 2 found no matches):
 ```bash
 python -m kgent create --title "<title>" --content "<content>" --backends <backend> --yes --json
 ```
 
-**Update existing document:**
+**Update existing document** (when Step 2 found a match):
 ```bash
 python -m kgent update <doc_uri> --content "<content>" --yes --json
 ```
@@ -236,7 +233,7 @@ Skill:
     Provenance: target=dingtalk ← explicit user input
     Proceed? (yes/no/edit)"
 5. User: "yes"
-6. Execute: python -m kgent store --title "API Guidelines" --content "..." --backends dingtalk --yes --json
+6. Execute: python -m kgent create --title "API Guidelines" --content "..." --backends dingtalk --yes --json
 7. Confirm with native DingTalk URL
 ```
 
