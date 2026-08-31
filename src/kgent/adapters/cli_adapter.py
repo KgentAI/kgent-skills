@@ -65,6 +65,7 @@ def run_cli(
             shell=False,
             check=False,
             env=env,
+            encoding="utf-8",
         )
     except subprocess.TimeoutExpired as exc:
         raise AdapterTimeoutError(f"adapter CLI timed out after {timeout:.1f}s") from exc

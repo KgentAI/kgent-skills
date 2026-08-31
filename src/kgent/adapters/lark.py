@@ -135,22 +135,29 @@ class LarkAdapter(CliCapabilityAdapter):
             "--json",
         ])
         results: list[SearchResult] = []
-        # Response contains docs array
-        docs = payload.get("docs") or payload.get("results") or []
+        # Response structure: {"ok": true, "data": {"results": [...]}}
+        data = payload.get("data") or {}
+        docs = data.get("results") or []
         for item in docs:
-            doc_token = str(item.get("token") or item.get("document_id") or item.get("id", ""))
+            result_meta = item.get("result_meta") or {}
+            doc_token = str(result_meta.get("token", ""))
             if not doc_token:
                 continue
             uri = self._canonical(doc_token)
-            title = str(item.get("title", ""))
+            # title_highlighted contains HTML tags, strip them
+            title_raw = str(item.get("title_highlighted", ""))
+            title = title_raw.replace("<h>", "").replace("</h>", "").replace("<hb>", "").replace("</hb>", "")
             rank = int(item.get("rank", 0))
-            snippet = item.get("snippet") or item.get("summary")
+            snippet_raw = item.get("summary_highlighted")
+            snippet = None
+            if snippet_raw is not None:
+                snippet = str(snippet_raw).replace("<h>", "").replace("</h>", "").replace("<hb>", "").replace("</hb>", "")
             results.append(
                 SearchResult(
                     doc_uri=uri,
                     metadata=DocumentMetadata(doc_uri=uri, title=title, backend=self.name),
                     rank=rank,
-                    snippet=str(snippet) if snippet is not None else None,
+                    snippet=snippet,
                     mode_used="keyword",
                 )
             )
