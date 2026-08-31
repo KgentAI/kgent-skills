@@ -1,9 +1,18 @@
 # kgent Service Packaging Design Spec
 
 **Date**: 2026-08-26
-**Last Revised**: 2026-08-28 (v1.6 — routing-intent review applied)
+**Last Revised**: 2026-08-31 (v1.7 — skill packaging and native URL presentation)
 **Status**: Draft
-**Version**: 1.6
+**Version**: 1.7
+
+## Changes in v1.7
+
+Skill packaging and native URL presentation gaps closed:
+
+- **Skill packaging format** (§1.6): skills are packaged as Claude Code SKILL.md files with frontmatter (name, description, metadata), installable via symlink to ~/.claude/skills/ or .claude/skills/.
+- **Native URL presentation** (§1.7): skills MUST convert canonical URIs (kgent://...) to native platform URLs (https://workspace/docx/token) when presenting results to users. workspace_domain is configured in defaults.workspace_domain.
+- **Installation instructions**: README documents skill installation via symlink or copy to Claude Code skill directories.
+- **Acceptance scenarios**: F19–F20, S70–S76, N20–N21 verify skill packaging, installation, and native URL presentation.
 
 ## Changes in v1.6
 
@@ -212,6 +221,74 @@ BackendResolution:
 
 - The agent loop consumes the intent and invokes the named platform skill/CLI; the router still **enforces** policy gates around any write (approval, sensitivity, journal, audit — §1.2). Enforcement is never delegated to the agent.
 - `kgent --dry-run` and `kgent config show-effective` expose the same intent as JSON for scripts (§12).
+
+### 1.6 Skill Packaging and Installation
+
+**Skills are packaged as Claude Code skill files (SKILL.md)**, not just Python modules. Each skill must be deployable to Claude Code's skill directories for natural language invocation.
+
+**Skill file format:**
+
+```yaml
+---
+name: <skill-name>
+description: "<one-line description for Claude Code skill listing>"
+metadata:
+  requires:
+    bins: ["python"]  # or other required executables
+---
+
+# Skill Title
+
+<skill instructions, workflow, examples>
+```
+
+**Installation:**
+
+Skills are installed by symlinking or copying the skill directory to Claude Code's skill directory:
+
+```bash
+# Option 1: User-level installation (recommended)
+ln -s $(pwd)/skills/<skill-name> ~/.claude/skills/<skill-name>
+
+# Option 2: Project-level installation
+ln -s $(pwd)/skills/<skill-name> .claude/skills/<skill-name>
+
+# Option 3: Copy for distribution
+cp -r skills/<skill-name> ~/.claude/skills/
+```
+
+**Discovery:**
+
+Claude Code automatically discovers skills in `~/.claude/skills/` and `.claude/skills/` by scanning for SKILL.md files. Skills are available for natural language invocation based on their `description` field.
+
+### 1.7 Native URL Presentation
+
+**Canonical URIs (kgent://...) are internal only.** Skills MUST convert canonical URIs to native platform URLs when presenting results to users.
+
+**URL conversion:**
+
+- **Lark**: `kgent://lark/<token>` → `https://<workspace_domain>/docx/<token>`
+- **DingTalk**: `kgent://dingtalk/<id>` → `https://<workspace_domain>/...`
+- **WeCom**: `kgent://wecom/<id>` → `https://<workspace_domain>/...`
+
+**Workspace domain configuration:**
+
+The workspace domain is configured in `~/.kgent/config.yaml`:
+
+```yaml
+defaults:
+  workspace_domain: "mycompany.larksuite.com"
+```
+
+Skills read this config to construct native URLs. If not configured, skills prompt the user to set it.
+
+**User-facing output:**
+
+All skill confirmations, citations, and results display native URLs, never canonical URIs:
+
+```
+✅ Created document: https://mycompany.larksuite.com/docx/abc123
+```
 
 ---
 
@@ -1712,6 +1789,7 @@ Full schema for `version: 1`. Type, default, and allowed values. Unknown top-lev
 |---|---|---|---|
 | `routing_mode` | string | `configured` | `explicit` \| `configured` \| `smart` (§4.3) |
 | `default_backends` | list[string] | `[]` | enabled backend names (§4.2 grammar) |
+| `workspace_domain` | string | `""` | platform workspace domain for native URL construction (§1.7) |
 | `approval_ttl_hours` | int | 24 | > 0 (§3.4) |
 | `timeouts.search_seconds` | int | 10 | > 0 (§7.1) |
 | `timeouts.write_seconds` | int | 30 | > 0 |

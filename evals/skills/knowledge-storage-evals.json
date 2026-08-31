@@ -1,0 +1,103 @@
+{
+  "skill_name": "knowledge-storage",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "We just finished our Q4 planning meeting. Here are the key decisions: 1) Focus on enterprise segment, 2) Hire 3 more engineers, 3) Launch beta by Nov 15. Can you save these meeting notes?",
+      "expected_output": "The skill should search for existing Q4 planning documents, propose updating if found or creating new if not. Must show a proposal before executing, then confirm with a native URL (not kgent:// URI).",
+      "files": [],
+      "expectations": [
+        "The skill runs 'python -m kgent search' before proposing any write",
+        "The skill presents a proposal to the user and waits for approval before executing",
+        "The proposal includes a title derived from the meeting content",
+        "The content is formatted as clean markdown with structured headings/lists",
+        "The final confirmation message includes a native platform URL (https://...), not a kgent:// URI",
+        "The skill shows the op_id so the user can undo if needed",
+        "The proposal shows provenance: where the target backend came from (explicit/preferences/config default)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Update the deployment guide — we're now using Docker instead of bare-metal. The rest is the same.",
+      "expected_output": "The skill should find the existing 'deployment guide' via search, propose an UPDATE (not CREATE), and confirm with the native URL after execution.",
+      "files": [],
+      "expectations": [
+        "The skill searches for 'deployment guide' before proposing anything",
+        "The skill proposes UPDATE of an existing document, not CREATE",
+        "The proposal mentions the existing document title and URI",
+        "After approval, the skill calls 'python -m kgent update' with the existing doc URI",
+        "The confirmation message includes a native platform URL, not a kgent:// URI",
+        "The provenance records intent=update because a matching doc was found"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Save this to DingTalk please: 'Partner API access tokens should be rotated every 30 days. Contact security@company.com for requests.'",
+      "expected_output": "The skill should target dingtalk (explicit user input), search for existing content, and propose create or update accordingly. Must show provenance noting 'explicit user input' as the backend source.",
+      "files": [],
+      "expectations": [
+        "The skill targets dingtalk backend (explicit user input overrides any defaults)",
+        "The provenance records target source as 'explicit user input'",
+        "The skill searches dingtalk for existing content before proposing",
+        "A proposal is shown before any write",
+        "The confirmation includes a native DingTalk URL format, not kgent://dingtalk/...",
+        "The content is formatted as markdown, not raw text"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I wrote a new onboarding checklist. Save it to both Lark and DingTalk so both teams can access it.",
+      "expected_output": "The skill should create the document on both backends (multi-backend fan-out). Should show a proposal listing both targets, get confirmation, execute both, and report both native URLs.",
+      "files": [],
+      "expectations": [
+        "The proposal lists both lark and dingtalk as targets",
+        "The skill searches both backends for existing content before proposing",
+        "The user is asked to confirm before any write",
+        "Both kgent create/store calls are executed",
+        "The confirmation message includes native URLs for both backends",
+        "If one backend fails, the other still succeeds (partial success reporting)",
+        "The op_id is reported for undo capability"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Remember that the API rate limit is 1000 requests per minute per client. Save it.",
+      "expected_output": "The skill should extract 'API rate limit' as the title, the policy as content, search for existing docs, and propose create/update with clean markdown formatting.",
+      "files": [],
+      "expectations": [
+        "The skill derives a title from the content (e.g., 'API Rate Limit')",
+        "The content is formatted as markdown (not just the raw sentence)",
+        "The skill searches for existing docs about API rate limits",
+        "A proposal is shown before write",
+        "Native URL in confirmation, not kgent:// URI",
+        "The skill handles the implicit 'save it' intent without needing explicit backend specification"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "We have a confidential document about the upcoming acquisition. Save it to our knowledge base.",
+      "expected_output": "The skill should recognize the sensitive content and either propose routing to internal-zone backends only, or warn that external backends (dingtalk, wecom) cannot accept confidential content.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes 'confidential' as a sensitivity signal",
+        "The skill does NOT propose routing to external-zone backends (dingtalk/wecom) without warning",
+        "If proposing an external backend, the skill warns about the sensitivity zone restriction",
+        "The proposal mentions the sensitivity classification",
+        "The skill asks the user to confirm the target backend given the sensitivity"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Add these notes to the API Guidelines doc.",
+      "expected_output": "The skill should search for 'API Guidelines', find it, and propose UPDATE. If multiple matches exist (e.g., on different backends), offer per-copy options.",
+      "files": [],
+      "expectations": [
+        "The skill searches for 'API Guidelines' before proposing anything",
+        "The skill proposes UPDATE (not CREATE) since a matching doc exists",
+        "If multiple matches exist, the skill offers per-copy options (update all / update specific / create new)",
+        "The proposal clearly names the existing document(s) found",
+        "The user is asked to choose which copy to update when multiple exist"
+      ]
+    }
+  ]
+}

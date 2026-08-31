@@ -1,9 +1,9 @@
 # kgent Packaging — Executable Acceptance Specification
 
 **Date**: 2026-08-26
-**Version**: 1.3
-**Status**: Pending approval (implementation is forbidden until §9 records approval)
-**Companion to**: [2026-08-26-kgent-packaging-design.md](2026-08-26-kgent-packaging-design.md) (v1.6)
+**Version**: 1.5
+**Status**: Pending approval (implementation is forbidden until §10 records approval)
+**Companion to**: [2026-08-26-kgent-packaging-design.md](2026-08-26-kgent-packaging-design.md) (v1.7)
 **Methodology**: old-coder (spec-first; trust from constraints, not inspection)
 
 This is the artifact the human approves **before any implementation code is
@@ -637,6 +637,61 @@ Scenario: S69-wiki-setup-drives-approvals-and-journals
   And   a failed leg is reported per-backend and repairable via `kgent sync`
 ```
 
+### F19 — Skill packaging and installation (FM8)
+
+```gherkin
+Feature: Skills are packaged as Claude Code skills and installable
+
+Scenario: S70-skill-has-skill-md-manifest
+  Given a skill directory skills/<skill-name>/
+  Then  it contains a SKILL.md file with frontmatter (name, description, metadata)
+  And   the description is a one-line summary suitable for Claude Code skill listing
+  And   the metadata.requires.bins lists required executables
+
+Scenario: S71-skill-installable-via-symlink
+  Given a skill with SKILL.md in skills/knowledge-storage/
+  When  I symlink it to ~/.claude/skills/knowledge-storage
+  Then  Claude Code discovers the skill and lists it in available skills
+  And   the skill can be invoked via natural language
+
+Scenario: S72-skill-readme-docs-installation
+  Given the kgent-skills repository README
+  Then  it contains a "Claude Code Skills" section with installation instructions
+  And   the instructions show symlink and copy options
+  And   the instructions specify ~/.claude/skills/ as the target directory
+```
+
+### F20 — Native URL presentation (FM8)
+
+```gherkin
+Feature: Skills present native platform URLs to users, not canonical URIs
+
+Scenario: S73-store-confirmation-shows-native-url
+  Given workspace_domain is configured as "mycompany.larksuite.com"
+  And   a document is created with canonical URI kgent://lark/abc123
+  When  the knowledge-storage skill confirms the creation
+  Then  the confirmation message shows "https://mycompany.larksuite.com/docx/abc123"
+  And   the canonical URI kgent://lark/abc123 is NOT shown to the user
+
+Scenario: S74-qa-citations-use-native-urls
+  Given workspace_domain is configured as "mycompany.larksuite.com"
+  And   the QA skill cites a source with URI kgent://lark/xyz789
+  When  the QA skill presents the answer
+  Then  the citation shows "https://mycompany.larksuite.com/docx/xyz789"
+  And   the canonical URI is NOT shown in the citation
+
+Scenario: S75-missing-workspace-domain-prompts-config
+  Given workspace_domain is not configured in ~/.kgent/config.yaml
+  When  a skill attempts to construct a native URL
+  Then  the skill prompts the user to configure workspace_domain
+  And   the prompt explains where to set it (~/.kgent/config.yaml)
+
+Scenario: S76-workspace-domain-in-config-schema
+  Given the config schema documentation
+  Then  defaults.workspace_domain is documented with type, default, and purpose
+  And   an example config shows workspace_domain set
+```
+
 ---
 
 ## 3. Negative Constraints (Must NOT)
@@ -665,6 +720,8 @@ skipped-with-reason. Never silently absent.
 | N17 | Name an adapter in a routing intent that is disabled or fails capability verification | S58, S59 + adapter-resolution unit tests |
 | N18 | Propose CREATE when a matching existing document exists (update-first bias) | S61, S62 |
 | N19 | Execute a backend write directly, outside resolve_intent/router enforcement | S63, S64 |
+| N20 | Present canonical URIs (kgent://...) to users in skill output | S73, S74 + skill output grep test |
+| N21 | Ship a skill without a SKILL.md manifest | S70 + skill directory structure test |
 
 ---
 
@@ -708,7 +765,179 @@ the set below configured defaults".
 
 ---
 
-## 6. Setup Plan (environment authorization)
+## 6. Skill Evaluation Suite
+
+The skills (knowledge-storage, question-answering, wiki-setup) are evaluated
+through a structured test suite that verifies both quantitative assertions and
+qualitative behavior. This is separate from the acceptance scenarios (§2) —
+those verify the router/CLI; this verifies the skill layer's orchestration.
+
+### 6.1 Test Case Structure
+
+Test cases are stored in `evals/skills/evals.json`:
+
+```json
+{
+  "skill_name": "knowledge-storage",
+  "evals": [
+    {
+      "id": 1,
+      "name": "store-meeting-notes-update-first",
+      "prompt": "We just discussed the Q4 roadmap. Can you save these notes?",
+      "context": {
+        "existing_docs": [
+          {"uri": "kgent://lark/docxAAA", "title": "Q4 Roadmap v1", "content": "..."}
+        ],
+        "conversation": ["discussed Q4 roadmap", "agreed on 3 priorities"]
+      },
+      "expected_behavior": {
+        "operation": "update",
+        "target_uri": "kgent://lark/docxAAA",
+        "proposal_shown": true,
+        "native_url_shown": true
+      },
+      "assertions": [
+        {
+          "name": "update_first_bias",
+          "type": "behavioral",
+          "check": "skill proposes UPDATE of existing doc, not CREATE",
+          "verification": "assert proposal.operation == 'update' and proposal.target == 'kgent://lark/docxAAA'"
+        },
+        {
+          "name": "native_url_in_confirmation",
+          "type": "output",
+          "check": "confirmation message shows native URL, not canonical URI",
+          "verification": "assert 'https://' in confirmation and 'kgent://' not in confirmation"
+        },
+        {
+          "name": "proposal_displayed",
+          "type": "behavioral",
+          "check": "proposal is shown before execution",
+          "verification": "assert proposal_displayed_before_write(proposal, write_call)"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 6.2 Evaluation Dimensions
+
+Each skill is evaluated on:
+
+1. **Workflow correctness**: Does the skill follow the prescribed workflow?
+   - knowledge-storage: update-first search → proposal → confirm → execute
+   - question-answering: search → read → synthesize → cite sources
+   - wiki-setup: multi-target orchestration → per-target approval → journal
+
+2. **Output quality**: Are user-facing outputs correct?
+   - Native URLs shown (not canonical URIs) — N20
+   - Citations include source URIs — S68
+   - Provenance recorded — S60
+
+3. **Policy compliance**: Does the skill respect router enforcement?
+   - No writes without confirmation — N1, S64
+   - No direct backend calls outside router — N19, S63
+   - Sensitivity zones enforced — N4, S13
+
+4. **Robustness**: Does the skill handle edge cases?
+   - No matching docs → propose CREATE (not fail)
+   - Multiple matches → offer per-copy options — S62
+   - Injection in fetched content → inert — S39
+
+### 6.3 Running Evaluations
+
+Evaluations run as subagent tests:
+
+```bash
+# For each eval in evals.json:
+1. Spawn subagent with skill loaded
+2. Provide eval prompt + context
+3. Capture: proposal, write calls, output messages, timing
+4. Grade assertions (pass/fail with evidence)
+5. Aggregate into skill benchmark
+```
+
+**Grading**: Each assertion is graded pass/fail with evidence. Assertions are
+checked via:
+- **Programmatic checks**: Parse proposal JSON, output messages, write logs
+- **Behavioral checks**: Verify operation sequence (search before write, etc.)
+- **Output checks**: Grep for native URLs, canonical URIs, citations
+
+**Benchmark aggregation**:
+
+```json
+{
+  "skill": "knowledge-storage",
+  "total_evals": 10,
+  "pass_rate": 0.9,
+  "assertions": {
+    "update_first_bias": {"passed": 9, "failed": 1, "pass_rate": 0.9},
+    "native_url_in_confirmation": {"passed": 10, "failed": 0, "pass_rate": 1.0},
+    "proposal_displayed": {"passed": 10, "failed": 0, "pass_rate": 1.0}
+  },
+  "timing": {
+    "mean_duration_ms": 2500,
+    "stddev_duration_ms": 400
+  }
+}
+```
+
+### 6.4 Minimum Eval Coverage
+
+Each skill must have ≥5 test cases covering:
+
+**knowledge-storage**:
+1. Update-first with single match
+2. Update-first with multiple matches (near-duplicates)
+3. Create new (no matches)
+4. Multi-backend fan-out
+5. Sensitivity zone enforcement (confidential → external rejected)
+
+**question-answering**:
+1. Simple factual question with citations
+2. Compound query decomposition
+3. No results found (graceful handling)
+4. Conflicting results surfaced
+5. Stale results flagged
+
+**wiki-setup**:
+1. Multi-target create with approvals
+2. Partial failure (one backend fails)
+3. Approval expiry handling
+4. Journal + undo verification
+
+### 6.5 Iterative Improvement
+
+If pass_rate < 0.95 on any assertion category:
+
+1. **Analyze failures**: Read transcripts, identify patterns
+2. **Revise skill**: Update SKILL.md to address failure modes
+3. **Rerun evals**: Verify fix, check for regressions
+4. **Repeat** until pass_rate ≥ 0.95
+
+This mirrors the skill-creator loop: draft → test → review → improve → repeat.
+
+### 6.6 Eval Integration with Gauntlet
+
+The skill eval suite runs as part of the gauntlet (§6 setup plan):
+
+```bash
+tools/gauntlet.sh:
+  ...
+  pytest tests/                          # acceptance scenarios
+  pytest tests/properties/               # property invariants
+  pytest tests/adversarial/              # adversarial corpus
+  python -m evals.run_skill_evals        # skill evaluation suite ← NEW
+  ...
+```
+
+Skill eval results are reported alongside acceptance scenario results. A skill
+with pass_rate < 0.95 blocks the gauntlet (same as failing acceptance scenarios).
+
+---
+
+## 7. Setup Plan (environment authorization)
 
 Approving this spec authorizes the following for the **implementation phase**:
 
@@ -736,8 +965,9 @@ writers, policy gates — those are the units under test.
 
 **Gauntlet entry point**: `tools/gauntlet.sh` (`set -e`, cleans stale
 artifacts first, fails closed, exit codes spelled out) running: tests+coverage
-→ types → lint → mutation → properties → adversarial corpus → real-execution
-smoke → supply-chain/secret scan → network-capture check (N14).
+→ types → lint → mutation → properties → adversarial corpus → **skill
+evaluation suite (§6)** → real-execution smoke → supply-chain/secret scan →
+network-capture check (N14).
 
 **Manual-mutation fallback**: `tools/mutants.py` persisted per old-coder, used
 only if mutmut is unavailable; recorded in EVIDENCE.
@@ -755,22 +985,24 @@ pasted in EVIDENCE.
 
 ---
 
-## 7. Spec → Test Mapping
+## 8. Spec → Test Mapping
 
 Filled during implementation; every row must end as **pass**, **unverified**,
 or **n-a** with reason — never blank, never "pass" for a skipped row.
 
 | ID | Scenario / constraint | Test | Status |
 |---|---|---|---|
-| S1–S69 | §2 scenarios | tests named after scenario ids | pending |
-| N1–N19 | §3 constraints | per-table mapping | pending |
+| S1–S76 | §2 scenarios | tests named after scenario ids | pending |
+| N1–N21 | §3 constraints | per-table mapping | pending |
 | P1–P7 | §4 properties | `tests/properties/` | pending |
 | FM1–FM12 | §1 layers | §5 rehearsals + scenario refs | pending |
 
 ---
 
-## 8. Honest Notes (append-only during implementation)
+## 9. Honest Notes (append-only during implementation)
 
+- v1.5 adds skill evaluation suite (§6): structured test framework for skills with assertions, grading, benchmarking, and iterative improvement loop. Each skill requires ≥5 test cases covering workflow correctness, output quality, policy compliance, and robustness. Eval suite runs as part of gauntlet; pass_rate < 0.95 blocks.
+- v1.4 adds skill packaging and native URL presentation requirements (§1.6, §1.7, F19–F20, S70–S76, N20–N21): skills must be packaged as SKILL.md files for Claude Code, installable via symlink, and must present native platform URLs (not canonical URIs) to users with workspace_domain configuration.
 - v1.3 adds explicit skill-layer scenarios (F16–F18, S60–S69, N18–N19): knowledge-storage (provenance, update-first, primitive invocation, confirmation), skill↔router/agent contract (backend-agnostic, intent consumption, resolution priority), QA (grounded citations), and wiki-setup (approval driving + journaling).
 - v1.2 aligned with design v1.6 (second PR #1 review round): router returns structured `RoutingIntent` to the agent loop; adapter resolution prefers the platform skill (`lark-doc`) over the CLI.
 - v1.1 aligned with design v1.5 (PR #1 review): platform-native archive; three initial backends (Lark/Feishu, DingTalk, WeCom); lazy auth; `kgent doctor`; snippet-level dedup; conflict resolution; query decomposition; journal confidentiality guard.
@@ -778,10 +1010,10 @@ or **n-a** with reason — never blank, never "pass" for a skipped row.
 
 ---
 
-## 9. Approval
+## 10. Approval
 
 | | |
 |---|---|
 | Approver | ____________________ |
 | Date | ____________________ |
-| Scope authorized | Implementation per §6 setup plan; checkpoint-commit cadence; dependency list as listed — nothing more |
+| Scope authorized | Implementation per §7 setup plan; checkpoint-commit cadence; dependency list as listed — nothing more |

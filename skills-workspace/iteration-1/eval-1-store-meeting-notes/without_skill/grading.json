@@ -1,0 +1,45 @@
+{
+  "expectations": [
+    {
+      "text": "skill runs 'python -m kgent search' before proposing any write",
+      "passed": false,
+      "evidence": "no search command found"
+    },
+    {
+      "text": "skill presents a proposal to the user and waits for approval before executing",
+      "passed": false,
+      "evidence": "no proposal/confirmation prompt found"
+    },
+    {
+      "text": "proposal includes a title derived from meeting content",
+      "passed": true,
+      "evidence": "title field found in response"
+    },
+    {
+      "text": "content is formatted as clean markdown with structure",
+      "passed": true,
+      "evidence": "markdown formatting found"
+    },
+    {
+      "text": "final confirmation message includes native URL (https://...), not kgent:// URI",
+      "passed": false,
+      "evidence": "primary confirmation has https://: False"
+    },
+    {
+      "text": "skill shows the op_id so user can undo",
+      "passed": false,
+      "evidence": "no op_id/undo reference found"
+    },
+    {
+      "text": "proposal shows provenance (where target backend came from)",
+      "passed": false,
+      "evidence": "no provenance info found"
+    }
+  ],
+  "summary": {
+    "passed": 2,
+    "failed": 5,
+    "total": 7,
+    "pass_rate": 0.29
+  }
+}

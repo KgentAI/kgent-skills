@@ -1,0 +1,140 @@
+{
+  "metadata": {
+    "skill_name": "kgent-skills",
+    "skill_path": "C:\\Users\\yong_\\projects\\kgent\\kgent-skills\\skills",
+    "executor_model": "claude-sonnet-4",
+    "analyzer_model": "claude-sonnet-4",
+    "timestamp": "2026-08-31T11:15:00Z",
+    "evals_run": [1, 2],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 1,
+      "eval_name": "store-meeting-notes",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 45.0,
+        "tokens": 3500,
+        "tool_calls": 8,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "skill runs 'python -m kgent search' before proposing any write", "passed": true, "evidence": "search at pos 1446, first write at pos 2797"},
+        {"text": "skill presents a proposal to the user and waits for approval before executing", "passed": true, "evidence": "proposal/confirmation prompt found"},
+        {"text": "proposal includes a title derived from meeting content", "passed": true, "evidence": "title field found in response"},
+        {"text": "content is formatted as clean markdown with structure", "passed": true, "evidence": "markdown formatting found"},
+        {"text": "final confirmation message includes native URL (https://...), not kgent:// URI", "passed": true, "evidence": "primary confirmation has https://: True"},
+        {"text": "skill shows the op_id so user can undo", "passed": true, "evidence": "op_id/undo reference found"},
+        {"text": "proposal shows provenance (where target backend came from)", "passed": true, "evidence": "provenance info found"}
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "eval_name": "store-meeting-notes",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.29,
+        "passed": 2,
+        "failed": 5,
+        "total": 7,
+        "time_seconds": 30.0,
+        "tokens": 2100,
+        "tool_calls": 5,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "skill runs 'python -m kgent search' before proposing any write", "passed": false, "evidence": "no search command found"},
+        {"text": "skill presents a proposal to the user and waits for approval before executing", "passed": false, "evidence": "no proposal/confirmation prompt found"},
+        {"text": "proposal includes a title derived from meeting content", "passed": true, "evidence": "title field found in response"},
+        {"text": "content is formatted as clean markdown with structure", "passed": true, "evidence": "markdown formatting found"},
+        {"text": "final confirmation message includes native URL (https://...), not kgent:// URI", "passed": false, "evidence": "confirmation has https://: False, no kgent://: True"},
+        {"text": "skill shows the op_id so user can undo", "passed": false, "evidence": "no op_id/undo reference found"},
+        {"text": "proposal shows provenance (where target backend came from)", "passed": false, "evidence": "no provenance info found"}
+      ],
+      "notes": ["Baseline misses: update-first search, provenance, op_id reporting, native URL conversion"]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "qa-password-policy",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.83,
+        "passed": 5,
+        "failed": 1,
+        "total": 6,
+        "time_seconds": 40.0,
+        "tokens": 3200,
+        "tool_calls": 7,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "skill runs 'python -m kgent search' with relevant query", "passed": true, "evidence": "search found: True, relevant terms: True"},
+        {"text": "skill reads 2-5 relevant documents using 'python -m kgent read'", "passed": true, "evidence": "read command found"},
+        {"text": "every factual claim in the answer has a source citation", "passed": true, "evidence": "inline citations found"},
+        {"text": "citations use native URLs (https://...), not kgent:// URIs", "passed": true, "evidence": "https URLs: True, kgent:// URLs: False"},
+        {"text": "answer has a Sources section listing all cited documents", "passed": true, "evidence": "sources section found"},
+        {"text": "skill does not fabricate password policy details not from search results", "passed": false, "evidence": "attribution language not consistently applied to all claims"}
+      ],
+      "notes": ["Minor: one claim lacked explicit attribution language"]
+    },
+    {
+      "eval_id": 2,
+      "eval_name": "qa-password-policy",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.5,
+        "passed": 3,
+        "failed": 3,
+        "total": 6,
+        "time_seconds": 25.0,
+        "tokens": 1800,
+        "tool_calls": 4,
+        "errors": 0
+      },
+      "expectations": [
+        {"text": "skill runs 'python -m kgent search' with relevant query", "passed": true, "evidence": "search found: True, relevant terms: True"},
+        {"text": "skill reads 2-5 relevant documents using 'python -m kgent read'", "passed": false, "evidence": "no read command found"},
+        {"text": "every factual claim in the answer has a source citation", "passed": true, "evidence": "inline citations found"},
+        {"text": "citations use native URLs (https://...), not kgent:// URIs", "passed": false, "evidence": "https URLs: False, kgent:// URLs: True"},
+        {"text": "answer has a Sources section listing all cited documents", "passed": true, "evidence": "sources section found"},
+        {"text": "skill does not fabricate password policy details not from search results", "passed": false, "evidence": "no attribution language found"}
+      ],
+      "notes": ["Baseline misses: document reading, native URLs, consistent attribution"]
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {"mean": 0.92, "stddev": 0.09, "min": 0.83, "max": 1.0},
+      "time_seconds": {"mean": 42.5, "stddev": 2.5, "min": 40.0, "max": 45.0},
+      "tokens": {"mean": 3350, "stddev": 150, "min": 3200, "max": 3500}
+    },
+    "without_skill": {
+      "pass_rate": {"mean": 0.40, "stddev": 0.11, "min": 0.29, "max": 0.50},
+      "time_seconds": {"mean": 27.5, "stddev": 2.5, "min": 25.0, "max": 30.0},
+      "tokens": {"mean": 1950, "stddev": 150, "min": 1800, "max": 2100}
+    },
+    "delta": {
+      "pass_rate": "+0.52",
+      "time_seconds": "+15.0",
+      "tokens": "+1400"
+    }
+  },
+  "notes": [
+    "With-skill configuration achieves 92% average pass rate vs 40% baseline — a +52% improvement",
+    "Key behaviors the skill enables that baseline misses: update-first search (N18), provenance tracking (S60), native URL conversion (N20, S73), op_id reporting, explicit proposal before write (N1, S64), document reading before answering (S68)",
+    "The skill adds ~15s and ~1400 tokens per invocation due to the structured workflow, but the pass rate improvement justifies the cost",
+    "Eval 1 (store-meeting-notes): skill achieves 100% pass rate; baseline achieves 29% (only title derivation and markdown formatting pass)",
+    "Eval 2 (qa-password-policy): skill achieves 83% pass rate; baseline achieves 50% (search and sources work but document reading and native URLs fail)",
+    "The one failing assertion in eval-2 with-skill is minor: attribution language not consistently applied to every claim. The SKILL.md could be strengthened to emphasize attribution on every claim, not just in the Sources section."
+  ]
+}
