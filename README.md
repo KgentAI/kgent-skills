@@ -22,6 +22,30 @@ pip install -e .
 pip install -e ".[all]"
 ```
 
+### Claude Code Skills
+
+Install the Claude Code skills to enable natural language invocation:
+
+```bash
+# Option 1: Symlink to user-level skills directory (recommended)
+ln -s $(pwd)/skills/knowledge-storage ~/.agents/skills/knowledge-storage
+ln -s $(pwd)/skills/question-answering ~/.agents/skills/question-answering
+
+# Option 2: Symlink to project-level skills directory
+ln -s $(pwd)/skills/knowledge-storage .claude/skills/knowledge-storage
+ln -s $(pwd)/skills/question-answering .claude/skills/question-answering
+
+# Option 3: Copy skills (for distribution)
+cp -r skills/knowledge-storage ~/.agents/skills/
+cp -r skills/question-answering ~/.agents/skills/
+```
+
+After installation, you can use natural language:
+- "Save this to the knowledge base" → invokes `knowledge-storage` skill
+- "What does X mean?" → invokes `question-answering` skill
+
+**Note**: The skills require the kgent CLI to be installed (via `pip install -e .` above) and configured with at least one backend (see Configuration section).
+
 ### Dependencies
 
 - Python 3.10+

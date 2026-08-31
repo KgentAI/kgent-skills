@@ -178,10 +178,24 @@ def _cmd_store(args: argparse.Namespace) -> int:
             backend = router.backends[backend_name]
         except KeyError:
             continue
-        for uri, doc in backend.docs.items():
-            if doc.title == title:
-                existing_uri = uri
-                break
+        # Try to search for existing documents with this title
+        try:
+            # For real adapters, use search to find existing docs
+            if hasattr(backend, 'search'):
+                results = backend.search(title, mode="keyword", top_k=10)
+                for result in results:
+                    if result.metadata.title == title:
+                        existing_uri = result.doc_uri
+                        break
+            # For FakeBackend (tests), use docs dict
+            elif hasattr(backend, 'docs'):
+                for uri, doc in backend.docs.items():
+                    if doc.title == title:
+                        existing_uri = uri
+                        break
+        except Exception:
+            # If search fails, proceed with create
+            pass
         if existing_uri:
             break
 

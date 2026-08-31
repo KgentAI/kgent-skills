@@ -49,8 +49,16 @@ class LarkAdapter(CliCapabilityAdapter):
             "--as", "user",
             "--json",
         ])
-        # Response contains the document token/ID
-        doc_token = payload.get("token") or payload.get("document_id") or payload.get("id")
+        # Response structure: {"ok": true, "data": {"document": {"document_id": "...", ...}}}
+        data = payload.get("data") or {}
+        document = data.get("document") or {}
+        doc_token = (
+            document.get("document_id")
+            or document.get("token")
+            or payload.get("token")
+            or payload.get("document_id")
+            or payload.get("id")
+        )
         if not doc_token:
             raise AdapterError(f"lark-cli docs +create returned no document token: {payload}")
         return self._canonical(str(doc_token))
@@ -65,10 +73,24 @@ class LarkAdapter(CliCapabilityAdapter):
             "--as", "user",
             "--json",
         ])
-        # Extract content from response
-        title = str(payload.get("title", ""))
-        content = str(payload.get("content", ""))
-        version = str(payload.get("revision_id")) if payload.get("revision_id") else None
+        # Response structure: {"ok": true, "data": {"document": {"content": "...", "document_id": "...", "revision_id": ...}}}
+        data = payload.get("data") or {}
+        document = data.get("document") or {}
+        # Content is markdown with # title as first line
+        content = str(document.get("content", ""))
+        title = ""
+        # Extract title from markdown heading or DocxXML <title> tag
+        if content.startswith("# "):
+            # Markdown format: # Title\n\nContent
+            lines = content.split("\n", 1)
+            title = lines[0][2:].strip()
+            content = lines[1].strip() if len(lines) > 1 else ""
+        elif content.startswith("<title>") and "</title>" in content:
+            # DocxXML format: <title>Title</title><p>Content</p>
+            title_end = content.index("</title>")
+            title = content[7:title_end]
+            content = content[title_end + 9:].strip()
+        version = str(document.get("revision_id")) if document.get("revision_id") else None
         meta = DocumentMetadata(
             doc_uri=doc_uri,
             title=title,
