@@ -43,6 +43,8 @@ For each page:
 python -m kgent search --query "<page title>" --backends <backend> --json
 ```
 
+`kgent search` searches both flat docs and wiki nodes by default. Results include a `node_type` field (`doc` vs `wiki_node`) so you can distinguish them. For Lark wiki targets, also note the `space_id` of matches so you can propose updating within the same space.
+
 If a matching document exists:
 - Record its URI and propose an **update** instead of a create
 - Show the existing title and let the user confirm the replacement
@@ -82,7 +84,7 @@ When the user wants to set up a **wiki** or **knowledge base** on Lark (not just
 
 **Detecting wiki intent:** The user says "wiki", "knowledge base", "知识库", or asks to create a structured multi-page wiki on Lark. In these cases:
 
-1. **Resolve or create the target wiki space** using `lark-cli`:
+1. **Resolve or create the target wiki space** using `lark-cli` (space management is Lark-specific, outside kgent's scope):
    ```bash
    # List existing spaces the user can write to
    lark-cli wiki +space-list --as user --format json
@@ -92,24 +94,33 @@ When the user wants to set up a **wiki** or **knowledge base** on Lark (not just
    lark-cli wiki +space-create --name "<space name>" --as user --format json
    ```
 
-2. **Create pages as wiki nodes** (not flat docs) using `lark-cli wiki +node-create`:
+2. **Create pages as wiki nodes** via `kgent create --wiki-space`:
    ```bash
-   # Create a wiki node inside the space
-   lark-cli wiki +node-create --space-id <space_id> --title "<page title>" --obj-type docx --as user --format json
+   # Create a wiki node inside the knowledge space — kgent handles the rest
+   python -m kgent create --title "<page title>" --content "..." --backends lark --wiki-space <space_id> --yes --json
    ```
-   Then populate the node's content via `lark-cli docx` (the underlying object is a docx).
+   kgent creates the wiki node, populates its content, and returns the `node_token` in the JSON output.
 
-3. **Hierarchy**: If the user wants nested pages (parent → children), pass `--parent-node-token <token>` to `+node-create` for child nodes.
+3. **Hierarchy**: For nested pages (parent → children), pass `--parent-node-token <token>`:
+   ```bash
+   python -m kgent create --title "Child Page" --content "..." --backends lark --wiki-space <space_id> --parent-node-token <parent_token> --yes --json
+   ```
 
-4. **URL conversion for wiki nodes**: Wiki nodes use `/wiki/<node_token>` not `/docx/<obj_token>`:
+4. **Search across wiki spaces**: `kgent search` searches wiki spaces by default (alongside Drive docs). No special flag needed:
+   ```bash
+   python -m kgent search --query "<keywords>" --backends lark --json
+   ```
+   Results include both flat docs and wiki nodes, with the `node_type` field indicating which.
+
+5. **URL conversion for wiki nodes**: Wiki nodes use `/wiki/<node_token>` not `/docx/<obj_token>`:
    ```
    https://<workspace_domain>/wiki/<node_token>
    ```
-   Get the `node_token` from the `+node-create` response.
+   The `node_token` is returned by `kgent create --wiki-space` in the JSON output.
 
-5. **When the user just says "create a doc on Lark"** without wiki knowledge-base intent, use `kgent create` as before (creates a flat doc in Drive). Only route through `lark-cli wiki` when the intent is clearly wiki/knowledge-base shaped.
+6. **When the user just says "create a doc on Lark"** without wiki knowledge-base intent, use `kgent create` without `--wiki-space` (creates a flat doc in Drive). Only add `--wiki-space` when the intent is clearly wiki/knowledge-base shaped.
 
-**Mixed operations**: A single wiki setup can have both Lark wiki nodes and Lark docs (or DingTalk/WeCom targets). Treat each leg independently — some legs go through `kgent create`, others through `lark-cli wiki +node-create`.
+**Mixed operations**: A single wiki setup can have both Lark wiki nodes and Lark docs (or DingTalk/WeCom targets). Treat each leg independently — some legs use `kgent create --wiki-space`, others use plain `kgent create`.
 
 ### 4. Execute (After User Approval)
 
@@ -155,8 +166,8 @@ If all legs succeeded:
 
 - **Never execute writes without explicit user approval.** Always present the full multi-leg proposal first.
 - **Native URLs only:** Never show `kgent://...` URIs to the user. Convert to native platform URLs using `workspace_domain` from config (N20, S73-S75). Lark wiki nodes use `/wiki/<token>`, Lark docs use `/docx/<token>`.
-- **Lark wiki vs Lark doc:** When the user says "wiki" or "knowledge base" for Lark, create wiki nodes in a knowledge space (via `lark-cli wiki +node-create`), not flat docs. Only route through `lark-cli wiki` when the intent is wiki-shaped — for plain "create a doc on Lark", use `kgent create`.
-- **Update-first bias:** Search for existing docs before creating. If a match exists, propose update (N18, S61). For Lark wiki nodes, search within the target space via `lark-cli wiki +node-list`.
+- **Lark wiki vs Lark doc:** When the user says "wiki" or "knowledge base" for Lark, use `kgent create --wiki-space <space_id>` to create wiki nodes. Without `--wiki-space`, `kgent create` makes a flat doc in Drive. `kgent search` covers both wiki nodes and flat docs by default.
+- **Update-first bias:** Search for existing docs before creating. If a match exists, propose update (N18, S61). `kgent search` covers wiki nodes and flat docs by default — no separate wiki search needed.
 - **One op_id per wiki setup:** Group all legs under one journal entry when possible so the user can undo the whole setup at once.
 - **Partial failure is ok:** The system is designed for fan-out. One failed backend shouldn't block the others. Report failures clearly and make them repairable.
 - **No auto-merge of near-duplicates:** If two docs look similar, show both and let the user choose (N8, S38).
@@ -238,9 +249,9 @@ Skill:
 2. Resolve target space:
    lark-cli wiki +space-list --as user --format json
    → Found "Engineering Wiki" (space_id: 7123456)
-3. Search space for collisions:
-   lark-cli wiki +node-list --space-id 7123456 --as user --format json
-   → No matches for "Welcome", "Architecture Guide", "Runbook"
+3. Search for collisions (searches wiki by default):
+   python -m kgent search --query "Welcome Architecture Guide Runbook" --backends lark --json
+   → No matches
 4. Present proposal:
    "I'll create 3 wiki nodes in 'Engineering Wiki':
     1. [CREATE-WIKI] 'Welcome' → wiki node in space 7123456
@@ -249,13 +260,12 @@ Skill:
     Proceed? (yes/no/edit)"
 5. User: "yes"
 6. Execute:
-   lark-cli wiki +node-create --space-id 7123456 --title "Welcome" --obj-type docx --as user --format json
+   python -m kgent create --title "Welcome" --content "..." --backends lark --wiki-space 7123456 --yes --json
    → node_token: wiki_AAA
-   lark-cli wiki +node-create --space-id 7123456 --title "Architecture Guide" --parent-node-token wiki_AAA --obj-type docx --as user --format json
+   python -m kgent create --title "Architecture Guide" --content "..." --backends lark --wiki-space 7123456 --parent-node-token wiki_AAA --yes --json
    → node_token: wiki_BBB
-   lark-cli wiki +node-create --space-id 7123456 --title "Runbook" --obj-type docx --as user --format json
+   python -m kgent create --title "Runbook" --content "..." --backends lark --wiki-space 7123456 --yes --json
    → node_token: wiki_CCC
-   (Then populate each node's content via lark-cli docx commands)
 7. Report:
    "✅ Wiki setup complete:
     - 'Welcome' → https://mycompany.larksuite.com/wiki/wiki_AAA
