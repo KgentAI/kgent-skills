@@ -105,7 +105,7 @@ Complete implementation of kgent packaging per §1–§7 specs:
 
 ## Test Results
 
-```
+```text
 ======================= 389 passed, 2 skipped in 12.44s ======================
 ```
 

@@ -22,19 +22,23 @@ def sync_status(journal: Journal) -> list[dict[str, Any]]:
     """
     result: list[dict[str, Any]] = []
     for entry in journal.list_partial():
-        result.append({
-            "op_id": entry.get("op_id"),
-            "status": entry.get("status"),
-            "operation": entry.get("operation"),
-            "failed_targets": list(entry.get("failed_targets", [])),
-        })
+        result.append(
+            {
+                "op_id": entry.get("op_id"),
+                "status": entry.get("status"),
+                "operation": entry.get("operation"),
+                "failed_targets": list(entry.get("failed_targets", [])),
+            }
+        )
     for entry in journal.list_failed():
-        result.append({
-            "op_id": entry.get("op_id"),
-            "status": entry.get("status"),
-            "operation": entry.get("operation"),
-            "failed_targets": list(entry.get("failed_targets", [])),
-        })
+        result.append(
+            {
+                "op_id": entry.get("op_id"),
+                "status": entry.get("status"),
+                "operation": entry.get("operation"),
+                "failed_targets": list(entry.get("failed_targets", [])),
+            }
+        )
     return result
 
 
@@ -55,7 +59,8 @@ def sync_repair(
     entry = journal.get(op_id)
     if entry is None:
         return OpResult(
-            op_id=op_id, exit_code=1,
+            op_id=op_id,
+            exit_code=1,
             journal_entry={"op_id": op_id, "status": "not_found"},
             error=f"op {op_id!r} not found in journal",
         )
@@ -63,13 +68,15 @@ def sync_repair(
     if status != "partial":
         # Already repaired or not a partial op — idempotent no-op.
         return OpResult(
-            op_id=op_id, exit_code=0,
+            op_id=op_id,
+            exit_code=0,
             journal_entry={"op_id": op_id, "status": "already_repaired"},
         )
     failed_targets = list(entry.get("failed_targets", []))
     if not failed_targets:
         return OpResult(
-            op_id=op_id, exit_code=0,
+            op_id=op_id,
+            exit_code=0,
             journal_entry={"op_id": op_id, "status": "nothing_to_repair"},
         )
     # Re-execute the failed legs: for each "backend: error" string, extract
@@ -90,6 +97,7 @@ def sync_repair(
             if operation == "create":
                 from kgent.router.policy import _metadata
                 from kgent.types import WriteProposal
+
                 # Build a minimal proposal for the re-create.
                 proposal = WriteProposal(
                     operation="create",
@@ -117,21 +125,24 @@ def sync_repair(
         entry.pop("failed_targets", None)
         entry.pop("failed_legs", None)
     # Persist the updated entry (append a repair marker).
-    journal.append({
-        "schema_version": 1,
-        "op_id": f"repair-{op_id}",
-        "ts": "",
-        "operation": "repair",
-        "targets": repaired,
-        "idempotency_key": f"repair-{op_id}",
-        "snapshot": {},
-        "proposal_hash": "",
-        "confirmation": "sync",
-        "sensitivity": sensitivity,
-        "status": "ok" if not still_failed else "partial",
-    })
+    journal.append(
+        {
+            "schema_version": 1,
+            "op_id": f"repair-{op_id}",
+            "ts": "",
+            "operation": "repair",
+            "targets": repaired,
+            "idempotency_key": f"repair-{op_id}",
+            "snapshot": {},
+            "proposal_hash": "",
+            "confirmation": "sync",
+            "sensitivity": sensitivity,
+            "status": "ok" if not still_failed else "partial",
+        }
+    )
     exit_code = 0 if not still_failed else 2
     return OpResult(
-        op_id=op_id, exit_code=exit_code,
+        op_id=op_id,
+        exit_code=exit_code,
         journal_entry={"op_id": op_id, "status": "repaired", "repaired_targets": repaired},
     )

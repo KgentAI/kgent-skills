@@ -4,6 +4,7 @@
 project-local config, forbidden fields have zero influence.
 """
 
+# pyright: basic
 from __future__ import annotations
 
 from hypothesis import given, settings, strategies as st
@@ -26,7 +27,11 @@ def test_p3_forbidden_keys_not_empty():
 
 
 @given(
-    backend_name=st.text(min_size=1, max_size=20, alphabet=st.characters(blacklist_categories=("Cs",))),
+    backend_name=st.text(
+        min_size=1,
+        max_size=20,
+        alphabet=st.characters(blacklist_categories=("Cs",)),  # pyright: ignore[reportArgumentType]
+    ),
 )
 @settings(max_examples=100, derandomize=True)
 def test_p3_skill_name_forbidden(backend_name: str):

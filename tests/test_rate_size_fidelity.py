@@ -6,6 +6,7 @@ that would accept the content (alternatives). The write path rejects with exit
 code 3 (``PolicyError``).
 """
 
+# pyright: basic
 from __future__ import annotations
 
 import pytest
@@ -199,7 +200,9 @@ def test_s49_warning_snippet_plural_and_singular():
         lossy_warning_snippet(["vote block", "diagram", "comment thread"])
         == "3 elements have no Markdown equivalent: vote block, diagram, comment thread"
     )
-    assert lossy_warning_snippet(["vote block"]) == "1 element has no Markdown equivalent: vote block"
+    assert (
+        lossy_warning_snippet(["vote block"]) == "1 element has no Markdown equivalent: vote block"
+    )
     assert lossy_warning_snippet([]) == ""
 
 

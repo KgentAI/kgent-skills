@@ -5,6 +5,7 @@ update-first search, proposal building with provenance, and execution via
 the Router primitives.
 """
 
+# pyright: basic
 from __future__ import annotations
 
 import pytest
@@ -59,6 +60,7 @@ def router_env(tmp_home, monkeypatch):
     )
     monkeypatch.setenv("KGENT_HOME", str(tmp_home))
     from kgent.config.loader import load_effective_config
+
     config, _ = load_effective_config(tmp_home / "config.yaml", tmp_home, {})
     # Enrich backends with capabilities
     for name, b in backends.items():
@@ -108,7 +110,9 @@ def test_s61_update_first_proposes_update_not_create(router_env):
     from kgent.skills.knowledge_storage import store_workflow
 
     lark = router_env["backends"]["lark"]
-    lark.create_document(title="API Guidelines", content="v1", metadata=_meta("lark", "API Guidelines"))
+    lark.create_document(
+        title="API Guidelines", content="v1", metadata=_meta("lark", "API Guidelines")
+    )
     context = {}
     proposal = store_workflow("save API Guidelines v2", context, router_env["router"])
     assert proposal.operation == "update"
@@ -136,8 +140,12 @@ def test_s62_multiple_matches_offer_options(router_env):
     # Seed matching docs in both backends
     lark = router_env["backends"]["lark"]
     dingtalk = router_env["backends"]["dingtalk"]
-    lark.create_document(title="API Guidelines", content="lark v1", metadata=_meta("lark", "API Guidelines"))
-    dingtalk.create_document(title="API Guidelines", content="dingtalk v1", metadata=_meta("dingtalk", "API Guidelines"))
+    lark.create_document(
+        title="API Guidelines", content="lark v1", metadata=_meta("lark", "API Guidelines")
+    )
+    dingtalk.create_document(
+        title="API Guidelines", content="dingtalk v1", metadata=_meta("dingtalk", "API Guidelines")
+    )
     context = {}
     proposal = store_workflow("save API Guidelines v2", context, router_env["router"])
     # When multiple matches exist, the proposal should list them
@@ -159,6 +167,7 @@ def test_s63_skill_uses_resolve_intent(router_env):
     # The proposal should have targets resolved via resolve_intent
     assert proposal.targets
     # Execute via router (which uses resolve_intent internally)
+    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
     result = router_env["router"].execute(proposal, confirmation="interactive-yes")
     assert result.exit_code == 0
 
@@ -177,6 +186,7 @@ def test_s64_unconfirmed_write_blocked(router_env):
     proposal = store_workflow("save doc", context, router_env["router"])
     # Attempt to execute with "rejected" confirmation — raises PolicyError
     with pytest.raises(PolicyError):
+        # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
         router_env["router"].execute(proposal, confirmation="rejected")
     # No journal entry
     assert router_env["router"].journal.list_ops() == []

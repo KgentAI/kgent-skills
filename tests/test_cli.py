@@ -6,6 +6,7 @@ router/policy/journal/audit code paths are exercised — only the platform
 boundary is faked (acceptance §6).
 """
 
+# pyright: basic
 from __future__ import annotations
 
 import json
@@ -27,7 +28,13 @@ def _full_caps() -> dict:
         "document_storage": {
             "supported": True,
             "features": [
-                "create", "read", "update", "delete", "list", "archive", "unarchive",
+                "create",
+                "read",
+                "update",
+                "delete",
+                "list",
+                "archive",
+                "unarchive",
             ],
         },
         "document_search": {
@@ -158,6 +165,7 @@ def test_cli_undo_restores_content(e2e):
     uri = next(iter(e2e["backends"]["lark"].docs))
     main(["update", uri, "--content", "after"])
     from kgent.router.journal import Journal
+
     journal = Journal(e2e["home"])
     op_id = next(o["op_id"] for o in journal.list_ops() if o["operation"] == "update")
     code = main(["undo", op_id])
@@ -232,6 +240,7 @@ def test_cli_store_yes_audited_with_confirmation(e2e):
     code = main(["store", "--title", "Doc", "--content", "body", "--backends", "lark", "--yes"])
     assert code == 0
     from kgent.router.journal import Journal
+
     journal = Journal(e2e["home"])
     ops = journal.list_ops()
     assert ops, "expected at least one journal entry"
@@ -240,24 +249,44 @@ def test_cli_store_yes_audited_with_confirmation(e2e):
 
 def test_cli_store_dry_run_no_write_no_journal(e2e):
     """--dry-run: no write, no journal entry."""
-    code = main([
-        "store", "--title", "Doc", "--content", "body", "--backends", "lark", "--dry-run",
-    ])
+    code = main(
+        [
+            "store",
+            "--title",
+            "Doc",
+            "--content",
+            "body",
+            "--backends",
+            "lark",
+            "--dry-run",
+        ]
+    )
     assert code == 0
     assert not e2e["backends"]["lark"].docs, "--dry-run must not write"
     from kgent.router.journal import Journal
+
     journal = Journal(e2e["home"])
     assert journal.list_ops() == [], "--dry-run must not journal"
 
 
 def test_cli_store_op_id_reuse(e2e):
     """--op-id reuses the caller-supplied op_id in the journal entry."""
-    code = main([
-        "store", "--title", "Doc", "--content", "body",
-        "--backends", "lark", "--op-id", "op-custom-42",
-    ])
+    code = main(
+        [
+            "store",
+            "--title",
+            "Doc",
+            "--content",
+            "body",
+            "--backends",
+            "lark",
+            "--op-id",
+            "op-custom-42",
+        ]
+    )
     assert code == 0
     from kgent.router.journal import Journal
+
     journal = Journal(e2e["home"])
     ops = journal.list_ops()
     assert ops, "expected at least one journal entry"
@@ -266,12 +295,21 @@ def test_cli_store_op_id_reuse(e2e):
 
 def test_cli_sync_repair_partial_fanout(e2e):
     e2e["backends"]["wecom"].fault = lambda m, kw: (_ for _ in ()).throw(RuntimeError("boom"))
-    code = main([
-        "store", "--title", "Doc", "--content", "x", "--backends", "lark,wecom",
-    ])
+    code = main(
+        [
+            "store",
+            "--title",
+            "Doc",
+            "--content",
+            "x",
+            "--backends",
+            "lark,wecom",
+        ]
+    )
     assert code == 2  # partial
     e2e["backends"]["wecom"].fault = None
     from kgent.router.journal import Journal
+
     journal = Journal(e2e["home"])
     op_id = journal.list_partial()[0]["op_id"]
     code = main(["sync", "--repair", op_id])

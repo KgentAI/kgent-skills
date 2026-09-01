@@ -48,6 +48,7 @@ FidelityClass = Literal["lossless", "lossy"]
 #: Conversion directions relative to the canonical format (§6.9).
 Direction = Literal["native_to_canonical", "canonical_to_native"]
 
+
 class FidelityDecl(TypedDict):
     """Fidelity declaration for one adapter + direction (§6.9)."""
 

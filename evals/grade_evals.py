@@ -3,6 +3,7 @@
 Checks each assertion's verification condition against the response.md file
 and produces grading.json per the skill-creator schema.
 """
+
 import json
 import re
 import sys
@@ -21,14 +22,29 @@ def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str
         search_pos = response.find("python -m kgent search")
         create_pos = response.find("python -m kgent create")
         store_pos = response.find("python -m kgent store")
-        first_write = min(p for p in [create_pos, store_pos] if p >= 0) if any(p >= 0 for p in [create_pos, store_pos]) else len(response)
+        first_write = (
+            min(p for p in [create_pos, store_pos] if p >= 0)
+            if any(p >= 0 for p in [create_pos, store_pos])
+            else len(response)
+        )
         passed = has_search and (search_pos < first_write)
-        evidence = f"search at pos {search_pos}, first write at pos {first_write}" if has_search else "no search command found"
+        evidence = (
+            f"search at pos {search_pos}, first write at pos {first_write}"
+            if has_search
+            else "no search command found"
+        )
         return passed, evidence
 
     elif name == "proposal_displayed":
-        has_proposal = any(kw in response_lower for kw in ["proposal", "i'll create", "i found", "create it?", "proceed?"])
-        evidence = "proposal/confirmation prompt found" if has_proposal else "no proposal/confirmation prompt found"
+        has_proposal = any(
+            kw in response_lower
+            for kw in ["proposal", "i'll create", "i found", "create it?", "proceed?"]
+        )
+        evidence = (
+            "proposal/confirmation prompt found"
+            if has_proposal
+            else "no proposal/confirmation prompt found"
+        )
         return has_proposal, evidence
 
     elif name == "title_derived":
@@ -58,14 +74,16 @@ def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str
                     conf_start = pos
         if conf_start >= 0:
             # Check first 500 chars of confirmation for native URL
-            conf_section = response[conf_start:conf_start + 500]
+            conf_section = response[conf_start : conf_start + 500]
             primary_has_native = "https://" in conf_section
             # If primary confirmation has native URL, that's enough even if fallback mentions kgent://
             passed = primary_has_native
             evidence = f"primary confirmation has https://: {primary_has_native}"
         else:
             passed = has_https
-            evidence = f"response has https://: {has_https} (no distinct confirmation section found)"
+            evidence = (
+                f"response has https://: {has_https} (no distinct confirmation section found)"
+            )
         return passed, evidence
 
     elif name == "op_id_reported":
@@ -74,7 +92,10 @@ def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str
         return has_opid, evidence
 
     elif name == "provenance_shown":
-        has_prov = any(kw in response_lower for kw in ["provenance", "target:", "config default", "explicit", "preferences"])
+        has_prov = any(
+            kw in response_lower
+            for kw in ["provenance", "target:", "config default", "explicit", "preferences"]
+        )
         evidence = "provenance info found" if has_prov else "no provenance info found"
         return has_prov, evidence
 
@@ -88,10 +109,17 @@ def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str
     elif name == "documents_read":
         has_read = "python -m kgent read" in response
         # If no results were found, reading is not expected
-        no_results = any(kw in response_lower for kw in [
-            "no results", "no documents found", "couldn't find",
-            "no information found", "0 relevant", "0 matching"
-        ])
+        no_results = any(
+            kw in response_lower
+            for kw in [
+                "no results",
+                "no documents found",
+                "couldn't find",
+                "no information found",
+                "0 relevant",
+                "0 matching",
+            ]
+        )
         if no_results:
             # Reading is not required when there are no results to read
             passed = True
@@ -103,41 +131,57 @@ def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str
 
     elif name == "claims_cited":
         # If no results were found, citations are not expected
-        no_results = any(kw in response_lower for kw in [
-            "no results", "no documents found", "couldn't find",
-            "no information found", "0 relevant", "0 matching"
-        ])
+        no_results = any(
+            kw in response_lower
+            for kw in [
+                "no results",
+                "no documents found",
+                "couldn't find",
+                "no information found",
+                "0 relevant",
+                "0 matching",
+            ]
+        )
         if no_results:
             # Citations are not required when there are no sources to cite
             passed = True
             evidence = "no results found — citations not required"
         else:
             # Check for inline citations like [Title](url) or [Title](...)
-            passed = bool(re.search(r'\[[^\]]+\]\([^)]+\)', response))
+            passed = bool(re.search(r"\[[^\]]+\]\([^)]+\)", response))
             evidence = "inline citations found" if passed else "no inline citations found"
         return passed, evidence
 
     elif name == "native_url_citations":
-        has_kgent_url = bool(re.search(r'kgent://[^\s\)]+', response))
+        has_kgent_url = bool(re.search(r"kgent://[^\s\)]+", response))
         has_https_url = "https://" in response
         passed = has_https_url and not has_kgent_url
         evidence = f"https URLs: {has_https_url}, kgent:// URLs: {has_kgent_url}"
         return passed, evidence
 
     elif name == "sources_section":
-        has_sources = any(kw in response for kw in ["Sources:", "## Sources", "**Sources**", "sources:"])
+        has_sources = any(
+            kw in response for kw in ["Sources:", "## Sources", "**Sources**", "sources:"]
+        )
         evidence = "sources section found" if has_sources else "no sources section found"
         return has_sources, evidence
 
     elif name == "no_fabrication":
         # Check that policy details are attributed
-        has_attribution = any(kw in response_lower for kw in ["according to", "source:", "document", "[", "states", "says"])
-        evidence = "attribution language found" if has_attribution else "no attribution language found"
+        has_attribution = any(
+            kw in response_lower
+            for kw in ["according to", "source:", "document", "[", "states", "says"]
+        )
+        evidence = (
+            "attribution language found" if has_attribution else "no attribution language found"
+        )
         return has_attribution, evidence
 
     elif name == "wiki_space_listed":
         has_list = "python -m kgent wiki spaces list" in response
-        evidence = "wiki spaces list command found" if has_list else "no 'kgent wiki spaces list' found"
+        evidence = (
+            "wiki spaces list command found" if has_list else "no 'kgent wiki spaces list' found"
+        )
         return has_list, evidence
 
     elif name == "wiki_parent_from_listing":
@@ -150,25 +194,41 @@ def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str
         if parent_flag:
             # The token value directly after --parent-node-token, if any.
             idx = response.find("--parent-node-token")
-            rest = response[idx:idx + 60]
+            rest = response[idx : idx + 60]
             token = rest.split("--")[0].split()[1].strip() if len(rest.split()) > 1 else ""
             if token:
                 # The same token should appear in a listing/space-structure context earlier.
-                tracked_parent = response[:idx].find(token, listing_pos if listing_pos >= 0 else 0) >= 0
+                tracked_parent = (
+                    response[:idx].find(token, listing_pos if listing_pos >= 0 else 0) >= 0
+                )
         passed = parent_flag and tracked_parent
         evidence = (
             f"--parent-node-token present: {parent_flag}; token traced to listing: {tracked_parent}"
-            if parent_flag else "no --parent-node-token found"
+            if parent_flag
+            else "no --parent-node-token found"
         )
         return passed, evidence
 
     elif name == "wiki_vs_doc_asked":
-        has_choice = any(kw in response_lower for kw in [
-            "[a] wiki", "[b] flat doc", "wiki node", "flat doc", "wiki vs doc",
-            "知识库", "choose", "which type",
-        ])
+        has_choice = any(
+            kw in response_lower
+            for kw in [
+                "[a] wiki",
+                "[b] flat doc",
+                "wiki node",
+                "flat doc",
+                "wiki vs doc",
+                "知识库",
+                "choose",
+                "which type",
+            ]
+        )
         has_both_options = "wiki" in response_lower and "doc" in response_lower
-        evidence = "wiki/doc choice surfaced" if has_choice and has_both_options else "no wiki-vs-doc choice found"
+        evidence = (
+            "wiki/doc choice surfaced"
+            if has_choice and has_both_options
+            else "no wiki-vs-doc choice found"
+        )
         return has_choice and has_both_options, evidence
 
     elif name == "wiki_native_url_path":
@@ -183,7 +243,7 @@ def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str
         return passed, evidence
 
     elif name == "no_kgent_uris":
-        has_kgent_url = bool(re.search(r'kgent://[^\s\)]+', response))
+        has_kgent_url = bool(re.search(r"kgent://[^\s\)]+", response))
         evidence = f"kgent:// URIs found: {has_kgent_url}"
         return not has_kgent_url, evidence
 
@@ -215,11 +275,13 @@ def grade_run(eval_dir: Path, run_dir: Path) -> dict[str, Any]:
         passed, evidence = check_assertion(assertion, response)
         if passed:
             passed_count += 1
-        expectations.append({
-            "text": assertion["check"],
-            "passed": passed,
-            "evidence": evidence,
-        })
+        expectations.append(
+            {
+                "text": assertion["check"],
+                "passed": passed,
+                "evidence": evidence,
+            }
+        )
 
     total = len(expectations)
     return {
@@ -256,8 +318,12 @@ def main() -> None:
     print("\n" + "=" * 60)
     with_skill = {k: v for k, v in results.items() if "with_skill" in k}
     without_skill = {k: v for k, v in results.items() if "without_skill" in k}
-    ws_avg = sum(v.get("summary", {}).get("pass_rate", 0) for v in with_skill.values()) / max(len(with_skill), 1)
-    wos_avg = sum(v.get("summary", {}).get("pass_rate", 0) for v in without_skill.values()) / max(len(without_skill), 1)
+    ws_avg = sum(v.get("summary", {}).get("pass_rate", 0) for v in with_skill.values()) / max(
+        len(with_skill), 1
+    )
+    wos_avg = sum(v.get("summary", {}).get("pass_rate", 0) for v in without_skill.values()) / max(
+        len(without_skill), 1
+    )
     print(f"With skill avg:    {ws_avg:.0%}")
     print(f"Without skill avg: {wos_avg:.0%}")
     print(f"Delta:             {ws_avg - wos_avg:+.0%}")

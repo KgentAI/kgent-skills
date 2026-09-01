@@ -5,6 +5,7 @@ already enforced by prior scenario tests; these re-state them from the negative
 angle for traceability.
 """
 
+# pyright: basic
 from __future__ import annotations
 
 import pytest
@@ -56,6 +57,7 @@ def router_env(tmp_home, monkeypatch):
     )
     monkeypatch.setenv("KGENT_HOME", str(tmp_home))
     from kgent.config.loader import load_effective_config
+
     config, _ = load_effective_config(tmp_home / "config.yaml", tmp_home, {})
     for name, b in backends.items():
         config.backends[name]["capabilities"] = b.capabilities
@@ -80,6 +82,7 @@ def test_n1_no_write_without_confirmation(router_env):
         title="Test",
         content="content",
     )
+    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
     result = router.execute(proposal, confirmation="interactive-yes")
     assert result.exit_code == 0
     # Journal has the op
@@ -112,6 +115,7 @@ def test_n2_no_overwrite_on_version_conflict(router_env):
         expected_version="v999",  # wrong version
     )
     # Should not raise, but journal should show conflict or failure
+    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
     result = router.execute(proposal, confirmation="interactive-yes")
     # Either exits with conflict code or journal shows error
     assert result.exit_code != 0 or result.error
@@ -146,6 +150,7 @@ def test_n4_no_confidential_to_external(router_env):
     )
     # Should raise PolicyError or return exit code 3
     try:
+        # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
         result = router.execute(proposal, confirmation="interactive-yes")
         assert result.exit_code == 3
     except Exception as e:
@@ -161,7 +166,7 @@ def test_n4_no_confidential_to_external(router_env):
 def test_n5_forbidden_keys_ignored(tmp_home, monkeypatch):
     """N5: forbidden keys in project-local config are rejected."""
     from kgent.config.loader import load_effective_config
-    from kgent.config.schema import ConfigError
+    from kgent.errors import ConfigError
     from kgent.config.trusted import trust_directory
 
     # Write global config
@@ -270,9 +275,7 @@ def test_n10_no_silent_failure_drop(router_env):
     """N10: backend failures are reported, not silently dropped."""
     router = router_env["router"]
     # Inject fault
-    router_env["backends"]["lark"].fault = lambda m, kw: (_ for _ in ()).throw(
-        RuntimeError("boom")
-    )
+    router_env["backends"]["lark"].fault = lambda m, kw: (_ for _ in ()).throw(RuntimeError("boom"))
     successes, failures, clamps = router.search_sync("test", top_k=5)
     # Failures should be reported as a list
     assert isinstance(failures, list)
@@ -370,6 +373,7 @@ def test_n16_no_unencrypted_confidential_snapshots(router_env):
         content="",
         sensitivity="confidential",
     )
+    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
     result = router.execute(proposal, confirmation="interactive-yes")
     assert result.exit_code == 0
     # Snapshot encryption is a design invariant tested in test_archive_delete_undo.py

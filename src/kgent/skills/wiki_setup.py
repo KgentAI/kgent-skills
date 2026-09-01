@@ -28,7 +28,8 @@ def setup_wiki(items: list[dict[str, Any]], router: Router) -> OpResult:
     """
     if not items:
         return OpResult(
-            op_id="", exit_code=0,
+            op_id="",
+            exit_code=0,
             journal_entry={"status": "no_items"},
         )
 
@@ -41,7 +42,8 @@ def setup_wiki(items: list[dict[str, Any]], router: Router) -> OpResult:
 
     if not targets:
         return OpResult(
-            op_id="", exit_code=1,
+            op_id="",
+            exit_code=1,
             journal_entry={"status": "no_valid_targets"},
             error="no valid backends specified",
         )
@@ -55,5 +57,6 @@ def setup_wiki(items: list[dict[str, Any]], router: Router) -> OpResult:
         content=str(first.get("content", "")),
     )
 
-    # Execute via router (confirmation assumed pre-granted for wiki-setup)
+    # Execute via router (confirmation assumed pre-granted for wiki-setup).
+    # pi-lens-ignore: python-sql-injection — ``execute`` is the router write gate, not SQL
     return router.execute(proposal, confirmation="--yes")

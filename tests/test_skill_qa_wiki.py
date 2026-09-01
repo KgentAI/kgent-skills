@@ -1,5 +1,6 @@
 """QA + wiki-setup skill tests (Task 9.3; S68, S69)."""
 
+# pyright: basic
 from __future__ import annotations
 
 import pytest
@@ -50,6 +51,7 @@ def router_env(tmp_home, monkeypatch):
     )
     monkeypatch.setenv("KGENT_HOME", str(tmp_home))
     from kgent.config.loader import load_effective_config
+
     config, _ = load_effective_config(tmp_home / "config.yaml", tmp_home, {})
     for name, b in backends.items():
         config.backends[name]["capabilities"] = b.capabilities
@@ -71,8 +73,12 @@ def test_s68_qa_answer_cites_sources(router_env):
 
     # Seed some docs
     lark = router_env["backends"]["lark"]
-    lark.create_document(title="Onboarding", content="Welcome to the team", metadata=_meta("lark", "Onboarding"))
-    lark.create_document(title="Benefits", content="Health insurance included", metadata=_meta("lark", "Benefits"))
+    lark.create_document(
+        title="Onboarding", content="Welcome to the team", metadata=_meta("lark", "Onboarding")
+    )
+    lark.create_document(
+        title="Benefits", content="Health insurance included", metadata=_meta("lark", "Benefits")
+    )
 
     result = answer("What is the onboarding process?", router_env["router"])
     # Every claim must have a source_uri
@@ -121,7 +127,9 @@ def test_s69_wiki_setup_failed_leg_repairable(router_env):
     from kgent.skills.wiki_setup import setup_wiki
 
     # Inject fault on dingtalk
-    router_env["backends"]["dingtalk"].fault = lambda m, kw: (_ for _ in ()).throw(RuntimeError("boom"))
+    router_env["backends"]["dingtalk"].fault = lambda m, kw: (_ for _ in ()).throw(
+        RuntimeError("boom")
+    )
     items = [
         {"title": "Team Wiki", "content": "Welcome", "backend": "lark"},
         {"title": "External Docs", "content": "Partner", "backend": "dingtalk"},
@@ -135,5 +143,8 @@ def test_s69_wiki_setup_failed_leg_repairable(router_env):
     assert partial
     op_id = partial[0]["op_id"]
     from kgent.router.repair import sync_repair
-    repair_result = sync_repair(op_id, journal=router_env["router"].journal, backends=router_env["router"].backends)
+
+    repair_result = sync_repair(
+        op_id, journal=router_env["router"].journal, backends=router_env["router"].backends
+    )
     assert repair_result.exit_code == 0

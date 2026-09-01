@@ -8,6 +8,7 @@ Tests that the system is resilient to:
 - Race conditions (concurrent updates)
 """
 
+# pyright: basic
 from __future__ import annotations
 
 import pytest
@@ -138,9 +139,9 @@ FORBIDDEN_KEY_PAYLOADS = [
 def test_adversarial_config_injection_rejected(tmp_path, monkeypatch, forbidden_config: dict):
     """N5: forbidden keys in project-local config are rejected."""
     from kgent.config.loader import load_effective_config
-    from kgent.config.schema import ConfigError
+    from kgent.errors import ConfigError
     from kgent.config.trusted import trust_directory
-    import yaml
+    import yaml  # pyright: ignore[reportMissingTypeStubs]
 
     # Write global config
     (tmp_path / "config.yaml").write_text(
@@ -214,9 +215,7 @@ def test_adversarial_backend_failure_recoverable(router_env):
     """Fault: backend failure is recoverable via repair."""
     router = router_env["router"]
     # Inject fault
-    router_env["backends"]["lark"].fault = lambda m, kw: (_ for _ in ()).throw(
-        RuntimeError("boom")
-    )
+    router_env["backends"]["lark"].fault = lambda m, kw: (_ for _ in ()).throw(RuntimeError("boom"))
     # Try to create
     proposal = WriteProposal(
         operation="create",
@@ -224,6 +223,7 @@ def test_adversarial_backend_failure_recoverable(router_env):
         title="Test",
         content="content",
     )
+    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
     result = router.execute(proposal, confirmation="interactive-yes")
     # Should fail (exit 1 or 2)
     assert result.exit_code in (1, 2)
@@ -260,8 +260,9 @@ def test_adversarial_concurrent_update_race(router_env):
             operation="update",
             targets=[("lark", uri)],
             title="Shared",
-            content=f"v{i+2}",
+            content=f"v{i + 2}",
         )
+        # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
         result = router.execute(proposal, confirmation="interactive-yes")
         assert result.exit_code == 0
     # Final version should be v6

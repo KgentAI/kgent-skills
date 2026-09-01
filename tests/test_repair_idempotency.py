@@ -1,5 +1,6 @@
 """Repair idempotency tests (Task 8.3; S29, S30)."""
 
+# pyright: basic
 from __future__ import annotations
 
 import pytest
@@ -52,6 +53,7 @@ def test_sync_status_returns_failed_legs(env):
     env["backends"]["wecom"].fault = lambda m, kw: (_ for _ in ()).throw(RuntimeError("boom"))
     main(["store", "--title", "Doc", "--content", "x", "--backends", "lark,wecom"])
     from kgent.router.journal import Journal
+
     journal = Journal(env["home"])
     statuses = sync_status(journal)
     assert len(statuses) == 1
@@ -64,6 +66,7 @@ def test_sync_repair_is_idempotent(env):
     main(["store", "--title", "Doc", "--content", "x", "--backends", "lark,wecom"])
     env["backends"]["wecom"].fault = None
     from kgent.router.journal import Journal
+
     journal = Journal(env["home"])
     op_id = journal.list_partial()[0]["op_id"]
     # First repair
@@ -80,6 +83,7 @@ def test_sync_repair_is_idempotent(env):
 def test_sync_repair_unknown_op(env):
     """Repairing an unknown op_id returns exit 1."""
     from kgent.router.journal import Journal
+
     journal = Journal(env["home"])
     result = sync_repair("op-nonexistent", journal=journal, backends=env["backends"])
     assert result.exit_code == 1

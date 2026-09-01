@@ -3,6 +3,7 @@
 Final search results ≤ requested top_k, for any fan-out shape.
 """
 
+# pyright: basic
 from __future__ import annotations
 
 from hypothesis import HealthCheck, given, settings, strategies as st
@@ -29,7 +30,9 @@ def _full_caps() -> dict:
     top_k=st.integers(min_value=1, max_value=20),
     num_docs=st.integers(min_value=0, max_value=30),
 )
-@settings(max_examples=100, derandomize=True, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=100, derandomize=True, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
 def test_p4_search_results_bounded(tmp_path, monkeypatch, top_k: int, num_docs: int):
     """P4: final search results ≤ requested top_k."""
     # Create a fake backend

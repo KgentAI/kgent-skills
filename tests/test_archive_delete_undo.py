@@ -1,5 +1,6 @@
 """Archive, delete, undo, and sync/repair tests (Task 8.3; S8–S12, S29, S30, S50)."""
 
+# pyright: basic
 from __future__ import annotations
 
 import pytest
@@ -14,7 +15,13 @@ def _full_caps() -> dict:
         "document_storage": {
             "supported": True,
             "features": [
-                "create", "read", "update", "delete", "list", "archive", "unarchive",
+                "create",
+                "read",
+                "update",
+                "delete",
+                "list",
+                "archive",
+                "unarchive",
             ],
         },
         "document_search": {
@@ -120,6 +127,7 @@ def test_s10_archive_single_op_id(e2e):
     code = main(["archive", uri])
     assert code == 0
     from kgent.router.journal import Journal
+
     journal = Journal(e2e["home"])
     archive_ops = [o for o in journal.list_ops() if o["operation"] == "archive"]
     assert len(archive_ops) == 1
@@ -137,6 +145,7 @@ def test_s11_undo_restores_content(e2e):
     main(["update", uri, "--content", "after"])
     assert e2e["backends"]["lark"].docs[uri].content == "after"
     from kgent.router.journal import Journal
+
     journal = Journal(e2e["home"])
     op_id = next(o["op_id"] for o in journal.list_ops() if o["operation"] == "update")
     code = main(["undo", op_id])
@@ -158,6 +167,7 @@ def test_s12_undo_edited_refuses(e2e):
     main(["update", uri, "--content", "v3"])
     # Now undo the first update — should refuse because doc was edited since
     from kgent.router.journal import Journal
+
     journal = Journal(e2e["home"])
     update_ops = [o for o in journal.list_ops() if o["operation"] == "update"]
     first_update_id = update_ops[0]["op_id"]
@@ -178,6 +188,7 @@ def test_s29_repair_no_duplicate(e2e):
     assert code == 2  # partial
     e2e["backends"]["wecom"].fault = None
     from kgent.router.journal import Journal
+
     journal = Journal(e2e["home"])
     partial_ops = journal.list_partial()
     assert len(partial_ops) == 1
@@ -200,6 +211,7 @@ def test_s30_sync_status_lists_failed_leg(e2e):
     e2e["backends"]["wecom"].fault = lambda m, kw: (_ for _ in ()).throw(RuntimeError("boom"))
     main(["store", "--title", "Doc", "--content", "x", "--backends", "lark,wecom"])
     from kgent.router.journal import Journal
+
     journal = Journal(e2e["home"])
     partial = journal.list_partial()
     assert len(partial) == 1

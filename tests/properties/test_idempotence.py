@@ -3,6 +3,7 @@
 `repair(op) ∘ repair(op)` leaves backend state identical to `repair(op)` once.
 """
 
+# pyright: basic
 from __future__ import annotations
 
 from hypothesis import HealthCheck, given, settings, strategies as st
@@ -24,9 +25,11 @@ def _full_caps() -> dict:
 
 
 @given(
-    op_id=st.text(min_size=1, max_size=20, alphabet=st.characters(blacklist_categories=("Cs",))),
+    op_id=st.text(min_size=1, max_size=20, alphabet=st.characters(blacklist_categories=("Cs",))),  # pyright: ignore[reportArgumentType]
 )
-@settings(max_examples=100, derandomize=True, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    max_examples=100, derandomize=True, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
 def test_p2_repair_idempotence(tmp_path, op_id: str):
     """P2: repair(op) ∘ repair(op) leaves state identical to repair(op) once."""
     # Create a fake backend
@@ -35,14 +38,16 @@ def test_p2_repair_idempotence(tmp_path, op_id: str):
     try:
         # Create a journal with a partial entry
         journal = Journal(tmp_path)
-        journal.append({
-            "op_id": op_id,
-            "operation": "create",
-            "targets": [("lark", None)],
-            "status": "partial",
-            "failed_targets": ["lark"],
-            "failed_legs": ["create"],
-        })
+        journal.append(
+            {
+                "op_id": op_id,
+                "operation": "create",
+                "targets": [("lark", None)],
+                "status": "partial",
+                "failed_targets": ["lark"],
+                "failed_legs": ["create"],
+            }
+        )
         # Simulate repair (no-op for fake backend)
         from kgent.router.repair import sync_repair
 

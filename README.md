@@ -287,7 +287,7 @@ mypy src/kgent/ --strict
 
 The system follows a three-layer architecture:
 
-```
+```text
 Skills Layer (orchestration)
     ↓
 Capability Router (routing & aggregation)

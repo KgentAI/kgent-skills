@@ -125,6 +125,4 @@ class Router:
         selection: str | None = None,
     ) -> tuple[list[SearchResult], list[dict[str, Any]], dict[str, dict[str, Any]]]:
         """Synchronous wrapper around :meth:`search` for CLI use."""
-        return asyncio.run(
-            self.search(query, mode=mode, top_k=top_k, selection=selection)
-        )
+        return asyncio.run(self.search(query, mode=mode, top_k=top_k, selection=selection))

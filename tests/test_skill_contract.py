@@ -1,5 +1,6 @@
 """Skill ↔ router contract + resolution priority tests (Task 9.2; S65–S67)."""
 
+# pyright: basic
 from __future__ import annotations
 
 import pytest
@@ -54,6 +55,7 @@ def router_env(tmp_home, monkeypatch):
     )
     monkeypatch.setenv("KGENT_HOME", str(tmp_home))
     from kgent.config.loader import load_effective_config
+
     config, _ = load_effective_config(tmp_home / "config.yaml", tmp_home, {})
     for name, b in backends.items():
         config.backends[name]["capabilities"] = b.capabilities
@@ -80,6 +82,7 @@ def test_s65_same_orchestration_across_backends(router_env):
         # The proposal targets the requested backend
         assert proposal.targets[0][0] == backend_name
         # Execute — should work identically across backends
+        # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
         result = router_env["router"].execute(proposal, confirmation="interactive-yes")
         assert result.exit_code == 0
         assert router_env["backends"][backend_name].docs
@@ -119,5 +122,7 @@ def test_s67_explicit_input_overrides_preferences(router_env):
     # Should target dingtalk (explicit input wins)
     assert proposal.targets[0][0] == "dingtalk"
     # Provenance should record the source as "explicit user input"
-    assert "explicit" in proposal.provenance.get("target_source", "").lower() or \
-           proposal.provenance.get("target") == "dingtalk"
+    assert (
+        "explicit" in proposal.provenance.get("target_source", "").lower()
+        or proposal.provenance.get("target") == "dingtalk"
+    )

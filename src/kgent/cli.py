@@ -230,9 +230,11 @@ def _cmd_store(args: argparse.Namespace) -> int:
                     if doc.title == title:
                         existing_uri = uri
                         break
-        except Exception:
-            # If search fails, proceed with create
-            pass
+        except Exception as exc:  # noqa: BLE001 — adapter boundary; best-effort lookup
+            # N10 (§8.2): never silently drop a failed update-first lookup — surface
+            # it on stderr, then proceed with the create proposal (update-first is
+            # best-effort, §6.1).
+            print(f"update-first: search failed on {backend_name}: {exc}", file=sys.stderr)
         if existing_uri:
             break
 
@@ -1023,6 +1025,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         return handler(args)
+    # VersionConflict is a KgentError subclass — specific-first, general-second is
+    # the correct ordering; pi-lens's positional "earlier except catches all"
+    # heuristic can't see the subtype relationship and misfires here.
+    # pi-lens-ignore: unreachable-except
     except VersionConflict as exc:
         if getattr(args, "json", False):
             _json_out({"error": str(exc), "exit_code": exc.exit_code})

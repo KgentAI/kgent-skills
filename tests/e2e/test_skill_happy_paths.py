@@ -4,6 +4,7 @@ Skills orchestrate via the real Router (policy, journal, audit) against fake
 backends. The e2e fixture from test_cli.py is reused.
 """
 
+# pyright: basic
 from __future__ import annotations
 
 import pytest
@@ -55,6 +56,7 @@ def router(tmp_home, monkeypatch):
     )
     monkeypatch.setenv("KGENT_HOME", str(tmp_home))
     from kgent.config.loader import load_effective_config
+
     config, _ = load_effective_config(tmp_home / "config.yaml", tmp_home, {})
     for name, b in backends.items():
         config.backends[name]["capabilities"] = b.capabilities
@@ -71,6 +73,7 @@ def test_e2e_knowledge_storage_creates_with_provenance(router):
 
     proposal = store_workflow("save the new doc 'Welcome to kgent'", {}, router)
     assert proposal.operation == "create"
+    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
     result = router.execute(proposal, confirmation="interactive-yes")
     assert result.exit_code == 0
     assert router.backends["lark"].docs
@@ -81,6 +84,7 @@ def test_e2e_knowledge_storage_update_first(router):
     from kgent.skills.knowledge_storage import store_workflow
 
     p1 = store_workflow("save 'API Guidelines'", {}, router)
+    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
     router.execute(p1, confirmation="interactive-yes")
     p2 = store_workflow("save 'API Guidelines' - add more details", {}, router)
     assert p2.operation == "update"  # update-first bias
