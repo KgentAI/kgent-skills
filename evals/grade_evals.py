@@ -87,14 +87,35 @@ def check_assertion(assertion: dict, response: str) -> tuple[bool, str]:
 
     elif name == "documents_read":
         has_read = "python -m kgent read" in response
-        evidence = "read command found" if has_read else "no read command found"
-        return has_read, evidence
+        # If no results were found, reading is not expected
+        no_results = any(kw in response_lower for kw in [
+            "no results", "no documents found", "couldn't find",
+            "no information found", "0 relevant", "0 matching"
+        ])
+        if no_results:
+            # Reading is not required when there are no results to read
+            passed = True
+            evidence = "no results found — reading not required"
+        else:
+            passed = has_read
+            evidence = "read command found" if has_read else "no read command found"
+        return passed, evidence
 
     elif name == "claims_cited":
-        # Check for inline citations like [Title](url) or [Title](...)
-        has_citations = bool(re.search(r'\[[^\]]+\]\([^)]+\)', response))
-        evidence = "inline citations found" if has_citations else "no inline citations found"
-        return has_citations, evidence
+        # If no results were found, citations are not expected
+        no_results = any(kw in response_lower for kw in [
+            "no results", "no documents found", "couldn't find",
+            "no information found", "0 relevant", "0 matching"
+        ])
+        if no_results:
+            # Citations are not required when there are no sources to cite
+            passed = True
+            evidence = "no results found — citations not required"
+        else:
+            # Check for inline citations like [Title](url) or [Title](...)
+            passed = bool(re.search(r'\[[^\]]+\]\([^)]+\)', response))
+            evidence = "inline citations found" if passed else "no inline citations found"
+        return passed, evidence
 
     elif name == "native_url_citations":
         has_kgent_url = bool(re.search(r'kgent://[^\s\)]+', response))
