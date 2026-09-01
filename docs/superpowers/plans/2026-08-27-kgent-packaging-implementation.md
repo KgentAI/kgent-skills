@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement the kgent knowledge-management packaging system (in-process router library + `kgent` CLI + three backend adapters + orchestration skills) against the approved acceptance spec (v1.3, S1–S69, N1–N19, P1–P7) and design spec (v1.6).
+**Goal:** Implement the kgent knowledge-management packaging system (in-process router library + `kgent` CLI + three backend adapters + orchestration skills) against the approved acceptance spec (v1.3, S1–S69, N1–N19, P1–P7) and design spec (v1.6). **Extended 2026-08-31 with Phase 11** (wiki/knowledge-space CLI surface) against acceptance v1.6 (S77–S85, N22–N24) and design v1.8 §6.10 — Phases 0–10 are complete; Phase 11 is the remaining work.
 
 **Architecture:** A deterministic, in-process Python router enforces policy (config trust, routing precedence, sensitivity zones, approval gates, write journal, audit, optimistic concurrency) and returns a structured `RoutingIntent` to the agent loop. Backends (Lark/Feishu via `lark-doc` skill + `lark-cli` fallback; DingTalk/WeCom via CLI) sit behind a capability interface with fake in-process adapters used for tests. The `kgent` CLI exposes primitives; the `store` workflow and skills layer orchestrate judgment-heavy paths.
 
@@ -114,6 +114,7 @@ kgent-skills/
 │   ├── test_skill_knowledge_storage.py# S60, S61, S62, S63, S64
 │   ├── test_skill_contract.py         # S65, S66, S67
 │   ├── test_skill_qa_wiki.py          # S68, S69
+│   ├── test_wiki_operations.py        # S77–S85, N22–N24 (Phase 11)
 │   ├── test_negative_constraints.py   # N1–N19 explicit negative assertions
 │   ├── properties/                    # P1–P7 hypothesis invariants
 │   │   ├── test_roundtrip.py          # P1
@@ -1705,6 +1706,126 @@ def test_e2e_wiki_setup_multi_target_journaled(router, e2e, tmp_home):
 
 ---
 
+## Phase 11 — Wiki (knowledge space) CLI surface (acceptance v1.6, S77–S85, N22–N24)
+
+> **Added 2026-08-31.** The skill layer was updated ahead of the CLI: skills
+> (`knowledge-storage`, `question-answering`, `wiki-setup`) already reference
+> `--wiki-space`, `--parent-node-token`, `kgent wiki spaces`, and wiki-aware
+> search. This phase builds the CLI to catch up. Normative sources: design
+> v1.8 §6.10 (wiki node operations), §1.7 (wiki URL mapping), §3.6
+> (`node_type`), §7.2 (search result schema), §12 (flags); acceptance v1.6
+> F21. See the handoff doc ("Remaining work") for controller context.
+
+### Task 11.1: FakeBackend wiki support — spaces, nodes, position state
+
+**Files:**
+- Modify: `tests/fakes/fake_backend.py`
+- Modify: `tests/conftest.py` (extend `test_world`: lark gains wiki space 7123456 with node wikiAAA "Operations"; dingtalk/wecom marked wiki-less)
+
+**Interfaces:**
+- Produces (consumed by all 11.x tests):
+  - `FakeBackend.spaces: dict[str, dict]` — `space_id → {name, nodes}`
+  - `FakeBackend.create_wiki_node(space_id, title, content, parent_node_token | None, metadata) -> str` (returns node_token; records position `{space_id, parent_node_token}` in a `wiki_nodes: dict[str, dict]` map with `node_token → {space_id, parent, doc}`); appends to `write_calls` with `"method": "create_wiki_node"`
+  - `FakeBackend.update_wiki_node(node_token, content, metadata, approval_token, idempotency_key, expected_version) -> None` — bumps version, **never touches position** (position-invariance must be observable for N24)
+  - `FakeBackend.list_spaces() -> list[dict]`, `create_space(name) -> str`
+  - `has_wiki: bool` attribute — `False` for dingtalk/wecom so S79 rejection is testable without special-casing
+
+- [ ] **Step 1: Write failing tests** (create node under parent records position; create without parent → root/`parent_node_token=None`; update changes content+version but not position; `has_wiki=False` backends expose no wiki methods).
+- [ ] **Step 2: Run → FAIL**
+- [ ] **Step 3: Implement** wiki state on `FakeBackend`.
+- [ ] **Step 4: Run → PASS** (existing 377 tests still green — wiki additions are additive).
+- [ ] **Step 5: Commit** `test: FakeBackend wiki spaces + nodes + position state`
+
+### Task 11.2: `kgent create --wiki-space` + `--parent-node-token` (S77, S78, S79)
+
+**Files:**
+- Modify: `src/kgent/cli.py`, `src/kgent/router/policy.py` (wiki target plumbing in `WriteProposal`/`execute_confirmed`)
+- Test: `tests/test_wiki_operations.py`
+
+**Interfaces:**
+- Produces: `create --wiki-space <id> [--parent-node-token <tok>]` creates a wiki node; `--json` output reports `node_token`, `space_id`, `parent_node_token` (null at root); journal entry records `operation: "create"` with `node_type: "wiki_node"`; backend without wiki support → `PolicyError` naming `"--wiki-space is not supported on backend '<name>'"`, exit 3, **before any write** (S79).
+
+- [ ] **Step 1: Write failing tests for S77, S78, S79** (S77: node under wikiAAA in space 7123456, JSON reports token/space/parent, journaled with `node_type`; S78: no parent → `parent_node_token` is null; S79: `--wiki-space` on dingtalk → exit 3, zero write calls, exact message).
+- [ ] **Step 2: Run → FAIL**
+- [ ] **Step 3: Implement** flag parsing + routing to wiki node creation; zone/sensitivity preflight applies unchanged (wiki writes are ordinary writes).
+- [ ] **Step 4: Run → PASS**
+- [ ] **Step 5: Commit** `feat: wiki node creation flags (S77/S78/S79)`
+
+### Task 11.3: `kgent wiki spaces list|create` (S82)
+
+**Files:**
+- Modify: `src/kgent/cli.py` (first nested command group — keep the 19 existing subcommands untouched)
+- Test: `tests/test_wiki_operations.py`
+
+**Interfaces:**
+- Produces: `kgent wiki spaces list [--backends SEL] [--json]` → spaces with `space_id` + `name`; `kgent wiki spaces create --name N [--backends SEL] [--yes] [--json]` → new space, `space_id` returned, **journaled**; `list` on wiki-less backends returns empty with a footer note (S33 honesty rule), `create` on wiki-less backends → PolicyError exit 3.
+
+- [ ] **Step 1: Write failing tests for S82** (both spaces listed with ids; create returns new id + journal entry exists; wiki-less backend list/create behavior).
+- [ ] **Step 2: Run → FAIL**
+- [ ] **Step 3: Implement** the `wiki` subcommand group delegating to FakeBackend wiki methods through the router.
+- [ ] **Step 4: Run → PASS**
+- [ ] **Step 5: Commit** `feat: kgent wiki spaces list/create (S82)`
+
+### Task 11.4: Search includes wiki nodes by default with `node_type` (S80)
+
+**Files:**
+- Modify: `src/kgent/search/aggregate.py`, `src/kgent/types.py` (`SearchResult` gains `node_type: str = "doc"`, `space_id: str | None = None`, `parent_node_token: str | None = None`), `src/kgent/cli.py` (`--json` serializer)
+- Test: `tests/test_search_aggregation.py` (wiki section) or `tests/test_wiki_operations.py`
+
+**Interfaces:**
+- Produces: wiki nodes returned by plain `kgent search` with `node_type: "wiki_node"` + `space_id` + `parent_node_token`; docs carry `node_type: "doc"` and null space fields; `node_type` is **not** a ranking input (RRF order unchanged when only node kinds differ — §7.2); no flag exists or is needed to include wiki.
+
+- [ ] **Step 1: Write failing test for S80** (space 7123456 has wiki node wikiBBB "Deploy Runbook"; flat doc "Deploy Guide" exists; one search returns both with correct `node_type` fields; wiki node ranks by normal RRF — asserted by position, not by kind).
+- [ ] **Step 2: Run → FAIL**
+- [ ] **Step 3: Implement** `SearchResult` fields + adapter/backed mapping + JSON output.
+- [ ] **Step 4: Run → PASS**
+- [ ] **Step 5: Commit** `feat: search returns wiki nodes with node_type (S80)`
+
+### Task 11.5: Update wiki node in place — position invariant (S81, N24)
+
+**Files:**
+- Modify: `src/kgent/router/policy.py` (update path resolves wiki nodes via `update_wiki_node`), `src/kgent/cli.py`
+- Test: `tests/test_wiki_operations.py`
+
+**Interfaces:**
+- Produces: `kgent update kgent://lark/wikiBBB --content C --yes` updates content + bumps version; `space_id`/`parent_node_token` unchanged (S81); N24 negative test — position fields are byte-identical before/after update, for arbitrary node shapes (parameterized over root/child positions).
+
+- [ ] **Step 1: Write failing tests for S81 + N24** (capture position before, update, compare position after — identical; content changed; version bumped).
+- [ ] **Step 2: Run → FAIL**
+- [ ] **Step 3: Implement** wiki-aware update dispatch.
+- [ ] **Step 4: Run → PASS**
+- [ ] **Step 5: Commit** `feat: wiki node in-place update + position invariant (S81/N24)`
+
+### Task 11.6: Skill-layer wiki behaviors + wiki skill evals (S83, S84, S85, N22, N23)
+
+**Files:**
+- Test: `tests/test_wiki_operations.py` (S83/S84/S85/N22/N23 sections)
+- Create: `evals/skills/wiki-knowledge-storage-evals.json`, `evals/skills/wiki-question-answering-evals.json` (§6.4 coverage items: knowledge-storage 6–7, question-answering 6)
+- Modify: `evals/grade_evals.py` if new assertions are needed (e.g. `wiki_parent_proposed`, `wiki_vs_doc_asked`, `wiki_native_url_path`)
+- Modify: `skills/knowledge-storage/SKILL.md`, `skills/question-answering/SKILL.md` only if eval runs expose drift (skills are already updated)
+
+**Interfaces:**
+- Verifies: S83 — proposal names parent "Operations (wikiAAA)" with reason; no token in any proposal/transcript that didn't come from search or space listing (N22 — grep the transcript for token-shaped strings not in the listing output). S84 — wiki-vs-doc question shown when undetermined; provenance records "user choice". S85 — doc cited as `/docx/docxCCC`, wiki node as `/wiki/wikiBBB`, never crossed (N23). Skill evals exercise the real CLI commands (this phase's Tasks 11.2–11.5), not mocks.
+
+- [ ] **Step 1: Write failing skill-layer tests** (S83/S84/S85/N22/N23 against `store_workflow`/`answer` with the real CLI underneath).
+- [ ] **Step 2: Run → FAIL**
+- [ ] **Step 3: Close gaps in the skill modules (`src/kgent/skills/`) if the deterministic workflows diverge; SKILL.md is already aligned**.
+- [ ] **Step 4: Run → PASS**; then author the two wiki eval files and run `python evals/grade_evals.py skills-workspace/iteration-3` with/without skill as in iterations 1–2.
+- [ ] **Step 5: Commit** `test: skill wiki behaviors + wiki eval suite (S83–S85/N22/N23)`
+
+### Task 11.7: EVIDENCE + coverage-map closeout for wiki
+
+**Files:**
+- Modify: `EVIDENCE.md` (flip the wiki section from "pending" to the S77–S85/N22–N24 mapping, iteration-3 eval results, updated CLI command count)
+- Modify: this plan's coverage map (below) and acceptance §8 table statuses
+
+- [ ] **Step 1: Fill the mapping** — every S77–S85 row and N22–N24 row → test + status.
+- [ ] **Step 2: Run the full gauntlet** (`bash tools/gauntlet.sh`) green.
+- [ ] **Step 3: Update EVIDENCE** — CLI command list (wiki group added), eval iteration results, honest notes.
+- [ ] **Step 4: Commit** `docs: wiki evidence + coverage closeout (S77–S85)`
+
+---
+
 ## Scenario → Task coverage map (§7 tracker)
 
 | Acceptance IDs | Feature | Task(s) | Test file |
@@ -1729,7 +1850,13 @@ def test_e2e_wiki_setup_multi_target_journaled(router, e2e, tmp_home):
 | S60–S64 | Knowledge-storage skill | 9.1 | test_skill_knowledge_storage.py |
 | S65–S67 | Skill↔router contract | 9.2 | test_skill_contract.py |
 | S68–S69 | QA + wiki-setup | 9.3 | test_skill_qa_wiki.py |
+| S77–S79 | Wiki node create flags | 11.2 | test_wiki_operations.py |
+| S80 | Search returns wiki nodes | 11.4 | test_search_aggregation.py / test_wiki_operations.py |
+| S81 | Wiki in-place update | 11.5 | test_wiki_operations.py |
+| S82 | Wiki space primitives | 11.3 | test_wiki_operations.py |
+| S83–S85 | Skill wiki behaviors | 11.6 | test_wiki_operations.py |
 | N1–N19 | Negative constraints | 10.1 (+cross-task) | test_negative_constraints.py |
+| N22–N24 | Wiki negative constraints | 11.5, 11.6 | test_wiki_operations.py |
 | P1–P7 | Property invariants | 10.2 | tests/properties/ |
 | FM1–FM12 | Failure modes | 10.3 + scenario refs | tests/adversarial/ |
 | all CLI commands | E2E happy path (one per command) | 9.4 | tests/e2e/test_cli_happy_paths.py |
