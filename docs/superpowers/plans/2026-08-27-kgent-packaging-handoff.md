@@ -1,6 +1,6 @@
 # kgent Packaging Implementation — Hand-off Notes
 
-**Dated:** 2026-08-29 (implementation complete).
+**Dated:** 2026-08-31 (updated for wiki remaining work; original 2026-08-29).
 **Plan:** `docs/superpowers/plans/2026-08-27-kgent-packaging-implementation.md`
 **Companion to the SDD ledger** (`.superpowers/sdd/...` — git-ignored and was
 wiped once; THIS file is tracked so it survives). Git history is authoritative
@@ -11,9 +11,76 @@ know: what exists, decisions already made, rulings, and deferred items.
 
 ---
 
+## Remaining work: wiki (knowledge space) CLI surface — 2026-08-31
+
+The skill layer was updated to treat wiki nodes as first-class targets
+**ahead of the CLI**. The skills now reference commands/flags that do not
+exist yet (`grep`-verified: no `wiki` subcommand, no `--wiki-space` flag in
+`src/kgent/cli.py`). The next implementation round must build the CLI wiki
+surface to catch up. Specs are already written — do not re-spec, implement:
+
+- **Design v1.8** (`specs/2026-08-26-kgent-packaging-design.md`): §6.10 Wiki
+  Node Operations is the normative source; also §1.7 (wiki URL mapping),
+  §3.6 (explicit `node_type`), §7.2 (search result schema), §12 (CLI flags).
+- **Acceptance v1.6** (`specs/2026-08-26-kgent-packaging-acceptance.md`): F21,
+  scenarios **S77–S85**, constraints **N22–N24**, all pending. Implement tests
+  named after the scenario ids per the established pattern.
+
+### What to build (mapped to scenarios)
+
+1. **`kgent create --wiki-space <id> [--parent-node-token <tok>]`** — wiki node
+   creation inside a knowledge space; JSON output reports
+   `node_token`/`space_id`/`parent_node_token`; parent omitted → space root
+   (S77, S78). Rejected with a clear error on backends without a knowledge
+   space (dingtalk, wecom), exit 3, before any write (S79).
+2. **`kgent wiki spaces list|create`** — space primitives; create is journaled
+   (S82).
+3. **Search includes wiki nodes by default** — results carry
+   `node_type: "doc"|"wiki_node"`, wiki results additionally `space_id` +
+   `parent_node_token`; no flag needed to include wiki (S80). `node_type` is
+   NOT a ranking input (§7.2).
+4. **Update keeps position** — `kgent update kgent://lark/wikiBBB` modifies
+   content in place; hierarchy position is invariant under update (S81, N24).
+5. **Skill behaviors already specified in SKILL.md** — S83 (fitting parent,
+   never guessed tokens), S84 (wiki-vs-doc question when undetermined), S85
+   (native URL path matches node type). These are skill-layer tests; the
+   transcripts/evals must exercise the real CLI once it exists.
+6. **Wiki-specific skill evals** — §6.4 coverage items: knowledge-storage 6–7,
+   question-answering 6. Not yet written; write them together with the CLI so
+   eval runs exercise real commands. Place them in `evals/skills/*.json` and
+   extend `evals/grade_evals.py` assertions if needed.
+
+### Implementation notes / gotchas
+
+- **FakeBackend needs wiki support first** (`tests/fakes/fake_backend.py`):
+  wiki spaces + nodes with parent/position state, so S77–S85 tests can run
+  in-process. Keep position state observable so N24's position-invariant test
+  can assert it.
+- **URI discipline**: wiki node tokens flow through the same
+  `kgent://<backend>/<native-id>` scheme (§3.6) — `parse_uri` needs no change;
+  `node_type` travels as result/metadata, never parsed from the token.
+- **Journal/audit**: wiki node writes are ordinary writes — same journal
+  schema, same confirmation rules, `node_type` recorded in the entry. Do NOT
+  add free-form pass-through fields (ruling 10 below).
+- **Native URL conversion** in skills: wiki nodes use `/wiki/<node_token>`,
+  docs `/docx/<token>`; a mismatched path is a broken link (N23, S85).
+- The `kgent wiki` subcommand group is the first nested command group in the
+  CLI; keep the 19 existing subcommands untouched.
+
+### Commits that led here (branch `implementing-skills-and-cli`)
+
+- `e5773ca` wiki-setup: Lark wiki (knowledge space) integration section
+- `af45116` wiki-setup: route wiki create/search through kgent primitives
+- `dd13bcd` wiki-setup: `kgent wiki spaces list/create` replaces lark-cli
+- `d90fb79` knowledge-storage + question-answering: wiki coverage
+- `9a2cb18` specs: design v1.8 + acceptance v1.6 + EVIDENCE wiki section
+
+---
+
 ## Status
 
-**34 / 34 tasks complete.** All phases done and committed on branch `impl/kgent-packaging`.
+**34 / 34 tasks complete.** All phases done (originally committed on branch `impl/kgent-packaging`; continued skill/spec work since then on branch `implementing-skills-and-cli`, which is where the wiki commits listed above live).
+**Wiki CLI surface (S77–S85): NOT started** — see "Remaining work" above.
 
 ✅ **Phase 0**: Scaffold + fixtures  
 ✅ **Phase 1**: Foundation types + errors + URI + fingerprint  
