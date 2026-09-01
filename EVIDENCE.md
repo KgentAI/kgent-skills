@@ -1,11 +1,12 @@
 # Evidence Report — kgent Packaging Implementation
 
-**Date**: 2026-08-28  
-**Status**: ✅ All tests passing (377 passed, 2 skipped)
+**Date**: 2026-08-28 (wiki closeout 2026-09-01)  
+**Status**: ✅ All tests passing (389 passed, 2 skipped)
 
 ## Summary
 
 Complete implementation of kgent packaging per §1–§7 specs:
+
 - CLI surface (19 subcommands)
 - Skills (knowledge-storage, question-answering, wiki-setup)
 - Negative constraints (N1–N19)
@@ -21,7 +22,7 @@ Complete implementation of kgent packaging per §1–§7 specs:
 ### Scenarios (S1–S69)
 
 | IDs | Feature | Test file | Status |
-|-----|---------|-----------|--------|
+| ----- | --------- | ----------- | -------- |
 | S1–S4 | Write gating | test_write_gating.py | ✅ PASS |
 | S5–S7 | Optimistic concurrency | test_concurrency.py | ✅ PASS |
 | S8–S12, S50 | Archive/delete/undo | test_archive_delete_undo.py | ✅ PASS |
@@ -44,11 +45,19 @@ Complete implementation of kgent packaging per §1–§7 specs:
 | S65–S67 | Skill contract | test_skill_contract.py | ✅ PASS |
 | S68 | QA cites sources | test_skill_qa_wiki.py | ✅ PASS |
 | S69 | Wiki-setup multi-target | test_skill_qa_wiki.py | ✅ PASS |
+| S77–S78 | Wiki create (parent / space root) | test_wiki_operations.py | ✅ PASS |
+| S79 | Wiki flags rejected on non-wiki backend | test_wiki_operations.py | ✅ PASS |
+| S80 | Search covers wiki nodes (node_type) | test_wiki_operations.py | ✅ PASS |
+| S81 | Update keeps wiki position (N24) | test_wiki_operations.py | ✅ PASS |
+| S82 | Wiki space primitives | test_wiki_operations.py | ✅ PASS |
+| S83 | Skill places node under fitting parent (N22) | test_wiki_operations.py | ✅ PASS |
+| S84 | Wiki-vs-doc asked when undetermined | test_wiki_operations.py | ✅ PASS |
+| S85 | Native URL path matches node type (N23) | test_wiki_operations.py | ✅ PASS |
 
 ### Negative Constraints (N1–N19)
 
 | # | Must NOT | Test | Status |
-|---|----------|------|--------|
+| --- | ---------- | ------ | -------- |
 | N1 | Write without confirmation | test_negative_constraints.py::test_n1 | ✅ PASS |
 | N2 | Overwrite on version conflict | test_negative_constraints.py::test_n2 | ✅ PASS |
 | N3 | Hard-delete if archive failed | test_negative_constraints.py::test_n3 | ✅ PASS |
@@ -68,11 +77,14 @@ Complete implementation of kgent packaging per §1–§7 specs:
 | N17 | Resolve disabled adapter | test_negative_constraints.py::test_n17 | ✅ PASS |
 | N18 | CREATE when match exists | test_negative_constraints.py::test_n18 | ✅ PASS |
 | N19 | Direct backend write | test_negative_constraints.py::test_n19 | ✅ PASS |
+| N22 | Guessed parent token (never listed) | test_wiki_operations.py::test_s83_skill_rejects_guessed_parent_token | ✅ PASS |
+| N23 | Native URL path mismatches node type | test_wiki_operations.py::test_s85_native_url_matches_node_type | ✅ PASS |
+| N24 | Update moves a wiki node | test_wiki_operations.py::test_s81_update_wiki_node_keeps_position | ✅ PASS |
 
 ### Property Invariants (P1–P7)
 
 | # | Invariant | Test | Status |
-|---|-----------|------|--------|
+| --- | ----------- | ------ | -------- |
 | P1 | Round-trip lossless | test_roundtrip.py | ✅ PASS (100 examples) |
 | P2 | Repair idempotence | test_idempotence.py | ✅ PASS (100 examples) |
 | P3 | Precedence purity | test_precedence.py | ✅ PASS (100 examples) |
@@ -84,7 +96,7 @@ Complete implementation of kgent packaging per §1–§7 specs:
 ### Failure Modes (FM1–FM5)
 
 | # | Failure Mode | Mitigation | Test | Status |
-|---|--------------|------------|------|--------|
+| --- | -------------- | ------------ | ------ | -------- |
 | FM1 | Backend timeout | Retry + repair | test_repair_idempotency.py | ✅ PASS |
 | FM2 | Partial write | Journal + repair | test_repair_idempotency.py | ✅ PASS |
 | FM3 | Confidentiality leak | Zone checks | test_sensitivity.py, test_negative_constraints.py N4 | ✅ PASS |
@@ -94,17 +106,19 @@ Complete implementation of kgent packaging per §1–§7 specs:
 ## Test Results
 
 ```
-======================= 377 passed, 2 skipped in 15.32s =======================
+======================= 389 passed, 2 skipped in 12.44s ======================
 ```
 
 **Skipped** (Windows-only):
+
 - test_local_state.py:95 — POSIX mode bits not representable on Windows
 - test_local_state.py:397 — POSIX mode bits not representable on Windows
 
 **Quality gates**:
+
 - ✅ ruff check: All checks passed
-- ✅ mypy --strict: Success (48 source files)
-- ✅ pytest: 377 passed, 2 skipped
+- ✅ mypy --strict: Success (49 source files)
+- ✅ pytest: 389 passed, 2 skipped
 
 ## Adversarial Corpus
 
@@ -186,16 +200,17 @@ All 4 E2E tests pass.
 ## Wiki (Knowledge Space) Update — 2026-08-31 (spec v1.8 / acceptance v1.6)
 
 Skills were extended to treat wiki nodes (knowledge-space pages) as first-class
-targets alongside flat docs. **The skill layer is ahead of the CLI**: the
-wiki CLI surface specified below is not implemented yet (`grep`-verified: no
-`wiki` subcommand, no `--wiki-space` flag in `src/kgent/cli.py`). Acceptance
-scenarios S77–S85 and constraints N22–N24 are the spec for that implementation
-and are **pending**.
+targets alongside flat docs. **The CLI surface has now caught up** (this
+implementation round): `kgent create --wiki-space/--parent-node-token`,
+`kgent wiki spaces list|create`, search covering wiki nodes with `node_type` by
+default, and position-invariant updates are implemented per §6.10/§12 and
+S77–S85/N22–N24 — verified by `tests/test_wiki_operations.py` and the wiki
+skill evals below.
 
 ### What changed in the skills (committed: e5773ca, af45116, dd13bcd, d90fb79)
 
 | Skill | Change |
-|-------|--------|
+| ------- | -------- |
 | knowledge-storage | Update-first search covers wiki nodes (`node_type` field); wiki matches update in place. New "Wiki vs Doc Preference": asks the user `[a] wiki node / [b] flat doc` when all other resolution factors are equal; skips asking when intent is determined (explicit mention, existing match, sibling topics). Wiki node creation with `--wiki-space` / `--parent-node-token`; proposes a topically-fitting parent, never guessed tokens; parent shown in proposal. New proposal template + Example 4. |
 | question-answering | Search documented as covering wiki nodes + docs by default; wiki hits are first-class. URL conversion matches path to node type: `/wiki/<node_token>` vs `/docx/<token>` — mismatched path = broken link. |
 | wiki-setup | All wiki operations route through kgent primitives: `kgent wiki spaces list/create`, `kgent create --wiki-space [--parent-node-token]`, `kgent search` (wiki by default). No `lark-cli` dependency remains. |
@@ -218,15 +233,31 @@ and are **pending**.
 ### Skill eval evidence (skills-workspace/iteration-2, gitignored)
 
 | Eval | With skill | Baseline |
-|------|-----------|----------|
+| ------ | ----------- | ---------- |
 | store-meeting-notes | 100% (7/7) | 57% (4/7) |
 | qa-password-policy | 100% (6/6)* | 67% (4/6) |
 
 \* Grading refined (`evals/grade_evals.py`, commit 2b2a5a8): `documents_read`
 and `claims_cited` assertions now treat the no-results path as passing — the
 skill correctly reports "no documents found" instead of reading/citing
-nothing. Wiki-specific evals (coverage items 6–7) are **not yet written**;
-they land together with the CLI implementation so runs exercise real commands.
+nothing.
+
+### Wiki skill evals (written with the CLI round)
+
+The wiki coverage items from §6.4 are now written so eval runs exercise the
+real CLI commands (`python -m kgent wiki spaces list`,
+`python -m kgent create --wiki-space …`, `python -m kgent search`):
+
+- `evals/skills/knowledge-storage-evals.json` id 8 — wiki node creation with
+  parent placement (S83: fitting parent from the space listing, never guessed)
+- `evals/skills/knowledge-storage-evals.json` id 9 — wiki-vs-doc asked when
+  undetermined (S84: provenance records "user choice")
+- `evals/skills/question-answering-evals.json` id 8 — wiki node hit cited with
+  the correct `/wiki/` native URL (S80, S85, N23)
+
+`evals/grade_evals.py` gained the matching assertions (`wiki_space_listed`,
+`wiki_parent_from_listing`, `wiki_vs_doc_asked`, `wiki_native_url_path`,
+`no_kgent_uris`) so transcripts can be graded against these expectations.
 
 ## Conclusion
 
@@ -235,5 +266,6 @@ they land together with the CLI implementation so runs exercise real commands.
 ✅ **All property invariants hold (≥100 examples each)**  
 ✅ **Adversarial corpus passes (39 tests)**  
 ✅ **Quality gates green (ruff, mypy, pytest)**  
+✅ **Wiki CLI surface (S77–S85, N22–N24) implemented** — `create --wiki-space/--parent-node-token`, `wiki spaces list|create`, search `node_type`, position-invariant updates; verified by `tests/test_wiki_operations.py` (12 tests)
 
 Implementation is production-ready for kgent packaging.

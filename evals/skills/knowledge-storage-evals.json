@@ -98,6 +98,34 @@
         "The proposal clearly names the existing document(s) found",
         "The user is asked to choose which copy to update when multiple exist"
       ]
+    },
+    {
+      "id": 8,
+      "prompt": "Add our deployment runbook to the Engineering Wiki. We use progressive rollouts with a 5% canary.",
+      "expected_output": "The skill resolves the wiki intent, lists knowledge spaces, inspects the space structure, and proposes creating a wiki node under a topically-fitting parent (the parent token comes from the space listing — never guessed, S83/N22). It creates with 'python -m kgent create --wiki-space <space_id> --parent-node-token <token>' and confirms with a /wiki/ native URL.",
+      "files": [],
+      "expectations": [
+        "The skill recognizes the wiki intent and targets a knowledge space",
+        "The skill lists knowledge spaces with 'python -m kgent wiki spaces list'",
+        "The skill inspects the space structure to find a fitting parent (top-level nodes)",
+        "The parent token passed to --parent-node-token matches a token from the space listing — never guessed (S83, N22)",
+        "The create command passes '--wiki-space' and '--parent-node-token'",
+        "The confirmation message uses a native URL with '/wiki/' path, not '/docx/'",
+        "No kgent:// URI appears in the confirmation"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Save these Q3 security review notes.",
+      "expected_output": "No wiki/doc mention, no existing match, no sibling topic — with all resolution factors equal the skill asks the user wiki node vs flat doc BEFORE proposing ([a] wiki node / [b] flat doc, S84), then builds the proposal for the chosen type and records the decision source in provenance.",
+      "files": [],
+      "expectations": [
+        "The skill runs the update-first search first",
+        "When no factor determines the target type, the skill asks the user wiki vs flat doc (offers both options)",
+        "The skill does NOT silently pick a target type",
+        "The proposal records the user's choice and provenance notes the choice source ('user choice')",
+        "The chosen target type determines the create command shape (--wiki-space vs plain create)"
+      ]
     }
   ]
 }

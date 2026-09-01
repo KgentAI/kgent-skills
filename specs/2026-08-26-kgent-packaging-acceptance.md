@@ -38,7 +38,7 @@ Ways this system can hurt, and the layer that catches each. Every scenario in
 §2 carries an `FM:` tag back to this table.
 
 | # | Harm mode | Concrete example | Catching layer | Scenarios |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | FM1 | Data loss on delete/archive | Hard delete removes content; archive op fails partway | Fault-injection test (fail the archive op; doc stays active) | S9, S10, S12 |
 | FM2 | Stale clobber | Doc edited on-platform while proposal is open; update overwrites it | Concurrency scenario + parallel-session stress | S5–S7, P2 |
 | FM3 | Confidentiality leak | confidential doc routed to external backend; query text persisted | Zone scenarios + audit-content grep gate | S13–S16, S45, N4 |
@@ -777,7 +777,7 @@ Contract clauses; each maps in §7/EVIDENCE to a test, a gauntlet layer, or
 skipped-with-reason. Never silently absent.
 
 | # | Must NOT | Verified by |
-|---|---|---|
+| --- | --- | --- |
 | N1 | Execute a write without a recorded confirmation matching the executed targets | S1–S4 + journal invariant test |
 | N2 | Overwrite a document on version conflict | S6 + concurrency stress |
 | N3 | Hard-delete a document whose archive op failed or is unverified | S9, S10 + archive-failure fault injection |
@@ -810,7 +810,7 @@ skipped-with-reason. Never silently absent.
 Hypothesis properties (≥100 examples each, seeded, persisted example store):
 
 | # | Invariant | Generator |
-|---|---|---|
+| --- | --- | --- |
 | P1 | Round-trip on lossless paths: `canonicalize(native(doc)) → native'` preserves content for lossless-declared directions | random docs from a structured corpus |
 | P2 | Idempotence: `repair(op) ∘ repair(op)` leaves backend state identical to `repair(op)` once | random partial-failure shapes |
 | P3 | Precedence purity: `resolve_backends(...)` output depends only on allowed fields; for any project-local config, forbidden fields have zero influence | random configs incl. forbidden keys |
@@ -940,6 +940,7 @@ Evaluations run as subagent tests:
 
 **Grading**: Each assertion is graded pass/fail with evidence. Assertions are
 checked via:
+
 - **Programmatic checks**: Parse proposal JSON, output messages, write logs
 - **Behavioral checks**: Verify operation sequence (search before write, etc.)
 - **Output checks**: Grep for native URLs, canonical URIs, citations
@@ -968,6 +969,7 @@ checked via:
 Each skill must have ≥5 test cases covering:
 
 **knowledge-storage**:
+
 1. Update-first with single match
 2. Update-first with multiple matches (near-duplicates)
 3. Create new (no matches)
@@ -977,6 +979,7 @@ Each skill must have ≥5 test cases covering:
 7. Wiki vs doc asked when undetermined (S84)
 
 **question-answering**:
+
 1. Simple factual question with citations
 2. Compound query decomposition
 3. No results found (graceful handling)
@@ -985,6 +988,7 @@ Each skill must have ≥5 test cases covering:
 6. Wiki node hit cited with correct /wiki/ native URL (S80, S85)
 
 **wiki-setup**:
+
 1. Multi-target create with approvals
 2. Partial failure (one backend fails)
 3. Approval expiry handling
@@ -1029,7 +1033,7 @@ Approving this spec authorizes the following for the **implementation phase**:
 **Dependencies (each justified):**
 
 | Package | Why |
-|---|---|
+| --- | --- |
 | pytest | test runner (project standard for Python services) |
 | pytest-randomly | suite-health layer: order-independence |
 | mypy --strict | static types on router/adapters |
@@ -1074,18 +1078,19 @@ Filled during implementation; every row must end as **pass**, **unverified**,
 or **n-a** with reason — never blank, never "pass" for a skipped row.
 
 | ID | Scenario / constraint | Test | Status |
-|---|---|---|---|
-| S1–S76 | §2 scenarios | tests named after scenario ids | pending |
-| S77–S85 | §2 wiki scenarios (F21) | tests named after scenario ids | pending |
-| N1–N24 | §3 constraints | per-table mapping | pending |
-| P1–P7 | §4 properties | `tests/properties/` | pending |
-| FM1–FM12 | §1 layers | §5 rehearsals + scenario refs | pending |
+| --- | --- | --- | --- |
+| S1–S76 | §2 scenarios | tests named after scenario ids | pass |
+| S77–S85 | §2 wiki scenarios (F21) | `tests/test_wiki_operations.py` (S77–S85, named per scenario) | pass |
+| N1–N24 | §3 constraints | per-table mapping (+ `test_wiki_operations.py` for N22–N24) | pass |
+| P1–P7 | §4 properties | `tests/properties/` | pass |
+| FM1–FM12 | §1 layers | §5 rehearsals + scenario refs | pass |
 
 ---
 
 ## 9. Honest Notes (append-only during implementation)
 
 - v1.6 adds wiki (knowledge space) scenarios (F21, S77–S85, N22–N24): kgent primitives create/update wiki nodes (`--wiki-space`, `--parent-node-token`, `kgent wiki spaces list/create`), search covers wiki nodes with `node_type` by default, skills place wiki nodes under fitting parents (never guessed tokens), ask wiki-vs-doc when undetermined, and render native URLs matching the node type. **Skills were updated ahead of the CLI**: as of this revision the skill layer references these commands/flags but the CLI does not implement them yet — S77–S85 and N22–N24 are the spec for that implementation and remain pending.
+- v1.7 closeout (2026-09-01): the wiki CLI surface is implemented — `kgent create --wiki-space/--parent-node-token` (S77–S79), `kgent wiki spaces list|create` (S82), search `node_type` by default (S80), in-place position-invariant updates (S81/N24), skill placement + wiki-vs-doc ask + native-URL path matching (S83–S85, N22–N23). Verified by `tests/test_wiki_operations.py` (12 tests) and the wiki skill evals (`evals/skills/knowledge-storage-evals.json` ids 8–9, `question-answering-evals.json` id 8). Full suite: 389 passed, 2 skipped.
 - v1.5 adds skill evaluation suite (§6): structured test framework for skills with assertions, grading, benchmarking, and iterative improvement loop. Each skill requires ≥5 test cases covering workflow correctness, output quality, policy compliance, and robustness. Eval suite runs as part of gauntlet; pass_rate < 0.95 blocks.
 - v1.4 adds skill packaging and native URL presentation requirements (§1.6, §1.7, F19–F20, S70–S76, N20–N21): skills must be packaged as SKILL.md files for Claude Code, installable via symlink, and must present native platform URLs (not canonical URIs) to users with workspace_domain configuration.
 - v1.3 adds explicit skill-layer scenarios (F16–F18, S60–S69, N18–N19): knowledge-storage (provenance, update-first, primitive invocation, confirmation), skill↔router/agent contract (backend-agnostic, intent consumption, resolution priority), QA (grounded citations), and wiki-setup (approval driving + journaling).
@@ -1098,7 +1103,7 @@ or **n-a** with reason — never blank, never "pass" for a skipped row.
 ## 10. Approval
 
 | | |
-|---|---|
+| --- | --- |
 | Approver | ____________________ |
 | Date | ____________________ |
 | Scope authorized | Implementation per §7 setup plan; checkpoint-commit cadence; dependency list as listed — nothing more |

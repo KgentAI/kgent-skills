@@ -121,9 +121,133 @@ def _dispatch(bucket: dict[str, Any], rest: list[str]) -> int:
         return 0
     if rest[0] == "documents" and len(rest) >= 2:
         return _documents(bucket, rest[1], rest[2:])
+    if rest[0] == "docs" and len(rest) >= 2:
+        # Lark wire protocol (the real LarkAdapter's command shape) — same
+        # per-backend state bucket as ``documents``, so S65 conformance holds
+        # across backends regardless of CLI dialect.
+        return _docs_lark(bucket, rest[1], rest[2:])
+    if rest[0] == "drive" and len(rest) >= 2 and rest[1] == "+delete":
+        return _drive_delete(bucket, rest[2:])
     if rest[0] == "search":
         return _search(bucket, rest[1:])
     return _fail(f"unknown subcommand: {' '.join(rest)}", 2)
+
+
+def _docs_lark(bucket: dict[str, Any], op: str, args: list[str]) -> int:
+    """lark-cli wire protocol: ``docs +create|+fetch|+update|+search`` (§8.5).
+
+    The LarkAdapter maps kgent operations to real lark-cli commands
+    (``docs +create --title --content``, ``docs +fetch --doc``,
+    ``docs +update --doc --command overwrite --content [--revision-id]``,
+    ``docs +search --query --page-size``) and parses Lark-style responses
+    (``data.document`` / ``data.results`` with ``result_meta.token``). This
+    double responds in that shape while storing into the same per-backend
+    state as the v1 protocol.
+    """
+    docs: dict[str, Any] = bucket["docs"]
+
+    if op == "+create":
+        title = _opt(args, "--title")
+        content = _opt(args, "--content")
+        if title is None or content is None:
+            return _fail("docs +create requires --title and --content", 2)
+        seq = int(bucket.get("seq", 0)) + 1
+        bucket["seq"] = seq
+        native_id = f"doc{seq}"
+        docs[native_id] = {
+            "id": native_id,
+            "title": title,
+            "content": content,
+            "updated_at": _now(),
+            "version": "v1",
+            "archived": False,
+        }
+        print(json.dumps({"data": {"document": {"document_id": native_id}}}))
+        return 0
+
+    if op == "+search":
+        query = _opt(args, "--query")
+        if query is None:
+            return _fail("docs +search requires --query", 2)
+        try:
+            page_size = int(_opt(args, "--page-size") or "10")
+        except ValueError:
+            return _fail("docs +search --page-size must be an integer", 2)
+        matches = [
+            doc
+            for doc in docs.values()
+            if not doc["archived"] and (query in doc["title"] or query in doc["content"])
+        ]
+        results = [
+            {
+                "result_meta": {"token": doc["id"]},
+                "title_highlighted": doc["title"],
+                "rank": i,
+                "summary_highlighted": doc["content"][:120],
+            }
+            for i, doc in enumerate(matches[:page_size], start=1)
+        ]
+        print(json.dumps({"data": {"results": results}}))
+        return 0
+
+    native: str | None = _opt(args, "--doc")
+    if native is None:
+        return _fail("docs +... requires --doc <native-id>", 2)
+
+    if op == "+fetch":
+        doc = docs.get(native)
+        if doc is None:
+            return _fail(f"document not found: {native}")
+        if doc["archived"]:
+            return _fail(f"document archived: {native}")
+        # LarkAdapter derives the title from the markdown ``# <title>`` header,
+        # so the double serves content in that shape (title line + body).
+        content = f"# {doc['title']}\n\n{doc['content']}"
+        print(
+            json.dumps(
+                {
+                    "data": {
+                        "document": {
+                            "content": content,
+                            "document_id": native,
+                            "revision_id": doc["version"],
+                        }
+                    }
+                }
+            )
+        )
+        return 0
+
+    doc = docs.get(native)
+    if doc is None:
+        return _fail(f"document not found: {native}")
+
+    if op == "+update":
+        content = _opt(args, "--content")
+        if content is None:
+            return _fail("docs +update requires --content", 2)
+        expected = _opt(args, "--revision-id")
+        if expected is not None and expected != doc["version"]:
+            return _fail(f"version conflict: expected {expected} found {doc['version']}", 3)
+        doc["content"] = content
+        _bump_version(doc)
+        print(json.dumps({"ok": True}))
+        return 0
+
+    return _fail(f"unknown docs op: {op}", 2)
+
+
+def _drive_delete(bucket: dict[str, Any], args: list[str]) -> int:
+    """Lark delete leg: ``drive +delete --file-token <id>`` (§8.5)."""
+    native = _opt(args, "--file-token")
+    if native is None:
+        return _fail("drive +delete requires --file-token", 2)
+    doc = bucket["docs"].get(native)
+    if doc is None:
+        return _fail(f"document not found: {native}")
+    del bucket["docs"][native]
+    print(json.dumps({"ok": True}))
+    return 0
 
 
 def _documents(bucket: dict[str, Any], op: str, args: list[str]) -> int:
@@ -137,19 +261,19 @@ def _documents(bucket: dict[str, Any], op: str, args: list[str]) -> int:
             return _fail("documents create requires --title and --content", 2)
         seq += 1
         bucket["seq"] = seq
-        native = f"doc{seq}"
-        docs[native] = {
-            "id": native,
+        native_id = f"doc{seq}"
+        docs[native_id] = {
+            "id": native_id,
             "title": title,
             "content": content,
             "updated_at": _now(),
             "version": "v1",
             "archived": False,
         }
-        print(json.dumps({"id": native}))
+        print(json.dumps({"id": native_id}))
         return 0
 
-    native = args[0] if args else None
+    native: str | None = args[0] if args else None
     if native is None:
         return _fail(f"documents {op} requires <native-id>", 2)
     doc = docs.get(native)

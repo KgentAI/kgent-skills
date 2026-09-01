@@ -96,6 +96,19 @@
         "The answer does not silently pick one answer without acknowledging the other",
         "No kgent:// URIs appear in the output"
       ]
+    },
+    {
+      "id": 8,
+      "prompt": "Summarize the deployment runbook from the wiki.",
+      "expected_output": "The skill searches (wiki nodes are first-class results — no separate wiki flag, S80), finds the runbook wiki node, and cites it with a native /wiki/ URL — never a /docx/ URL, and never a kgent:// URI (S85, N23).",
+      "files": [],
+      "expectations": [
+        "The skill searches with 'python -m kgent search' — results include wiki nodes by default (no separate wiki flag)",
+        "A wiki node hit is treated as a first-class source (not deprioritized)",
+        "The citation for the wiki node uses a '/wiki/' native URL path",
+        "No wiki citation uses '/docx/', and no flat-doc citation uses '/wiki/'",
+        "No kgent:// URIs appear in the citations"
+      ]
     }
   ]
 }

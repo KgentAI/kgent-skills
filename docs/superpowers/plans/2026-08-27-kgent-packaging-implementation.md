@@ -144,12 +144,14 @@ kgent-skills/
 ### Task 0.1: Package scaffold + tooling configuration
 
 **Files:**
+
 - Create: `pyproject.toml`
 - Create: `.gitignore` (append `.kgent`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `__pycache__`, `.coverage`, `htmlcov`)
 - Create: `src/kgent/__init__.py`, `src/kgent/__main__.py`
 - Create: `tests/__init__.py` (empty), `tests/fakes/__init__.py`
 
 **Interfaces:**
+
 - Produces: `kgent.__version__ = "0.1.0"`; `python -m kgent` entry.
 
 - [x] **Step 1: Write `pyproject.toml`**
@@ -221,10 +223,12 @@ git commit -m "chore: scaffold kgent Python package + tooling config"
 ### Task 0.2: Gauntlet skeleton (`tools/gauntlet.sh`) + manual-mutation fallback
 
 **Files:**
+
 - Create: `tools/gauntlet.sh`
 - Create: `tools/mutants.py`
 
 **Interfaces:**
+
 - Produces: `tools/gauntlet.sh` runs the full chain and fails closed (`set -euo pipefail`).
 
 - [x] **Step 1: Write `tools/gauntlet.sh`**
@@ -313,10 +317,12 @@ git commit -m "chore: add gauntlet entry point + manual-mutation fallback"
 ### Task 0.3: Test world — conftest, fake adapter, isolated home
 
 **Files:**
+
 - Create: `tests/conftest.py`
 - Create: `tests/fakes/fake_backend.py`
 
 **Interfaces:**
+
 - Produces (consumed by every later test):
   - `FakeBackend(name, trust_zone, capabilities, *, owner=None)` implementing the full capability interface (create/read/update/delete/archive/unarchive/list/search), with `write_calls: list[dict]`, `fault: Callable | None`, and `clock` hooks for version tokens and `Retry-After`.
   - Fixtures: `tmp_home` (isolated `~/.kgent`), `test_world` (three fake backends + config dict), `user="alice"`.
@@ -490,10 +496,12 @@ git commit -m "test: add fake backend harness + standard test world"
 ### Task 1.1: Errors + exit-code mapping
 
 **Files:**
+
 - Create: `src/kgent/errors.py`
 - Test: `tests/test_types.py` (error section) or `tests/test_errors.py`
 
 **Interfaces:**
+
 - Produces (used everywhere):
   - `class KgentError(Exception)` with `.exit_code`
   - `class ConfigError(KgentError)` exit 1
@@ -567,10 +575,12 @@ class PartialFailure(KgentError):
 ### Task 1.2: Core data types (`types.py`) — §3.8, §1.5
 
 **Files:**
+
 - Create: `src/kgent/types.py`
 - Test: `tests/test_types.py`
 
 **Interfaces:**
+
 - Produces: frozen dataclasses `DocumentMetadata`, `Document`, `SearchResult`, `ApproverDecision`, `ApprovalStatus`, `FilterSpec`, `BackendResolution`, `PolicyGate`, `WriteProposal`, `RoutingIntent` exactly matching spec §3.8 and §1.5 field names/types.
 
 - [x] **Step 1: Write the failing tests** (assert field names + types via `dataclasses.fields`)
@@ -613,10 +623,12 @@ def test_routing_intent_shape():
 ### Task 1.3: Canonical URIs (`uri.py`) — §3.6
 
 **Files:**
+
 - Create: `src/kgent/uri.py`
 - Test: `tests/test_uri.py`
 
 **Interfaces:**
+
 - Produces: `parse_uri(s: str) -> tuple[str, str]` (raises `ConfigError` on malformed/bare IDs), `format_uri(backend: str, native_id: str) -> str`.
 
 - [x] **Step 1: Write the failing tests**
@@ -646,10 +658,12 @@ def test_rejects_noncanonical(bad):
 ### Task 1.4: Fingerprints (`fingerprint.py`) — §6.5, P7
 
 **Files:**
+
 - Create: `src/kgent/fingerprint.py`
 - Test: `tests/test_fingerprint.py`
 
 **Interfaces:**
+
 - Produces: `normalize(title: str, content: str) -> str` (deterministic, whitespace-normalized), `content_fingerprint(title: str, content: str) -> str` (sha256 hex of normalized), `fingerprints_equal(fp1: str | None, fp2: str | None) -> bool`.
 
 - [x] **Step 1: Write the failing tests**
@@ -686,10 +700,12 @@ def test_different_content_different_fingerprint():
 ### Task 2.1: Config schema + defaults + validation (§2.6, Appendix C)
 
 **Files:**
+
 - Create: `src/kgent/config/schema.py`, `src/kgent/config/__init__.py`
 - Test: `tests/test_config_schema.py`
 
 **Interfaces:**
+
 - Produces:
   - `ALLOWED_TOP_LEVEL_KEYS: frozenset[str]`
   - `Config` dataclass with fields `version, defaults, backends, routing_rules, content_type_mapping, sensitivity_floors, fallback_chains, conflict_resolution, journal, audit`
@@ -728,10 +744,12 @@ def test_defaults_applied():
 ### Task 2.2: Config loading + precedence + trust model (§2.3)
 
 **Files:**
+
 - Create: `src/kgent/config/loader.py`, `src/kgent/config/trusted.py`
 - Test: `tests/test_config_trust.py`
 
 **Interfaces:**
+
 - Produces:
   - `FORBIDDEN_PROJECT_KEYS: frozenset[str]` = the forbidden key paths from §2.3 (backends.*.{skill_name,cli_name,mcp_url,type,auth,enabled}, trust_zone downgrades).
   - `trust_directory(path, trusted_path) -> None` / `is_trusted(path, trusted_path) -> bool` (directory-hash records in `trusted.json`).
@@ -790,10 +808,12 @@ def test_s19_trusted_routing_overrides_work(tmp_home, tmp_path):
 ### Task 2.3: `kgent config validate | migrate` + `kgent doctor` (§2.6, S54)
 
 **Files:**
+
 - Create: `src/kgent/config/migrate.py`, `src/kgent/config/validate.py`
 - Test: `tests/test_discovery_doctor.py` (doctor section)
 
 **Interfaces:**
+
 - Produces: `validate_config(cfg) -> list[str]` (findings; empty = healthy), `migrate_config(path) -> None` (backup `config.yaml.bak-<ts>` first), `doctor(home) -> tuple[list[str], int]` (findings + exit code; no writes, no auth prompts — S54).
 
 - [x] **Step 1: Write failing test for S54**
@@ -827,10 +847,12 @@ def test_s54_doctor_healthy(tmp_home):
 ### Task 3.1: Capability interface + declaration + fallback (§3.1–§3.3)
 
 **Files:**
+
 - Create: `src/kgent/capabilities/interface.py`, `declaration.py`, `__init__.py`
 - Test: `tests/test_config_schema.py` (add fallback tests) or `tests/test_capabilities.py`
 
 **Interfaces:**
+
 - Produces:
   - `class DocumentStorage(Protocol)` and `class DocumentSearch(Protocol)` and `class ApprovalFlow(Protocol)` with method signatures exactly per §3.1.
   - `class CapabilityDeclaration` with `.supports(mode: str) -> bool` and `.fallback: dict[str, str]`.
@@ -868,10 +890,12 @@ def test_unsupported_returns_none():
 ### Task 3.2: Capability cache + effective intersection (§3.5)
 
 **Files:**
+
 - Create: `src/kgent/capabilities/cache.py`
 - Test: `tests/test_capabilities.py`
 
 **Interfaces:**
+
 - Produces: `effective_capabilities(detected: dict, declared: dict) -> dict` (intersection; config only narrows; warn + treat as unsupported on over-assertion), `read_cache(home) -> dict`, `write_cache(home, caps, detected_at) -> None` (0600).
 
 - [x] **Step 1: Write failing tests**
@@ -899,10 +923,12 @@ def test_config_narrows():
 ### Task 3.3: Read-only discovery + `kgent setup` (§2.2, S42, S53)
 
 **Files:**
+
 - Create: `src/kgent/capabilities/detect.py`
 - Test: `tests/test_discovery_doctor.py` (discovery section)
 
 **Interfaces:**
+
 - Produces: `discover(home, env) -> DiscoveryReport` (detect skills in `~/.claude/skills/`, CLIs on PATH via `--version`, MCP from config; structured-manifest reads only; **zero write-type calls**, S42; **zero auth prompts**, S53). `setup(home) -> tuple[DiscoveryReport, int]`.
 
 - [x] **Step 1: Write failing tests**
@@ -935,10 +961,12 @@ def test_s53_setup_does_not_prompt_for_auth(tmp_home, monkeypatch):
 ### Task 4.1: `resolve_backends` — single precedence chain (§4.1, §4.2, §4.3)
 
 **Files:**
+
 - Create: `src/kgent/router/resolve.py`, `src/kgent/router/__init__.py`
 - Test: `tests/test_routing_intent.py` (precedence section)
 
 **Interfaces:**
+
 - Produces: `resolve_backends(config, *, selection: str | None, operation: str, content_type: str | None, metadata: dict | None) -> list[str]` implementing §4.1 (explicit > smart rules > content-type mapping > defaults) and §4.2 grammar (`all`/`all_enabled`/`all_configured`/explicit list; unknown name → `ConfigError`).
 
 - [x] **Step 1: Write failing tests (precedence order + grammar)**
@@ -977,10 +1005,12 @@ def test_all_is_alias_of_all_enabled():
 ### Task 4.2: `resolve_intent` → `RoutingIntent` + adapter preference (§1.5, S58, S59)
 
 **Files:**
+
 - Modify: `src/kgent/router/resolve.py`
 - Test: `tests/test_routing_intent.py`
 
 **Interfaces:**
+
 - Produces: `resolve_intent(config, operation, *, doc_uri=None, query=None, selection=None, content_type=None, proposal=None) -> RoutingIntent` populating `operation, doc_uri, query, targets, proposal, policy_gates, provenance`; each `BackendResolution` carries `backend, adapter_type, adapter_name, capabilities_needed`. Platform skill preferred over CLI when it satisfies capabilities (S59).
 
 - [x] **Step 1: Write failing tests for S58 + S59**
@@ -1014,10 +1044,12 @@ def test_s59_platform_skill_preferred_over_cli():
 ### Task 5.1: Sensitivity tiers + zone rules (§2.5, S13–S16)
 
 **Files:**
+
 - Create: `src/kgent/router/sensitivity.py`
 - Test: `tests/test_sensitivity.py`
 
 **Interfaces:**
+
 - Produces:
   - `TIER_ORDER = {"public": 0, "internal": 1, "confidential": 2}`
   - `analyze_sensitivity(content: str, confidence: float) -> tuple[str, float, str]` → `(tier, confidence, provenance)`; `confidence < 0.5` raises to the higher tier with provenance "classifier: uncertain, raised" (S14).
@@ -1063,10 +1095,12 @@ def test_s16_query_leak_warning_once():
 ### Task 5.2: Write proposal + confirmation gate (§5.6, S1–S4)
 
 **Files:**
+
 - Create: `src/kgent/router/policy.py`
 - Test: `tests/test_write_gating.py`
 
 **Interfaces:**
+
 - Produces:
   - `class WriteProposal` (operation, targets: list[tuple[backend, uri]], title, content_type, sensitivity, approval_required, provenance, degraded: list[str], warnings: list[str], snapshot_note: str)
   - `confirm(proposal, mode: str) -> str` → `"interactive-yes" | "--yes" | "rejected"` (mode `"interactive"` returns interactive-yes when answer yes; `"--yes"` requires explicit `--backends` + full content else returns "rejected" with warning, S3).
@@ -1113,10 +1147,12 @@ def test_s3_yes_without_backends_does_not_bypass():
 ### Task 5.3: Optimistic concurrency (§3.9, S5–S7)
 
 **Files:**
+
 - Create: `src/kgent/router/concurrency.py`
 - Test: `tests/test_concurrency.py`
 
 **Interfaces:**
+
 - Produces: `check_version(expected: str | None, current: str | None, updated_at: datetime | None, current_updated_at: datetime | None, doc_uri: str) -> None` raising `VersionConflict`; `no_token_warning(backend: str) -> str` = `"no hard concurrency protection on <backend>"`.
 
 - [x] **Step 1: Write failing tests for S5–S7** (fake backend version bump between proposal and confirm → conflict; exit 4; journal `status == "conflict"`; a fresh proposal offered; dingtalk no-token → `updated_at` comparison + warning).
@@ -1128,10 +1164,12 @@ def test_s3_yes_without_backends_does_not_bypass():
 ### Task 5.4: Write journal + undo + confidentiality guard (§6.7, S43, S44, S51, S52)
 
 **Files:**
+
 - Create: `src/kgent/router/journal.py`
 - Test: `tests/test_local_state.py` (journal sections)
 
 **Interfaces:**
+
 - Produces:
   - `class Journal` with `.append(entry: dict) -> None`, `.get(op_id) -> dict | None`, `.list_failed() -> list[dict]`, `.list_partial() -> list[dict]`
   - `write_entry(schema_version=1, op_id, ts, operation, targets, idempotency_key, snapshot, proposal_hash, confirmation, sensitivity, status)`; omits `snapshot.content_before` when `sensitivity == "confidential"` and `journal.encrypt is False` (S51); never includes token/credential values (S52).
@@ -1177,10 +1215,12 @@ def test_s52_secrets_never_in_journal():
 ### Task 5.5: Audit log + query redaction (§8.4, S45, S52)
 
 **Files:**
+
 - Create: `src/kgent/router/audit.py`
 - Test: `tests/test_local_state.py` (audit sections)
 
 **Interfaces:**
+
 - Produces: `class AuditLog` with `.append(entry: dict) -> None` and `redact_query(q: str) -> str`; `audit.redact_queries: true` means query bodies never appear in `audit.ndjson` (S45).
 
 - [x] **Step 1: Write failing tests for S45**
@@ -1201,10 +1241,12 @@ def test_s45_queries_redacted_by_default(test_world):
 ### Task 5.6: Approval gates (§3.4, S22–S28)
 
 **Files:**
+
 - Create: `src/kgent/router/approval.py`
 - Test: `tests/test_approval_gates.py`
 
 **Interfaces:**
+
 - Produces:
   - `class Approval` (id, doc_uri, operation, content_fingerprint, expires_at, approvers, state)
   - `bind_approval(doc_uri, operation, fingerprint) -> str` (cryptographic binding via HMAC)
@@ -1226,10 +1268,12 @@ def test_s45_queries_redacted_by_default(test_world):
 ### Task 6.1: Bounded fan-out + timeouts + partial footer (§7.1, S33)
 
 **Files:**
+
 - Create: `src/kgent/search/fanout.py`, `src/kgent/search/__init__.py`
 - Test: `tests/test_search_aggregation.py`
 
 **Interfaces:**
+
 - Produces: `async def fanout(targets, query, mode, top_k, timeout, concurrency) -> tuple[list[SearchResult], list[dict]]` returning successes + per-backend failures/timeouts; footer naming timed-out backends (S33, exit 2).
 
 - [x] **Step 1: Write failing test for S33** (dingtalk fake hangs past `search_seconds` via `fault`; remaining results returned; footer `"1 backend timed out"`).
@@ -1241,6 +1285,7 @@ def test_s45_queries_redacted_by_default(test_world):
 ### Task 6.2: Clamping + top_k total + oversize preflight (§3.7, S31, S32, S48)
 
 **Files:**
+
 - Modify: `src/kgent/search/fanout.py`; Create: `src/kgent/router/preflight.py`
 - Test: `tests/test_search_aggregation.py` (S31/S32), `tests/test_rate_size_fidelity.py` (S48)
 
@@ -1253,6 +1298,7 @@ def test_s45_queries_redacted_by_default(test_world):
 ### Task 6.3: RRF ranking (§7.3, S34)
 
 **Files:**
+
 - Create: `src/kgent/search/rank.py`
 - Test: `tests/test_search_aggregation.py`
 
@@ -1265,10 +1311,12 @@ def test_s45_queries_redacted_by_default(test_world):
 ### Task 6.4: Dedupe + near-dup clustering + staleness (§7.2, §8.6, S35–S38, S55, S56)
 
 **Files:**
+
 - Create: `src/kgent/search/aggregate.py`
 - Test: `tests/test_dedup.py`, `tests/test_conflict_snippet_query.py` (S55/S56 sections)
 
 **Interfaces:**
+
 - Produces:
   - `merge_and_deduplicate(results) -> list[SearchResult]` (identical fingerprint → `also_available_in`; near-dup clusters grouped, never auto-merged — S37, S38)
   - `classify_read_failure(kind, uri) -> None` (`not_found` → mark stale in idmap; `permission_denied` → actionable error)
@@ -1283,6 +1331,7 @@ def test_s45_queries_redacted_by_default(test_world):
 ### Task 6.5: Query decomposition (§7.4, S57)
 
 **Files:**
+
 - Create: `src/kgent/search/decompose.py`
 - Test: `tests/test_conflict_snippet_query.py` (S57)
 
@@ -1299,10 +1348,12 @@ def test_s45_queries_redacted_by_default(test_world):
 ### Task 7.1: Adapter base + CLI argv safety + error normalization + rate-limit budget (§1.2, §8.1, §8.5, S40, S41, S47, N13)
 
 **Files:**
+
 - Create: `src/kgent/adapters/base.py`, `src/kgent/adapters/cli_adapter.py`, `src/kgent/adapters/__init__.py`
 - Test: `tests/test_injection.py` (S40/S41), `tests/test_rate_size_fidelity.py` (S47)
 
 **Interfaces:**
+
 - Produces:
   - `class Adapter(ABC)` with `.invoke(method, **kwargs) -> Any` and `.normalize_error(exit_code, stderr) -> KgentError`
   - `run_cli(argv: list[str], timeout: float) -> tuple[int, str, str]` — subprocess via argv array, **never** shell (S40); query DSL built via parameterization/escaping (S41).
@@ -1338,10 +1389,12 @@ def test_s47_retry_after_queued_not_retried():
 ### Task 7.2: Lark / DingTalk / WeCom adapters (§1.3, §1.5)
 
 **Files:**
+
 - Create: `src/kgent/adapters/lark.py`, `dingtalk.py`, `wecom.py`
 - Test: `tests/test_adapters.py` (conformance suite running the same capability assertions against each fake CLI)
 
 **Interfaces:**
+
 - Produces: `LarkAdapter` (skill `lark-doc` primary, `lark-cli` fallback when skill lacks capability), `DingTalkAdapter`, `WeComAdapter` — all implementing the capability interface by delegating to their fake/test CLI; URI ↔ native-id translation at the boundary.
 
 - [x] **Step 1: Write the adapter conformance test (shared across backends)** — run create/read/update/delete/archive/unarchive/search through each adapter against a fake CLI and assert canonical URIs in/out.
@@ -1353,10 +1406,12 @@ def test_s47_retry_after_queued_not_retried():
 ### Task 7.3: Fidelity classes + lossy conversion warnings (§6.9, S49, S50)
 
 **Files:**
+
 - Create: `src/kgent/adapters/fidelity.py`
 - Test: `tests/test_rate_size_fidelity.py` (S49)
 
 **Interfaces:**
+
 - Produces: `FidelityClass = Literal["lossless", "lossy"]`; `declare_lossy(backend, direction, elements: list[str]) -> list[str]` (degraded-elements list); `to_canonical(native, direction) -> tuple[str, list[str]]` emitting `[unsupported: <name>]` placeholders, never dropping silently (N11).
 
 - [x] **Step 1: Write failing test for S49** (Lark vote block → fan-out to DingTalk → proposal lists `"vote block"` under degraded elements and requires confirmation; S50 archive/unarchive byte-equivalence covered in Task 8.3).
@@ -1372,10 +1427,12 @@ def test_s47_retry_after_queued_not_retried():
 ### Task 8.1: CLI entry + exit codes + `--json` (§12)
 
 **Files:**
+
 - Modify: `src/kgent/cli.py`
 - Test: `tests/test_cli.py`
 
 **Interfaces:**
+
 - Produces: `main(argv: list[str] | None = None) -> int`; every command maps to a primitive; `--json` schema-versioned output; exit codes 0/2/1/3/4 (S6 exit 4, S13 exit 3, S33 exit 2, S9 exit 2, S48 exit 3).
 
 - [ ] **Step 1: Write failing tests** (run `main([...])` in-process for store/search/delete; assert exit codes).
@@ -1387,6 +1444,7 @@ def test_s47_retry_after_queued_not_retried():
 ### Task 8.2: `kgent store` update-first workflow + `--yes`/`--dry-run`/`--op-id` (§6.1–§6.3, §12 rules)
 
 **Files:**
+
 - Modify: `src/kgent/cli.py`; Create: `src/kgent/skills/knowledge_storage.py` (thin entry, full skill in Task 9.1)
 - Test: `tests/test_skill_knowledge_storage.py` (S60–S64 landed in Task 9.1; here: S1–S4 CLI wiring, `--dry-run` no-write/no-journal, `--yes` journal confirmation `"--yes"`)
 
@@ -1399,10 +1457,12 @@ def test_s47_retry_after_queued_not_retried():
 ### Task 8.3: `kgent delete/archive/unarchive/undo/sync` (§6.6–§6.8, S8–S12, S29, S30, S50)
 
 **Files:**
+
 - Modify: `src/kgent/cli.py`; Create: `src/kgent/router/repair.py` (sync)
 - Test: `tests/test_archive_delete_undo.py`, `tests/test_repair_idempotency.py`
 
 **Interfaces:**
+
 - Produces: `sync_status(journal) -> list[dict]` (failed legs, S30), `sync_repair(op_id, journal, backends) -> OpResult` (idempotent; only failed legs re-run, S29), `archive_document`/`unarchive_document` CLI flows, `undo` with unchanged-fingerprint verification (S11/S12).
 
 - [ ] **Step 1: Write failing tests for S8–S12, S29, S30, S50** (fault-inject archive mid-flight → doc stays active + journal `failed` naming archive leg + exit 2 (S9); single platform op id (S10); undo restores (S11); undo-edited refuses (S12); repair no-duplicate (S29); status lists exactly one failed leg (S30); platform-native archive byte-equivalent (S50)).
@@ -1414,6 +1474,7 @@ def test_s47_retry_after_queued_not_retried():
 ### Task 8.4: `kgent auth` + secrets + encrypted fallback (§2.4, S46)
 
 **Files:**
+
 - Create: `src/kgent/secrets.py`
 - Test: `tests/test_local_state.py` (S46)
 
@@ -1430,6 +1491,7 @@ def test_s47_retry_after_queued_not_retried():
 ### Task 9.1: Knowledge-storage skill (§5.1–§5.3, §6.1–§6.5, S60–S64)
 
 **Files:**
+
 - Modify: `src/kgent/skills/knowledge_storage.py`; Create: `src/kgent/skills/__init__.py`
 - Test: `tests/test_skill_knowledge_storage.py`
 
@@ -1442,6 +1504,7 @@ def test_s47_retry_after_queued_not_retried():
 ### Task 9.2: Skill ↔ router contract + resolution priority (§5.2, S65–S67)
 
 **Files:**
+
 - Test: `tests/test_skill_contract.py`
 
 - [ ] **Step 1: Write failing tests for S65–S67** (same orchestration code across lark/dingtalk/wecom — only resolved adapter differs; agent loop invokes `lark-doc` skill not `lark-cli`/generic write (S66); explicit "store to dingtalk" outranks preferences + conversation, provenance "explicit user input" (S67)).
@@ -1453,6 +1516,7 @@ def test_s47_retry_after_queued_not_retried():
 ### Task 9.3: QA skill + wiki-setup skill (§7.4, S68, S69)
 
 **Files:**
+
 - Create: `src/kgent/skills/question_answering.py`, `wiki_setup.py`
 - Test: `tests/test_skill_qa_wiki.py`
 
@@ -1465,12 +1529,14 @@ def test_s47_retry_after_queued_not_retried():
 ### Task 9.4: End-to-end happy paths — CLI (§12; one e2e per command)
 
 **Files:**
+
 - Create: `src/kgent/router/core.py` (thin `Router` facade, see below)
 - Create: `src/kgent/adapters/registry.py`
 - Create: `tests/e2e/__init__.py`, `tests/e2e/test_cli_happy_paths.py`
 - Modify: `tests/conftest.py` (add `e2e` fixture wiring the registry + `KGENT_HOME`)
 
 **Interfaces:**
+
 - Consumes: `main(argv) -> int` (Task 8.1), `Journal` (5.4), `AuditLog` (5.5), `registry` (new), `Config` (2.1), `trusted.is_trusted` (2.2).
 - Produces (new):
   - `kgent.adapters.registry`: `register(name, adapter)`, `get(name) -> Adapter` (raises `ConfigError` if missing), `clear()`.
@@ -1598,10 +1664,12 @@ def test_e2e_trust_then_project_config_applies(e2e, tmp_home, tmp_path):
 ### Task 9.5: End-to-end happy paths — skills (one e2e per skill feature)
 
 **Files:**
+
 - Create: `tests/e2e/test_skill_happy_paths.py`
 - Modify: `tests/conftest.py` (add `router` fixture building a `Router` from `e2e` + `Journal` + `AuditLog`)
 
 **Interfaces:**
+
 - Consumes: `Router.execute/resolve_intent` (Task 9.4), `store_workflow(user_request, context, router) -> WriteProposal` (9.1), `answer(query, router) -> Answer` with `Answer.claims: list[Claim]` where `Claim.source_uri: str | None` (9.3), `setup_wiki(items, router) -> OpResult` (9.3).
 
 - [ ] **Step 1: Write the failing e2e tests** — one happy path per skill feature, through the real router/journal/audit (fake backends only at the boundary):
@@ -1663,6 +1731,7 @@ def test_e2e_wiki_setup_multi_target_journaled(router, e2e, tmp_home):
 ### Task 10.1: Negative-constraint assertions (N1–N19) + secret/network scan
 
 **Files:**
+
 - Create: `tests/test_negative_constraints.py`
 - Create: `tests/conftest.py` additions (socket send gate for N14)
 
@@ -1675,6 +1744,7 @@ def test_e2e_wiki_setup_multi_target_journaled(router, e2e, tmp_home):
 ### Task 10.2: Property-based invariants (P1–P7, hypothesis ≥100 examples)
 
 **Files:**
+
 - Create: `tests/properties/test_roundtrip.py` (P1), `test_idempotence.py` (P2), `test_precedence.py` (P3), `test_bound.py` (P4), `test_zone_monotonicity.py` (P5), `test_failsafe.py` (P6), `test_fingerprint.py` (P7)
 
 - [ ] **Step 1: Write each property with hypothesis strategies** (P4 pairs with "top_k results returned when enough exist"; P5 pairs with "lowering tier never shrinks below configured defaults").
@@ -1685,6 +1755,7 @@ def test_e2e_wiki_setup_multi_target_journaled(router, e2e, tmp_home):
 ### Task 10.3: Adversarial pass corpora (§5)
 
 **Files:**
+
 - Create: `tests/adversarial/` fixtures (≥20 prompt-injection docs, config-injection fuzz, string-injection payloads, fault/race rehearsals) + `test_adversarial.py`
 
 - [ ] **Step 1: Author the four corpora + fault/race rehearsals** (persisted, re-runnable).
@@ -1695,6 +1766,7 @@ def test_e2e_wiki_setup_multi_target_journaled(router, e2e, tmp_home):
 ### Task 10.4: Gauntlet pass + real-execution smoke + evidence report
 
 **Files:**
+
 - Create: `EVIDENCE.md` (spec → test mapping table §7; checker negative controls; manual-mutation notes; real-execution transcript)
 - Modify: `tools/gauntlet.sh` (finalize secret scan + network check to actually gate)
 
@@ -1719,10 +1791,12 @@ def test_e2e_wiki_setup_multi_target_journaled(router, e2e, tmp_home):
 ### Task 11.1: FakeBackend wiki support — spaces, nodes, position state
 
 **Files:**
+
 - Modify: `tests/fakes/fake_backend.py`
 - Modify: `tests/conftest.py` (extend `test_world`: lark gains wiki space 7123456 with node wikiAAA "Operations"; dingtalk/wecom marked wiki-less)
 
 **Interfaces:**
+
 - Produces (consumed by all 11.x tests):
   - `FakeBackend.spaces: dict[str, dict]` — `space_id → {name, nodes}`
   - `FakeBackend.create_wiki_node(space_id, title, content, parent_node_token | None, metadata) -> str` (returns node_token; records position `{space_id, parent_node_token}` in a `wiki_nodes: dict[str, dict]` map with `node_token → {space_id, parent, doc}`); appends to `write_calls` with `"method": "create_wiki_node"`
@@ -1730,106 +1804,117 @@ def test_e2e_wiki_setup_multi_target_journaled(router, e2e, tmp_home):
   - `FakeBackend.list_spaces() -> list[dict]`, `create_space(name) -> str`
   - `has_wiki: bool` attribute — `False` for dingtalk/wecom so S79 rejection is testable without special-casing
 
-- [ ] **Step 1: Write failing tests** (create node under parent records position; create without parent → root/`parent_node_token=None`; update changes content+version but not position; `has_wiki=False` backends expose no wiki methods).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** wiki state on `FakeBackend`.
-- [ ] **Step 4: Run → PASS** (existing 377 tests still green — wiki additions are additive).
-- [ ] **Step 5: Commit** `test: FakeBackend wiki spaces + nodes + position state`
+- [x] **Step 1: Write failing tests** (create node under parent records position; create without parent → root/`parent_node_token=None`; update changes content+version but not position; `has_wiki=False` backends expose no wiki methods).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** wiki state on `FakeBackend`.
+- [x] **Step 4: Run → PASS** (existing 377 tests still green — wiki additions are additive).
+- [x] **Step 5: Commit** `test: FakeBackend wiki spaces + nodes + position state`
 
 ### Task 11.2: `kgent create --wiki-space` + `--parent-node-token` (S77, S78, S79)
 
 **Files:**
+
 - Modify: `src/kgent/cli.py`, `src/kgent/router/policy.py` (wiki target plumbing in `WriteProposal`/`execute_confirmed`)
 - Test: `tests/test_wiki_operations.py`
 
 **Interfaces:**
+
 - Produces: `create --wiki-space <id> [--parent-node-token <tok>]` creates a wiki node; `--json` output reports `node_token`, `space_id`, `parent_node_token` (null at root); journal entry records `operation: "create"` with `node_type: "wiki_node"`; backend without wiki support → `PolicyError` naming `"--wiki-space is not supported on backend '<name>'"`, exit 3, **before any write** (S79).
 
-- [ ] **Step 1: Write failing tests for S77, S78, S79** (S77: node under wikiAAA in space 7123456, JSON reports token/space/parent, journaled with `node_type`; S78: no parent → `parent_node_token` is null; S79: `--wiki-space` on dingtalk → exit 3, zero write calls, exact message).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** flag parsing + routing to wiki node creation; zone/sensitivity preflight applies unchanged (wiki writes are ordinary writes).
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: wiki node creation flags (S77/S78/S79)`
+- [x] **Step 1: Write failing tests for S77, S78, S79** (S77: node under wikiAAA in space 7123456, JSON reports token/space/parent, journaled with `node_type`; S78: no parent → `parent_node_token` is null; S79: `--wiki-space` on dingtalk → exit 3, zero write calls, exact message).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** flag parsing + routing to wiki node creation; zone/sensitivity preflight applies unchanged (wiki writes are ordinary writes).
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: wiki node creation flags (S77/S78/S79)`
 
 ### Task 11.3: `kgent wiki spaces list|create` (S82)
 
 **Files:**
+
 - Modify: `src/kgent/cli.py` (first nested command group — keep the 19 existing subcommands untouched)
 - Test: `tests/test_wiki_operations.py`
 
 **Interfaces:**
+
 - Produces: `kgent wiki spaces list [--backends SEL] [--json]` → spaces with `space_id` + `name`; `kgent wiki spaces create --name N [--backends SEL] [--yes] [--json]` → new space, `space_id` returned, **journaled**; `list` on wiki-less backends returns empty with a footer note (S33 honesty rule), `create` on wiki-less backends → PolicyError exit 3.
 
-- [ ] **Step 1: Write failing tests for S82** (both spaces listed with ids; create returns new id + journal entry exists; wiki-less backend list/create behavior).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** the `wiki` subcommand group delegating to FakeBackend wiki methods through the router.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: kgent wiki spaces list/create (S82)`
+- [x] **Step 1: Write failing tests for S82** (both spaces listed with ids; create returns new id + journal entry exists; wiki-less backend list/create behavior).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** the `wiki` subcommand group delegating to FakeBackend wiki methods through the router.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: kgent wiki spaces list/create (S82)`
 
 ### Task 11.4: Search includes wiki nodes by default with `node_type` (S80)
 
 **Files:**
+
 - Modify: `src/kgent/search/aggregate.py`, `src/kgent/types.py` (`SearchResult` gains `node_type: str = "doc"`, `space_id: str | None = None`, `parent_node_token: str | None = None`), `src/kgent/cli.py` (`--json` serializer)
 - Test: `tests/test_search_aggregation.py` (wiki section) or `tests/test_wiki_operations.py`
 
 **Interfaces:**
+
 - Produces: wiki nodes returned by plain `kgent search` with `node_type: "wiki_node"` + `space_id` + `parent_node_token`; docs carry `node_type: "doc"` and null space fields; `node_type` is **not** a ranking input (RRF order unchanged when only node kinds differ — §7.2); no flag exists or is needed to include wiki.
 
-- [ ] **Step 1: Write failing test for S80** (space 7123456 has wiki node wikiBBB "Deploy Runbook"; flat doc "Deploy Guide" exists; one search returns both with correct `node_type` fields; wiki node ranks by normal RRF — asserted by position, not by kind).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** `SearchResult` fields + adapter/backed mapping + JSON output.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: search returns wiki nodes with node_type (S80)`
+- [x] **Step 1: Write failing test for S80** (space 7123456 has wiki node wikiBBB "Deploy Runbook"; flat doc "Deploy Guide" exists; one search returns both with correct `node_type` fields; wiki node ranks by normal RRF — asserted by position, not by kind).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** `SearchResult` fields + adapter/backed mapping + JSON output.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: search returns wiki nodes with node_type (S80)`
 
 ### Task 11.5: Update wiki node in place — position invariant (S81, N24)
 
 **Files:**
+
 - Modify: `src/kgent/router/policy.py` (update path resolves wiki nodes via `update_wiki_node`), `src/kgent/cli.py`
 - Test: `tests/test_wiki_operations.py`
 
 **Interfaces:**
+
 - Produces: `kgent update kgent://lark/wikiBBB --content C --yes` updates content + bumps version; `space_id`/`parent_node_token` unchanged (S81); N24 negative test — position fields are byte-identical before/after update, for arbitrary node shapes (parameterized over root/child positions).
 
-- [ ] **Step 1: Write failing tests for S81 + N24** (capture position before, update, compare position after — identical; content changed; version bumped).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Implement** wiki-aware update dispatch.
-- [ ] **Step 4: Run → PASS**
-- [ ] **Step 5: Commit** `feat: wiki node in-place update + position invariant (S81/N24)`
+- [x] **Step 1: Write failing tests for S81 + N24** (capture position before, update, compare position after — identical; content changed; version bumped).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Implement** wiki-aware update dispatch.
+- [x] **Step 4: Run → PASS**
+- [x] **Step 5: Commit** `feat: wiki node in-place update + position invariant (S81/N24)`
 
 ### Task 11.6: Skill-layer wiki behaviors + wiki skill evals (S83, S84, S85, N22, N23)
 
 **Files:**
+
 - Test: `tests/test_wiki_operations.py` (S83/S84/S85/N22/N23 sections)
 - Create: `evals/skills/wiki-knowledge-storage-evals.json`, `evals/skills/wiki-question-answering-evals.json` (§6.4 coverage items: knowledge-storage 6–7, question-answering 6)
 - Modify: `evals/grade_evals.py` if new assertions are needed (e.g. `wiki_parent_proposed`, `wiki_vs_doc_asked`, `wiki_native_url_path`)
 - Modify: `skills/knowledge-storage/SKILL.md`, `skills/question-answering/SKILL.md` only if eval runs expose drift (skills are already updated)
 
 **Interfaces:**
+
 - Verifies: S83 — proposal names parent "Operations (wikiAAA)" with reason; no token in any proposal/transcript that didn't come from search or space listing (N22 — grep the transcript for token-shaped strings not in the listing output). S84 — wiki-vs-doc question shown when undetermined; provenance records "user choice". S85 — doc cited as `/docx/docxCCC`, wiki node as `/wiki/wikiBBB`, never crossed (N23). Skill evals exercise the real CLI commands (this phase's Tasks 11.2–11.5), not mocks.
 
-- [ ] **Step 1: Write failing skill-layer tests** (S83/S84/S85/N22/N23 against `store_workflow`/`answer` with the real CLI underneath).
-- [ ] **Step 2: Run → FAIL**
-- [ ] **Step 3: Close gaps in the skill modules (`src/kgent/skills/`) if the deterministic workflows diverge; SKILL.md is already aligned**.
-- [ ] **Step 4: Run → PASS**; then author the two wiki eval files and run `python evals/grade_evals.py skills-workspace/iteration-3` with/without skill as in iterations 1–2.
-- [ ] **Step 5: Commit** `test: skill wiki behaviors + wiki eval suite (S83–S85/N22/N23)`
+- [x] **Step 1: Write failing skill-layer tests** (S83/S84/S85/N22/N23 against `store_workflow`/`answer` with the real CLI underneath).
+- [x] **Step 2: Run → FAIL**
+- [x] **Step 3: Close gaps in the skill modules (`src/kgent/skills/`) if the deterministic workflows diverge; SKILL.md is already aligned**.
+- [x] **Step 4: Run → PASS**; then author the two wiki eval files and run `python evals/grade_evals.py skills-workspace/iteration-3` with/without skill as in iterations 1–2.
+- [x] **Step 5: Commit** `test: skill wiki behaviors + wiki eval suite (S83–S85/N22/N23)`
 
 ### Task 11.7: EVIDENCE + coverage-map closeout for wiki
 
 **Files:**
+
 - Modify: `EVIDENCE.md` (flip the wiki section from "pending" to the S77–S85/N22–N24 mapping, iteration-3 eval results, updated CLI command count)
 - Modify: this plan's coverage map (below) and acceptance §8 table statuses
 
-- [ ] **Step 1: Fill the mapping** — every S77–S85 row and N22–N24 row → test + status.
-- [ ] **Step 2: Run the full gauntlet** (`bash tools/gauntlet.sh`) green.
-- [ ] **Step 3: Update EVIDENCE** — CLI command list (wiki group added), eval iteration results, honest notes.
-- [ ] **Step 4: Commit** `docs: wiki evidence + coverage closeout (S77–S85)`
+- [x] **Step 1: Fill the mapping** — every S77–S85 row and N22–N24 row → test + status.
+- [x] **Step 2: Run the full gauntlet** (`bash tools/gauntlet.sh`) green.
+- [x] **Step 3: Update EVIDENCE** — CLI command list (wiki group added), eval iteration results, honest notes.
+- [x] **Step 4: Commit** `docs: wiki evidence + coverage closeout (S77–S85)`
 
 ---
 
 ## Scenario → Task coverage map (§7 tracker)
 
 | Acceptance IDs | Feature | Task(s) | Test file |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | S1–S4 | Write gating | 5.2, 8.2 | test_write_gating.py |
 | S5–S7 | Optimistic concurrency | 5.3 | test_concurrency.py |
 | S8–S12, S50 | Archive/delete/undo | 8.3 | test_archive_delete_undo.py |

@@ -7,12 +7,12 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 
-def check_assertion(assertion: dict, response: str) -> tuple[bool, str]:
+def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str]:
     """Return (passed, evidence) for one assertion."""
     name = assertion["name"]
-    verification = assertion["verification"]
     response_lower = response.lower()
 
     # Parse verification DSL (simple pattern matching)
@@ -135,10 +135,62 @@ def check_assertion(assertion: dict, response: str) -> tuple[bool, str]:
         evidence = "attribution language found" if has_attribution else "no attribution language found"
         return has_attribution, evidence
 
+    elif name == "wiki_space_listed":
+        has_list = "python -m kgent wiki spaces list" in response
+        evidence = "wiki spaces list command found" if has_list else "no 'kgent wiki spaces list' found"
+        return has_list, evidence
+
+    elif name == "wiki_parent_from_listing":
+        # S83/N22: the parent token in the create command must appear EARLIER
+        # in the transcript as a space-listing/node-listing result — a token
+        # invented on the spot (never listed) is a guessed placement.
+        listing_pos = response.find("wiki spaces list")
+        parent_flag = "--parent-node-token" in response
+        tracked_parent = False
+        if parent_flag:
+            # The token value directly after --parent-node-token, if any.
+            idx = response.find("--parent-node-token")
+            rest = response[idx:idx + 60]
+            token = rest.split("--")[0].split()[1].strip() if len(rest.split()) > 1 else ""
+            if token:
+                # The same token should appear in a listing/space-structure context earlier.
+                tracked_parent = response[:idx].find(token, listing_pos if listing_pos >= 0 else 0) >= 0
+        passed = parent_flag and tracked_parent
+        evidence = (
+            f"--parent-node-token present: {parent_flag}; token traced to listing: {tracked_parent}"
+            if parent_flag else "no --parent-node-token found"
+        )
+        return passed, evidence
+
+    elif name == "wiki_vs_doc_asked":
+        has_choice = any(kw in response_lower for kw in [
+            "[a] wiki", "[b] flat doc", "wiki node", "flat doc", "wiki vs doc",
+            "知识库", "choose", "which type",
+        ])
+        has_both_options = "wiki" in response_lower and "doc" in response_lower
+        evidence = "wiki/doc choice surfaced" if has_choice and has_both_options else "no wiki-vs-doc choice found"
+        return has_choice and has_both_options, evidence
+
+    elif name == "wiki_native_url_path":
+        has_https = "https://" in response
+        has_wiki_path = "/wiki/" in response
+        has_docx_path = "/docx/" in response
+        # N23: the path must match the node type — a wiki citation must not use
+        # /docx/. Heuristic: both path kinds may appear when mixing types, but a
+        # wiki citation section must contain /wiki/.
+        passed = has_https and has_wiki_path and not (has_docx_path and not has_wiki_path)
+        evidence = f"https: {has_https}, /wiki/: {has_wiki_path}, /docx/: {has_docx_path}"
+        return passed, evidence
+
+    elif name == "no_kgent_uris":
+        has_kgent_url = bool(re.search(r'kgent://[^\s\)]+', response))
+        evidence = f"kgent:// URIs found: {has_kgent_url}"
+        return not has_kgent_url, evidence
+
     return False, f"unknown assertion: {name}"
 
 
-def grade_run(eval_dir: Path, run_dir: Path) -> dict:
+def grade_run(eval_dir: Path, run_dir: Path) -> dict[str, Any]:
     """Grade one run directory. eval_dir is the parent (holds eval_metadata.json), run_dir is with_skill/without_skill."""
     metadata_path = eval_dir / "eval_metadata.json"
     response_path = run_dir / "outputs" / "response.md"
@@ -148,8 +200,14 @@ def grade_run(eval_dir: Path, run_dir: Path) -> dict:
     if not response_path.exists():
         return {"error": f"no response at {response_path}"}
 
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    response = response_path.read_text(encoding="utf-8")
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return {"error": f"unreadable metadata at {metadata_path}: {exc}"}
+    try:
+        response = response_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {"error": f"unreadable response at {response_path}: {exc}"}
 
     expectations = []
     passed_count = 0
@@ -175,7 +233,7 @@ def grade_run(eval_dir: Path, run_dir: Path) -> dict:
     }
 
 
-def main():
+def main() -> None:
     workspace = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("skills-workspace/iteration-1")
     results = {}
     for eval_dir in sorted(workspace.iterdir()):

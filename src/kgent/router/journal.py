@@ -230,6 +230,7 @@ def build_entry(
     content_before: str | None = None,
     metadata_before: dict[str, Any] | None = None,
     encrypt: bool = False,
+    node_type: str | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
     """Build a journal entry with exactly the fixed schema (§6.7).
@@ -245,6 +246,12 @@ def build_entry(
     the flat single-target one *and* the per-target bodies nested under
     ``snapshot["targets"][uri]`` in multi-target entries — so the confidential
     body is never persisted (metadata only).
+
+    **Wiki node writes (§6.10, F21).** Wiki node writes are ordinary writes
+    with the same fixed schema; ``node_type`` (``"wiki_node"``) is a
+    first-class discriminator field recorded alongside the operation — it is
+    NOT part of the catch-all ``extra`` swallowing. Flat-doc writes pass
+    ``node_type=None`` and the field is omitted from the entry.
     """
     snap: dict[str, Any] = dict(snapshot) if snapshot else {}
     if metadata_before is not None:
@@ -266,6 +273,8 @@ def build_entry(
         "sensitivity": sensitivity,
         "status": status,
     }
+    if node_type is not None:
+        entry["node_type"] = node_type
     # Propagate partial-fan-out metadata so sync/repair can target failed legs.
     for key in ("failed_targets", "failed_legs", "proposal_title", "proposal_content"):
         if key in extra:

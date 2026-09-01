@@ -56,11 +56,22 @@ def _next_op_id() -> str:
 
 
 class WriteTarget(Protocol):
-    """Minimal write surface an adapter must expose (create/update for now)."""
+    """Minimal write surface an adapter must expose (create/update + wiki)."""
 
     trust_zone: str
 
     def create_document(self, title: str, content: str, metadata: DocumentMetadata) -> str: ...
+
+    def create_wiki_node(
+        self,
+        title: str,
+        content: str,
+        metadata: DocumentMetadata,
+        space_id: str,
+        parent_node_token: str | None,
+    ) -> str: ...
+
+    def create_wiki_space(self, name: str) -> str: ...
 
     def read_document(self, doc_uri: str) -> Document: ...
 
@@ -135,6 +146,9 @@ def _capture_before(backend: WriteTarget, uri: str) -> tuple[str | None, dict[st
         "backend": meta.backend,
         "version": meta.version,
         "updated_at": meta.updated_at.isoformat() if meta.updated_at is not None else None,
+        "node_type": meta.node_type,
+        "space_id": meta.space_id,
+        "parent_node_token": meta.parent_node_token,
     }
     return current.content, metadata_before
 
@@ -364,6 +378,10 @@ def execute_confirmed(
     block_reasons: list[str] = []
     failed_legs: list[str] = []
     failed_targets: list[str] = []
+    # §6.10/F21: wiki node writes record ``node_type: "wiki_node"`` in the
+    # journal entry; flat-doc writes omit the field (ordinary schema).
+    observed_node_types: set[str] = set()
+    entry_node_type: str | None = None
     # Approval gate (§3.4): fingerprint the proposal content once so every
     # gated leg is verified against the same binding.
     write_fingerprint = (
@@ -396,11 +414,24 @@ def execute_confirmed(
                 continue
         if proposal.operation == "create":
             try:
-                created_uri = backend.create_document(
-                    title=proposal.title or "",
-                    content=proposal.content,
-                    metadata=_metadata(proposal, backend_name, doc_uri=""),
-                )
+                if proposal.wiki_space is not None:
+                    # §6.10: ``--wiki-space`` routes the create to a wiki node
+                    # inside a knowledge space (parent omitted → space root,
+                    # S78); without it the create is a flat doc.
+                    created_uri = backend.create_wiki_node(
+                        title=proposal.title or "",
+                        content=proposal.content,
+                        metadata=_metadata(proposal, backend_name, doc_uri=""),
+                        space_id=proposal.wiki_space,
+                        parent_node_token=proposal.parent_node_token,
+                    )
+                    observed_node_types.add("wiki_node")
+                else:
+                    created_uri = backend.create_document(
+                        title=proposal.title or "",
+                        content=proposal.content,
+                        metadata=_metadata(proposal, backend_name, doc_uri=""),
+                    )
                 executed.append(created_uri)
             except Exception as exc:  # noqa: BLE001 — per-target backend failure
                 failed_targets.append(f"{backend_name}: {exc}")
@@ -422,6 +453,9 @@ def execute_confirmed(
                     expected_version=proposal.expected_version,
                 )
                 executed.append(uri)
+                if metadata_before.get("node_type") == "wiki_node":
+                    # §6.10/F21: the journal discriminates the target node kind.
+                    observed_node_types.add("wiki_node")
                 if content_before is not None:
                     # Capture version_after so undo can detect subsequent edits (S12).
                     version_after: str | None = None
@@ -466,6 +500,12 @@ def execute_confirmed(
                     fresh_proposal=_fresh_proposal(proposal, backend, uri),
                     error=str(exc),
                 )
+        elif proposal.operation == "wiki_space_create":
+            # §6.10/S82: creating a knowledge space is an ordinary write —
+            # same confirmation rules, zone checks, journal/audit schema. The
+            # created ``space_id`` lands in ``targets`` (the written native id).
+            created_id = backend.create_wiki_space(proposal.title or "")
+            executed.append(created_id)
         else:
             # delete/archive/unarchive (and any unmapped op) degrade to a safe
             # no-op with a warning until a later task wires them.
@@ -481,6 +521,8 @@ def execute_confirmed(
         snapshot = {"targets": dict(snapshots)}
     else:
         snapshot = {}
+    if "wiki_node" in observed_node_types:
+        entry_node_type = "wiki_node"
     entry = build_entry(
         op_id=op_id,
         ts=ts,
@@ -493,6 +535,7 @@ def execute_confirmed(
         sensitivity=proposal.sensitivity,
         status="ok",
         encrypt=getattr(journal, "encrypt", False),
+        node_type=entry_node_type,
     )
     if blocked:
         # Approval gate (§3.4, S22–S28): blocked legs never wrote. All legs
@@ -567,6 +610,7 @@ def execute_confirmed(
             failed_legs=failed_legs,
             proposal_title=proposal.title or "",
             proposal_content=proposal.content,
+            node_type=entry_node_type,
         )
         journal.append(partial_entry)
         _audit_append(

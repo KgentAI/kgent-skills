@@ -28,6 +28,9 @@ class DocumentMetadata:
     version: str | None = None
     content_fingerprint: str | None = None
     size_bytes: int | None = None
+    node_type: str = "doc"  # "doc" (flat) | "wiki_node" (§7.2)
+    space_id: str | None = None  # wiki node's knowledge space (§7.2)
+    parent_node_token: str | None = None  # wiki node's parent (§7.2)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +58,9 @@ class SearchResult:
     mode_used: str | None = None
     also_available_in: list[str] = field(default_factory=list)
     access: str = "ok"
+    node_type: str = "doc"  # "doc" | "wiki_node" (§7.2)
+    space_id: str | None = None  # wiki node's knowledge space (§7.2)
+    parent_node_token: str | None = None  # wiki node's parent (§7.2)
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +149,12 @@ class WriteProposal:
     expected_updated_at: datetime | None = None
     expected_version: str | None = None
     match_uris: list[str] = field(default_factory=list)
+    # §6.10 wiki node creation: ``wiki_space`` routes the create to a wiki
+    # node inside a knowledge space; ``parent_node_token`` places it under an
+    # existing parent (omitted → space root). Both are skill/CLI judgment,
+    # never derived from token parsing.
+    wiki_space: str | None = None
+    parent_node_token: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

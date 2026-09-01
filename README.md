@@ -41,6 +41,7 @@ cp -r skills/question-answering ~/.agents/skills/
 ```
 
 After installation, you can use natural language:
+
 - "Save this to the knowledge base" → invokes `knowledge-storage` skill
 - "What does X mean?" → invokes `question-answering` skill
 
@@ -66,6 +67,16 @@ kgent read --uri kgent://lark/doc123
 kgent update --uri kgent://lark/doc123 --content "Updated content"
 kgent delete --uri kgent://lark/doc123
 kgent archive --uri kgent://lark/doc123
+
+# Wiki (knowledge space) operations (§6.10)
+# Create a wiki node inside a space; --parent-node-token places it under an
+# existing node (omitted → space root). Updates keep the node's position.
+kgent create --title "Deploy Runbook" --content "..." --backends lark \
+       --wiki-space 7123456 --parent-node-token wikiAAA --yes --json
+kgent wiki spaces list --backends lark --json     # spaces you can access
+kgent wiki spaces create --name "Engineering Wiki" --backends lark --yes --json
+# Search covers wiki nodes + flat docs by default; results carry node_type
+kgent search --query "deploy runbook" --backends lark --json
 
 # Search and discovery
 kgent search "query terms" --top-k 10
@@ -117,6 +128,7 @@ result = router.execute(proposal, confirmation="interactive-yes")
 ```
 
 **Features**:
+
 - Resolution priority: explicit input > preferences > config defaults
 - Update-first bias: searches for matching docs before creating
 - Provenance tracking: records intent, target, source
@@ -137,6 +149,7 @@ for claim in result.claims:
 ```
 
 **Features**:
+
 - Every factual claim carries a `doc_uri` citation
 - Unsourced claims marked `supported=False` (never fabricated)
 - Fan-out search across all backends
@@ -162,6 +175,7 @@ elif result.exit_code == 2:
 ```
 
 **Features**:
+
 - Multi-target create with single confirmation
 - Each doc confirmed + journaled + undoable
 - Failed legs repairable via `kgent sync --repair`
@@ -217,6 +231,7 @@ content_type_mapping:
 ### Forbidden Project-Local Keys
 
 Project-local configs (`.kgent-config.yaml`) cannot override:
+
 - `backends.*.skill_name` / `cli_name` / `mcp_url`
 - `backends.*.type` / `auth`
 - `backends.*.enabled` (new backends)

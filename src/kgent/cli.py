@@ -22,7 +22,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from kgent.adapters import registry
 from kgent.capabilities.detect import setup as detect_setup
@@ -32,7 +32,7 @@ from kgent.config.migrate import migrate_config
 from kgent.config.schema import Config
 from kgent.config.trusted import trust_directory
 from kgent.config.validate import doctor, validate_config
-from kgent.errors import ConfigError, KgentError, VersionConflict
+from kgent.errors import ConfigError, KgentError, PolicyError, VersionConflict
 from kgent.router.audit import AuditLog
 from kgent.router.core import Router
 from kgent.router.journal import Journal
@@ -62,6 +62,7 @@ def _load_config() -> tuple[Config, list[str]]:
     config_path = home / "config.yaml"
     # Use load_effective_config with cwd as project dir (so trust still works)
     from pathlib import Path as _P
+
     try:
         project_dir = _P.cwd()
     except OSError:
@@ -117,13 +118,24 @@ def _text_out(text: str) -> None:
 
 def _cmd_create(args: argparse.Namespace) -> int:
     router, _config = _build_router()
+    wiki_space = getattr(args, "wiki_space", None)
+    parent_token = getattr(args, "parent_node_token", None)
+    if parent_token is not None and wiki_space is None:
+        raise PolicyError("--parent-node-token requires --wiki-space")
+    backends_list = _target_backends(args, router)
+    if wiki_space is not None:
+        # §6.10/§12 rule 9 (S79): reject wiki flags on backends without a
+        # knowledge-space product BEFORE any write — exit 3 (policy-rejected).
+        _require_wiki_backends(router, backends_list)
     proposal = WriteProposal(
         operation="create",
-        targets=[(b, None) for b in _target_backends(args, router)],
+        targets=[(b, None) for b in backends_list],
         title=args.title,
         content=args.content or "",
         content_type=getattr(args, "content_type", None),
         sensitivity=getattr(args, "sensitivity", "internal"),
+        wiki_space=wiki_space,
+        parent_node_token=parent_token,
     )
     mode = _confirmation_mode(args)
     explicit = bool(getattr(args, "backends", None))
@@ -131,10 +143,26 @@ def _cmd_create(args: argparse.Namespace) -> int:
     if confirmation == "rejected":
         _text_out("rejected: write not confirmed")
         return 3
+    # ``execute`` is the router write gate (confirmed-write API), not SQL
+    # pi-lens-ignore: python-sql-injection
     result = router.execute(proposal, confirmation=confirmation)
     if getattr(args, "json", False):
-        _json_out({"operation": "create", "op_id": result.op_id, "status": result.status,
-                    "targets": _as_str_list(result.journal_entry.get("targets", []))})
+        targets = _as_str_list(result.journal_entry.get("targets", []))
+        out: dict[str, Any] = {
+            "operation": "create",
+            "op_id": result.op_id,
+            "status": result.status,
+            "targets": targets,
+        }
+        if wiki_space is not None:
+            # §6.10: the JSON output reports node_token + position (S77).
+            out["node_type"] = "wiki_node"
+            out["node_token"] = targets[0].rsplit("/", 1)[-1] if targets else None
+            out["space_id"] = wiki_space
+            out["parent_node_token"] = parent_token
+        else:
+            out["node_type"] = "doc"
+        _json_out(out)
     return result.exit_code
 
 
@@ -155,12 +183,20 @@ def _cmd_update(args: argparse.Namespace) -> int:
     if confirmation == "rejected":
         _text_out("rejected: write not confirmed")
         return 3
+    # ``execute`` is the router write gate (confirmed-write API), not SQL
+    # pi-lens-ignore: python-sql-injection
     result = router.execute(proposal, confirmation=confirmation)
     if result.status == "conflict":
         _text_out(f"conflict: {result.error}")
     if getattr(args, "json", False):
-        _json_out({"operation": "update", "op_id": result.op_id, "status": result.status,
-                    "targets": _as_str_list(result.journal_entry.get("targets", []))})
+        _json_out(
+            {
+                "operation": "update",
+                "op_id": result.op_id,
+                "status": result.status,
+                "targets": _as_str_list(result.journal_entry.get("targets", [])),
+            }
+        )
     return result.exit_code
 
 
@@ -180,15 +216,16 @@ def _cmd_store(args: argparse.Namespace) -> int:
             continue
         # Try to search for existing documents with this title
         try:
-            # For real adapters, use search to find existing docs
-            if hasattr(backend, 'search'):
-                results = backend.search(title, mode="keyword", top_k=10)
+            # For real adapters, use search to find existing docs (kw search
+            # covers wiki nodes + flat docs by default — §6.10).
+            if hasattr(backend, "search"):
+                results = backend.search(title, mode="keyword", top_k=10, timeout=10.0)
                 for result in results:
                     if result.metadata.title == title:
                         existing_uri = result.doc_uri
                         break
             # For FakeBackend (tests), use docs dict
-            elif hasattr(backend, 'docs'):
+            elif hasattr(backend, "docs"):
                 for uri, doc in backend.docs.items():
                     if doc.title == title:
                         existing_uri = uri
@@ -241,15 +278,23 @@ def _cmd_store(args: argparse.Namespace) -> int:
 
     caller_op_id = getattr(args, "op_id", None)
     try:
+        # ``execute`` is the router write gate (confirmed-write API), not SQL
+        # pi-lens-ignore: python-sql-injection
         result = router.execute(proposal, confirmation=confirmation, op_id=caller_op_id)
     except Exception as exc:  # noqa: BLE001  — adapters are a platform boundary
         # Backend error during execution: journal what we can, report partial
         _text_out(f"error: {exc}")
         return 2
     if getattr(args, "json", False):
-        _json_out({"operation": "store", "op_id": result.op_id, "status": result.status,
-                    "targets": _as_str_list(result.journal_entry.get("targets", [])),
-                    "update_first": existing_uri is not None})
+        _json_out(
+            {
+                "operation": "store",
+                "op_id": result.op_id,
+                "status": result.status,
+                "targets": _as_str_list(result.journal_entry.get("targets", [])),
+                "update_first": existing_uri is not None,
+            }
+        )
     return result.exit_code
 
 
@@ -258,7 +303,10 @@ def _cmd_search(args: argparse.Namespace) -> int:
     selection = getattr(args, "backends", None)
     top_k = getattr(args, "top_k", 10) or 10
     successes, failures, _clamps = router.search_sync(
-        args.query, mode="keyword", top_k=top_k, selection=selection,
+        args.query,
+        mode="keyword",
+        top_k=top_k,
+        selection=selection,
     )
     # RRF ranking
     per_backend: dict[str, list[SearchResult]] = {}
@@ -272,16 +320,28 @@ def _cmd_search(args: argparse.Namespace) -> int:
     exit_code = exit_code_for_failures(failures)
 
     if getattr(args, "json", False):
-        _json_out({
-            "results": [
-                {"doc_uri": r.doc_uri, "title": r.metadata.title, "rank": i + 1,
-                 "snippet": r.snippet, "backend": r.metadata.backend,
-                 "also_available_in": r.also_available_in}
-                for i, r in enumerate(fused)
-            ],
-            "failures": failures,
-            "footer": footer,
-        })
+        _json_out(
+            {
+                "results": [
+                    {
+                        "doc_uri": r.doc_uri,
+                        "title": r.metadata.title,
+                        "rank": i + 1,
+                        "snippet": r.snippet,
+                        "backend": r.metadata.backend,
+                        "also_available_in": r.also_available_in,
+                        # §7.2: node_type discriminates doc | wiki_node; wiki results
+                        # additionally carry their space + parent position.
+                        "node_type": r.node_type,
+                        "space_id": r.space_id,
+                        "parent_node_token": r.parent_node_token,
+                    }
+                    for i, r in enumerate(fused)
+                ],
+                "failures": failures,
+                "footer": footer,
+            }
+        )
     else:
         for i, r in enumerate(fused, 1):
             snippet = (r.snippet or "")[:80]
@@ -307,10 +367,18 @@ def _cmd_read(args: argparse.Namespace) -> int:
         _text_out(f"error: document {doc_uri!r} not found")
         return 1
     if getattr(args, "json", False):
-        _json_out({
-            "doc_uri": doc.doc_uri, "title": doc.title, "content": doc.content,
-            "backend": doc.metadata.backend, "version": doc.metadata.version,
-        })
+        _json_out(
+            {
+                "doc_uri": doc.doc_uri,
+                "title": doc.title,
+                "content": doc.content,
+                "backend": doc.metadata.backend,
+                "version": doc.metadata.version,
+                "node_type": doc.metadata.node_type,
+                "space_id": doc.metadata.space_id,
+                "parent_node_token": doc.metadata.parent_node_token,
+            }
+        )
     else:
         _text_out(f"# {doc.title}\n\n{doc.content}")
     return 0
@@ -338,19 +406,21 @@ def _cmd_delete(args: argparse.Namespace) -> int:
         return 1
 
     # Journal the delete
-    router.journal.append({
-        "schema_version": 1,
-        "op_id": f"del-{doc_uri}",
-        "ts": _now_iso(),
-        "operation": "delete",
-        "targets": [doc_uri],
-        "idempotency_key": f"del-{doc_uri}",
-        "snapshot": {},
-        "proposal_hash": "",
-        "confirmation": _confirmation_mode(args),
-        "sensitivity": "internal",
-        "status": "ok",
-    })
+    router.journal.append(
+        {
+            "schema_version": 1,
+            "op_id": f"del-{doc_uri}",
+            "ts": _now_iso(),
+            "operation": "delete",
+            "targets": [doc_uri],
+            "idempotency_key": f"del-{doc_uri}",
+            "snapshot": {},
+            "proposal_hash": "",
+            "confirmation": _confirmation_mode(args),
+            "sensitivity": "internal",
+            "status": "ok",
+        }
+    )
     if getattr(args, "json", False):
         _json_out({"operation": "delete", "status": "ok", "targets": [doc_uri]})
     return 0
@@ -370,19 +440,21 @@ def _cmd_archive(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001  — adapter boundary
         _text_out(f"error: {exc}")
         return 1
-    router.journal.append({
-        "schema_version": 1,
-        "op_id": f"archive-{doc_uri}",
-        "ts": _now_iso(),
-        "operation": "archive",
-        "targets": [doc_uri],
-        "idempotency_key": f"archive-{doc_uri}",
-        "snapshot": {},
-        "proposal_hash": "",
-        "confirmation": "archive",
-        "sensitivity": "internal",
-        "status": "ok",
-    })
+    router.journal.append(
+        {
+            "schema_version": 1,
+            "op_id": f"archive-{doc_uri}",
+            "ts": _now_iso(),
+            "operation": "archive",
+            "targets": [doc_uri],
+            "idempotency_key": f"archive-{doc_uri}",
+            "snapshot": {},
+            "proposal_hash": "",
+            "confirmation": "archive",
+            "sensitivity": "internal",
+            "status": "ok",
+        }
+    )
     if getattr(args, "json", False):
         _json_out({"operation": "archive", "status": "ok", "targets": [doc_uri]})
     return 0
@@ -410,10 +482,18 @@ def _cmd_unarchive(args: argparse.Namespace) -> int:
 def _cmd_undo(args: argparse.Namespace) -> int:
     router, _config = _build_router()
     op_id = args.op_id
-    result = journal_undo(op_id, backends=router.backends, journal=router.journal, audit=router.audit)
+    result = journal_undo(
+        op_id, backends=router.backends, journal=router.journal, audit=router.audit
+    )
     if getattr(args, "json", False):
-        _json_out({"operation": "undo", "op_id": result.op_id, "status": result.status,
-                    "error": result.error})
+        _json_out(
+            {
+                "operation": "undo",
+                "op_id": result.op_id,
+                "status": result.status,
+                "error": result.error,
+            }
+        )
     elif result.error:
         _text_out(f"undo: {result.error}")
     return result.exit_code
@@ -425,11 +505,17 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     repair_op = getattr(args, "repair", None)
     if repair_op:
         from kgent.router.repair import sync_repair
+
         result = sync_repair(repair_op, journal=router.journal, backends=router.backends)
         if getattr(args, "json", False):
-            _json_out({"operation": "sync", "op_id": repair_op,
-                        "status": result.journal_entry.get("status"),
-                        "repaired_targets": result.journal_entry.get("repaired_targets", [])})
+            _json_out(
+                {
+                    "operation": "sync",
+                    "op_id": repair_op,
+                    "status": result.journal_entry.get("status"),
+                    "repaired_targets": result.journal_entry.get("repaired_targets", []),
+                }
+            )
         else:
             if result.exit_code == 0:
                 _text_out(f"repaired {repair_op}")
@@ -438,6 +524,7 @@ def _cmd_sync(args: argparse.Namespace) -> int:
         return result.exit_code
     # Status: list failed/partial ops
     from kgent.router.repair import sync_status
+
     statuses = sync_status(router.journal)
     if getattr(args, "json", False):
         _json_out({"operations": statuses})
@@ -494,13 +581,21 @@ def _cmd_setup(args: argparse.Namespace) -> int:
     home = _home()
     report, code = detect_setup(home)
     if getattr(args, "json", False):
-        _json_out({"backends": {n: {"auth": e.get("auth"), "found_via": e.get("found_via")}
-                                for n, e in report.backends.items()},
-                    "exit_code": code})
+        _json_out(
+            {
+                "backends": {
+                    n: {"auth": e.get("auth"), "found_via": e.get("found_via")}
+                    for n, e in report.backends.items()
+                },
+                "exit_code": code,
+            }
+        )
     else:
         if report.backends:
             for name, entry in report.backends.items():
-                _text_out(f"  {name}: found via {entry.get('found_via')} (auth: {entry.get('auth')})")
+                _text_out(
+                    f"  {name}: found via {entry.get('found_via')} (auth: {entry.get('auth')})"
+                )
         else:
             _text_out("no backends detected")
     return code
@@ -535,6 +630,83 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     return code
 
 
+def _cmd_wiki(args: argparse.Namespace) -> int:
+    """§6.10/§12: ``kgent wiki`` — the first nested command group."""
+    wiki_action = getattr(args, "wiki_action", None)
+    if wiki_action == "spaces":
+        spaces_action = getattr(args, "spaces_action", None)
+        if spaces_action == "list":
+            return _cmd_wiki_spaces_list(args)
+        if spaces_action == "create":
+            return _cmd_wiki_spaces_create(args)
+        _text_out(f"unknown wiki spaces action: {spaces_action}")
+        return 1
+    _text_out(f"unknown wiki action: {wiki_action}")
+    return 1
+
+
+def _cmd_wiki_spaces_list(args: argparse.Namespace) -> int:
+    """§6.10/§12 (S82): list knowledge spaces; only backends with one (rule 9)."""
+    router, _config = _build_router()
+    spaces: list[dict[str, Any]] = []
+    for backend_name in _target_backends(args, router):
+        if not _backend_supports_wiki(router, backend_name):
+            continue  # §12 rule 9: list only backends with a knowledge space
+        backend = router.backends[backend_name]
+        try:
+            for space in backend.list_wiki_spaces():
+                item = dict(space)
+                item.setdefault("backend", backend_name)
+                spaces.append(item)
+        except Exception as exc:  # noqa: BLE001 — N10: failures are surfaced, never dropped
+            spaces.append({"backend": backend_name, "error": str(exc)})
+    if getattr(args, "json", False):
+        _json_out({"spaces": spaces})
+    else:
+        for space in spaces:
+            _text_out(
+                f"  {space.get('space_id', '?')} — {space.get('name', '?')} "
+                f"({space.get('backend', '?')})"
+            )
+        if not spaces:
+            _text_out("no knowledge spaces found")
+    return 0
+
+
+def _cmd_wiki_spaces_create(args: argparse.Namespace) -> int:
+    """§6.10/§12 (S82): create a knowledge space; journaled like any write."""
+    router, _config = _build_router()
+    backends_list = _target_backends(args, router)
+    _require_wiki_backends(router, backends_list)
+    proposal = WriteProposal(
+        operation="wiki_space_create",
+        targets=[(b, None) for b in backends_list],
+        title=args.name,
+        content=args.name or "",
+        sensitivity="internal",
+    )
+    mode = _confirmation_mode(args)
+    explicit = bool(getattr(args, "backends", None))
+    confirmation = confirm(proposal, mode, explicit_backends=explicit)
+    if confirmation == "rejected":
+        _text_out("rejected: write not confirmed")
+        return 3
+    # ``execute`` is the router write gate (confirmed-write API), not SQL
+    # pi-lens-ignore: python-sql-injection
+    result = router.execute(proposal, confirmation=confirmation)
+    if getattr(args, "json", False):
+        _json_out(
+            {
+                "operation": "wiki_space_create",
+                "op_id": result.op_id,
+                "status": result.status,
+                "space_ids": _as_str_list(result.journal_entry.get("targets", [])),
+                "backends": backends_list,
+            }
+        )
+    return result.exit_code
+
+
 def _cmd_config(args: argparse.Namespace) -> int:
     sub = getattr(args, "config_action", "validate")
     home = _home()
@@ -545,8 +717,8 @@ def _cmd_config(args: argparse.Namespace) -> int:
             return 0
         try:
             raw = _yaml.parse(config_path.read_text(encoding="utf-8"))
-            cfg = load_effective_config.__wrapped__ if hasattr(load_effective_config, "__wrapped__") else None
             from kgent.config.schema import load_config_dict
+
             cfg = load_config_dict(raw if isinstance(raw, dict) else {})
             findings = validate_config(cfg)
         except KgentError as exc:
@@ -578,8 +750,9 @@ def _cmd_config(args: argparse.Namespace) -> int:
         data = {
             "version": cfg.version,
             "defaults": cfg.defaults,
-            "backends": {n: {k: v for k, v in s.items() if v is not None}
-                         for n, s in cfg.backends.items()},
+            "backends": {
+                n: {k: v for k, v in s.items() if v is not None} for n, s in cfg.backends.items()
+            },
             "content_type_mapping": cfg.content_type_mapping,
             "sensitivity_floors": cfg.sensitivity_floors,
             "warnings": warnings,
@@ -596,6 +769,22 @@ def _cmd_config(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _backend_supports_wiki(router: Router, backend_name: str) -> bool:
+    """True when the backend declares the §6.10 wiki (knowledge space) capability."""
+    backend = router.backends.get(backend_name)
+    caps = getattr(backend, "capabilities", None)
+    wiki = caps.get("wiki") if isinstance(caps, dict) else None
+    return bool(isinstance(wiki, dict) and wiki.get("supported"))
+
+
+def _require_wiki_backends(router: Router, backends_list: list[str]) -> None:
+    """Reject ``--wiki-space``/``kgent wiki spaces`` on backends without a
+    knowledge-space product, BEFORE any write — exit 3 (S79, §12 rule 9)."""
+    for backend_name in backends_list:
+        if not _backend_supports_wiki(router, backend_name):
+            raise PolicyError(f"--wiki-space is not supported on backend '{backend_name}'")
 
 
 def _as_str_list(value: Any) -> list[str]:
@@ -621,12 +810,14 @@ def _target_backends(args: argparse.Namespace, router: Router) -> list[str]:
 def _backend_for_uri(doc_uri: str) -> str:
     """Extract backend name from a kgent:// URI."""
     from kgent.uri import parse_uri
+
     backend, _ = parse_uri(doc_uri)
     return backend
 
 
 def _now_iso() -> str:
     from datetime import UTC, datetime
+
     return datetime.now(UTC).isoformat()
 
 
@@ -650,7 +841,35 @@ def _build_parser() -> argparse.ArgumentParser:
     p_create.add_argument("--backends", default=None)
     p_create.add_argument("--content-type", dest="content_type", default=None)
     p_create.add_argument("--sensitivity", default="internal")
+    p_create.add_argument(
+        "--wiki-space",
+        dest="wiki_space",
+        default=None,
+        help="Create a wiki node inside this knowledge space (§6.10)",
+    )
+    p_create.add_argument(
+        "--parent-node-token",
+        dest="parent_node_token",
+        default=None,
+        help="Place the wiki node under this existing parent (§6.10)",
+    )
     p_create.add_argument("--yes", action="store_true", default=False)
+
+    # wiki (knowledge space) — first nested command group (§6.10/§12)
+    p_wiki = sub.add_parser("wiki", help="Wiki (knowledge space) management", parents=[common])
+    wiki_sub = p_wiki.add_subparsers(dest="wiki_action")
+    p_spaces = wiki_sub.add_parser("spaces", help="Knowledge-space primitives", parents=[common])
+    spaces_sub = p_spaces.add_subparsers(dest="spaces_action")
+    p_spaces_list = spaces_sub.add_parser(
+        "list", help="List knowledge spaces accessible to the user", parents=[common]
+    )
+    p_spaces_list.add_argument("--backends", default=None)
+    p_spaces_create = spaces_sub.add_parser(
+        "create", help="Create a knowledge space", parents=[common]
+    )
+    p_spaces_create.add_argument("--name", required=True)
+    p_spaces_create.add_argument("--backends", default=None)
+    p_spaces_create.add_argument("--yes", action="store_true", default=False)
 
     # update
     p_update = sub.add_parser("update", help="Update a document", parents=[common])
@@ -668,10 +887,19 @@ def _build_parser() -> argparse.ArgumentParser:
     p_store.add_argument("--backends", default=None)
     p_store.add_argument("--sensitivity", default="internal")
     p_store.add_argument("--yes", action="store_true", default=False)
-    p_store.add_argument("--dry-run", dest="dry_run", action="store_true", default=False,
-                         help="Show what would happen without writing or journaling")
-    p_store.add_argument("--op-id", dest="op_id", default=None,
-                         help="Reuse a caller-supplied op_id for the journal entry")
+    p_store.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        default=False,
+        help="Show what would happen without writing or journaling",
+    )
+    p_store.add_argument(
+        "--op-id",
+        dest="op_id",
+        default=None,
+        help="Reuse a caller-supplied op_id for the journal entry",
+    )
 
     # search
     p_search = sub.add_parser("search", help="Search documents", parents=[common])
@@ -710,8 +938,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # auth
     p_auth = sub.add_parser("auth", help="Authentication management", parents=[common])
-    p_auth.add_argument("auth_action", nargs="?", default="status",
-                        choices=["status", "login", "logout"])
+    p_auth.add_argument(
+        "auth_action", nargs="?", default="status", choices=["status", "login", "logout"]
+    )
 
     # setup
     sub.add_parser("setup", help="Discover backends + generate config", parents=[common])
@@ -725,8 +954,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # config
     p_config = sub.add_parser("config", help="Config management", parents=[common])
-    p_config.add_argument("config_action", nargs="?", default="validate",
-                          choices=["validate", "migrate", "show-effective"])
+    p_config.add_argument(
+        "config_action",
+        nargs="?",
+        default="validate",
+        choices=["validate", "migrate", "show-effective"],
+    )
 
     # status (alias for auth status)
     sub.add_parser("status", help="Show status (alias for auth status)", parents=[common])
@@ -738,8 +971,9 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-_DISPATCH = {
+_DISPATCH: dict[str, Callable[[argparse.Namespace], int]] = {
     "create": _cmd_create,
+    "wiki": _cmd_wiki,
     "update": _cmd_update,
     "store": _cmd_store,
     "search": _cmd_search,

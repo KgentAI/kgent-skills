@@ -118,6 +118,27 @@ class Adapter(ABC):
     def create_document(self, title: str, content: str, metadata: Any) -> str:
         raise NotImplementedError("create_document")
 
+    # ---- §6.10 wiki (knowledge space) capability stubs ----
+
+    def create_wiki_node(
+        self,
+        title: str,
+        content: str,
+        metadata: Any,
+        space_id: str,
+        parent_node_token: str | None,
+    ) -> str:
+        raise NotImplementedError("create_wiki_node")
+
+    def create_wiki_space(self, name: str) -> str:
+        raise NotImplementedError("create_wiki_space")
+
+    def list_wiki_spaces(self) -> list[Any]:
+        raise NotImplementedError("list_wiki_spaces")
+
+    def list_wiki_nodes(self, space_id: str, parent_node_token: str | None = None) -> list[Any]:
+        raise NotImplementedError("list_wiki_nodes")
+
     def read_document(self, doc_uri: str) -> Any:
         raise NotImplementedError("read_document")
 
@@ -256,6 +277,13 @@ class RetryBudget:
 
     def backoff_delay(self) -> float:
         """Exponential backoff for the *next* transient retry (deterministic)."""
-        if self.transient_attempts == 0:
+        # Transient attempts are capped at ``self.retries`` (``on_transient_error``
+        # refuses beyond it), so the doubling exponent is bounded by construction —
+        # a runaway ``2 ** n`` (OverflowError on huge ints) is impossible. Attempts
+        # 1, 2, 3 → 1x, 2x, 4x the backoff base.
+        if self.transient_attempts <= 0:
             return 0.0
-        return self.backoff_base * float(2 ** (self.transient_attempts - 1))
+        power = min(self.transient_attempts, self.retries) - 1
+        # ``backoff_base`` is a float, so the product promotes to float naturally
+        # (no explicit conversion that could overflow on a pathological bound).
+        return self.backoff_base * (1 << power)

@@ -38,17 +38,108 @@ class LarkAdapter(CliCapabilityAdapter):
             cmd = ["lark-cli.cmd" if sys.platform == "win32" else "lark-cli"]
         super().__init__(cmd, "lark", timeout)
 
+    @property
+    def capabilities(self) -> dict[str, Any]:
+        """Declare §3.1 capabilities incl. the wiki (knowledge space) block (§6.10).
+
+        Lark is the only initial-scope backend with a knowledge-space product;
+        the ``wiki`` block gates ``--wiki-space`` / ``kgent wiki spaces …``
+        (S79: backends without it reject wiki flags before any write).
+        """
+        caps = super().capabilities
+        caps["wiki"] = {
+            "supported": True,
+            "features": ["spaces_list", "spaces_create", "node_create"],
+        }
+        return caps
+
+    # ---- §6.10 wiki (knowledge space) operations -------------------------
+
+    def list_wiki_spaces(self) -> list[dict[str, str]]:
+        """List wiki (knowledge) spaces via ``wiki +space-list`` (§6.10, S82)."""
+        payload = self._run(["wiki", "+space-list", "--as", "user"])
+        # Response structure: {"ok": true, "data": {...items}} — normalize any
+        # container shape (items list keyed ``items``/``spaces``/itself).
+        data = payload.get("data") or {}
+        raw: Any = data.get("items", data.get("spaces", [])) if isinstance(data, dict) else data
+        if isinstance(raw, dict):
+            raw = [raw]
+        spaces: list[dict[str, str]] = []
+        if not isinstance(raw, list):
+            return spaces
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            sid = item.get("space_id") or item.get("id")
+            name = item.get("name") or item.get("space_name") or ""
+            if sid is None:
+                continue
+            spaces.append({"space_id": str(sid), "name": str(name)})
+        return spaces
+
+    def create_wiki_space(self, name: str) -> str:
+        """Create a wiki (knowledge) space via ``wiki +space-create`` (S82)."""
+        payload = self._run(["wiki", "+space-create", "--name", name, "--as", "user"])
+        data = payload.get("data") or {}
+        space = data.get("space") if isinstance(data, dict) else None
+        sid = (
+            (space.get("space_id") if isinstance(space, dict) else None)
+            or (data.get("space_id") if isinstance(data, dict) else None)
+            or payload.get("space_id")
+        )
+        if not sid:
+            raise AdapterError(f"lark-cli wiki +space-create returned no space_id: {payload}")
+        return str(sid)
+
+    def create_wiki_node(
+        self,
+        title: str,
+        content: str,
+        metadata: DocumentMetadata,
+        space_id: str,
+        parent_node_token: str | None,
+    ) -> str:
+        """Create a wiki node via ``wiki +node-create`` (§6.10, S77/S78).
+
+        ``--space-id`` routes the node into the knowledge space;
+        ``--parent-node-token`` (when given) places it under an existing node
+        (omitted → space root, S78).
+        """
+        args = ["wiki", "+node-create", "--space-id", space_id]
+        if parent_node_token is not None:
+            args += ["--parent-node-token", parent_node_token]
+        args += ["--title", title, "--content", content, "--as", "user"]
+        payload = self._run(args)
+        # Response structure: {"ok": true, "data": {"node": {"node_token": ...}, ...}}
+        data = payload.get("data") or {}
+        node = data.get("node") if isinstance(data, dict) else None
+        node_token = (
+            (node.get("node_token") if isinstance(node, dict) else None)
+            or (data.get("node_token") if isinstance(data, dict) else None)
+            or payload.get("node_token")
+        )
+        if not node_token:
+            raise AdapterError(f"lark-cli wiki +node-create returned no node_token: {payload}")
+        return self._canonical(str(node_token))
+
     def create_document(self, title: str, content: str, metadata: DocumentMetadata) -> str:
         """Create a Lark document using ``docs +create``."""
         # Use markdown format for simplicity
-        payload = self._run([
-            "docs", "+create",
-            "--title", title,
-            "--content", content,
-            "--doc-format", "markdown",
-            "--as", "user",
-            "--json",
-        ])
+        payload = self._run(
+            [
+                "docs",
+                "+create",
+                "--title",
+                title,
+                "--content",
+                content,
+                "--doc-format",
+                "markdown",
+                "--as",
+                "user",
+                "--json",
+            ]
+        )
         # Response structure: {"ok": true, "data": {"document": {"document_id": "...", ...}}}
         data = payload.get("data") or {}
         document = data.get("document") or {}
@@ -66,13 +157,19 @@ class LarkAdapter(CliCapabilityAdapter):
     def read_document(self, doc_uri: str) -> Document:
         """Read a Lark document using ``docs +fetch``."""
         native_id = self._native_id(doc_uri)
-        payload = self._run([
-            "docs", "+fetch",
-            "--doc", native_id,
-            "--doc-format", "markdown",
-            "--as", "user",
-            "--json",
-        ])
+        payload = self._run(
+            [
+                "docs",
+                "+fetch",
+                "--doc",
+                native_id,
+                "--doc-format",
+                "markdown",
+                "--as",
+                "user",
+                "--json",
+            ]
+        )
         # Response structure: {"ok": true, "data": {"document": {"content": "...", "document_id": "...", "revision_id": ...}}}
         data = payload.get("data") or {}
         document = data.get("document") or {}
@@ -89,7 +186,7 @@ class LarkAdapter(CliCapabilityAdapter):
             # DocxXML format: <title>Title</title><p>Content</p>
             title_end = content.index("</title>")
             title = content[7:title_end]
-            content = content[title_end + 9:].strip()
+            content = content[title_end + 9 :].strip()
         version = str(document.get("revision_id")) if document.get("revision_id") else None
         meta = DocumentMetadata(
             doc_uri=doc_uri,
@@ -111,12 +208,18 @@ class LarkAdapter(CliCapabilityAdapter):
         """Update a Lark document using ``docs +update --command overwrite``."""
         native_id = self._native_id(doc_uri)
         args = [
-            "docs", "+update",
-            "--doc", native_id,
-            "--command", "overwrite",
-            "--content", content,
-            "--doc-format", "markdown",
-            "--as", "user",
+            "docs",
+            "+update",
+            "--doc",
+            native_id,
+            "--command",
+            "overwrite",
+            "--content",
+            content,
+            "--doc-format",
+            "markdown",
+            "--as",
+            "user",
             "--json",
         ]
         if expected_version is not None:
@@ -132,14 +235,20 @@ class LarkAdapter(CliCapabilityAdapter):
     ) -> None:
         """Delete a Lark document using ``drive +delete``."""
         native_id = self._native_id(doc_uri)
-        self._run([
-            "drive", "+delete",
-            "--file-token", native_id,
-            "--type", "docx",
-            "--as", "user",
-            "--yes",
-            "--json",
-        ])
+        self._run(
+            [
+                "drive",
+                "+delete",
+                "--file-token",
+                native_id,
+                "--type",
+                "docx",
+                "--as",
+                "user",
+                "--yes",
+                "--json",
+            ]
+        )
 
     def search_by_keywords(
         self,
@@ -149,13 +258,19 @@ class LarkAdapter(CliCapabilityAdapter):
         fields: list[str] | None = None,
     ) -> list[SearchResult]:
         """Search Lark docs using ``docs +search``."""
-        payload = self._run([
-            "docs", "+search",
-            "--query", query,
-            "--page-size", str(min(top_k, 20)),  # lark-cli max is 20
-            "--as", "user",
-            "--json",
-        ])
+        payload = self._run(
+            [
+                "docs",
+                "+search",
+                "--query",
+                query,
+                "--page-size",
+                str(min(top_k, 20)),  # lark-cli max is 20
+                "--as",
+                "user",
+                "--json",
+            ]
+        )
         results: list[SearchResult] = []
         # Response structure: {"ok": true, "data": {"results": [...]}}
         data = payload.get("data") or {}
@@ -168,12 +283,27 @@ class LarkAdapter(CliCapabilityAdapter):
             uri = self._canonical(doc_token)
             # title_highlighted contains HTML tags, strip them
             title_raw = str(item.get("title_highlighted", ""))
-            title = title_raw.replace("<h>", "").replace("</h>", "").replace("<hb>", "").replace("</hb>", "")
-            rank = int(item.get("rank", 0))
+            title = (
+                title_raw.replace("<h>", "")
+                .replace("</h>", "")
+                .replace("<hb>", "")
+                .replace("</hb>", "")
+            )
+            raw_rank = item.get("rank", 0)
+            try:
+                rank = int(raw_rank)  # CLI payload is unvalidated input
+            except (TypeError, ValueError):
+                rank = 0
             snippet_raw = item.get("summary_highlighted")
             snippet = None
             if snippet_raw is not None:
-                snippet = str(snippet_raw).replace("<h>", "").replace("</h>", "").replace("<hb>", "").replace("</hb>", "")
+                snippet = (
+                    str(snippet_raw)
+                    .replace("<h>", "")
+                    .replace("</h>", "")
+                    .replace("<hb>", "")
+                    .replace("</hb>", "")
+                )
             results.append(
                 SearchResult(
                     doc_uri=uri,

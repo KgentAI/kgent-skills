@@ -21,6 +21,7 @@ class Claim:
     text: str
     source_uri: str | None = None
     supported: bool = True
+    node_type: str = "doc"  # §7.2: drives the native-URL path for citations (S85)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +39,10 @@ def answer(question: str, router: Router, *, top_k: int = 5) -> Answer:
     Every factual claim in the returned :class:`Answer` carries a ``source_uri``
     from a search result. Claims without a source are marked ``supported=False``
     (N11 — never fabricated).
+
+    Wiki hits are first-class results (§6.10): a claim built from a wiki node
+    carries ``node_type == "wiki_node"`` so citation rendering picks the
+    correct ``/wiki/`` path (S85, N23).
     """
     # Fan-out search across backends
     try:
@@ -48,19 +53,24 @@ def answer(question: str, router: Router, *, top_k: int = 5) -> Answer:
     claims: list[Claim] = []
     for result in successes:
         # Each search result becomes a grounded claim
-        claims.append(Claim(
-            text=result.snippet or result.metadata.title or "",
-            source_uri=result.doc_uri,
-            supported=True,
-        ))
+        claims.append(
+            Claim(
+                text=result.snippet or result.metadata.title or "",
+                source_uri=result.doc_uri,
+                supported=True,
+                node_type=result.node_type,
+            )
+        )
 
     # If no results, produce a single unsupported claim
     if not claims:
-        claims.append(Claim(
-            text=f"No information found for: {question}",
-            source_uri=None,
-            supported=False,
-        ))
+        claims.append(
+            Claim(
+                text=f"No information found for: {question}",
+                source_uri=None,
+                supported=False,
+            )
+        )
 
     summary = " ".join(c.text for c in claims if c.supported) if claims else ""
     return Answer(question=question, claims=claims, summary=summary)
