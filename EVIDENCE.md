@@ -130,6 +130,48 @@ Complete implementation of kgent packaging per §1–§7 specs:
 
 All 39 adversarial tests pass.
 
+## Mutation Testing (mutmut, WSL2)
+
+**Method**: mutmut 3.7.0 inside WSL2 (Ubuntu 24.04, Python 3.12.3) against a
+clean copy of this repo — mutmut refuses to run on native Windows
+(boxed/mutmut#397), so the WSL run is the real mutation pass. Configuration
+lives in `pyproject.toml [tool.mutmut]` (mutmut 3 removed the
+`--paths-to-mutate` CLI flag; the gauntlet's old invocation failed silently
+under `|| true` — fixed to the config-driven form, with the Windows refusal
+routed to the explicit manual fallback). Full sweep of `src/kgent`,
+`--max-children 4`, ~15 min at 18.4 mutations/s.
+
+**Results (9,055 mutants)**:
+
+| Outcome | Count | Share |
+|---------|-------|-------|
+| Killed (tests caught the mutant) | 4,832 | 53.4% |
+| Survived | 3,725 | 41.2% |
+| No coverage | 493 | 5.4% |
+| Timeout | 5 | 0.06% |
+
+Survivals by module: cli 1216, router 898, config 411, capabilities 370,
+skills 306, adapters 255, search 206, secrets 50, uri 7, errors 5,
+fingerprint 1.
+
+**Interpretation** (hand-verified sample of survived mutants):
+
+- The dominant survival class is **unasserted error-message strings** —
+  `raise ConfigError(f"...")` → `raise ConfigError(None)` survives wherever
+  tests assert the exception type but not the message text.
+- Default-argument mutants (`= ""` → `= "XX"`) survive where no test exercises
+  the default — legitimate (untested corner, not a bug).
+- Semantically equivalent mutants (`"utf-8"` → `"UTF-8"`) survive — noise.
+- **One actionable gap found and closed**: mutating
+  `if parts.query or parts.fragment:` → `and` in `kgent.uri.parse_uri` let a
+  query-only URI (`kgent://lark/doc?x=1`) through un-rejected — no test covered
+  it. Query/fragment rejection cases added to `test_rejects_noncanonical`
+  (also closes the deferred-minors note in the handoff doc).
+
+**Gate status**: mutation is report-only in the gauntlet by design (`|| true`);
+it never gates. The stage is now honest about platform limits instead of
+silently absorbing them.
+
 ## CLI Smoke Test
 
 ```bash

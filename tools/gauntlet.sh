@@ -15,7 +15,19 @@ ruff check src tests && ruff format --check src tests
 
 echo "== mutation =="
 if command -v mutmut >/dev/null 2>&1; then
-  mutmut run --paths-to-mutate src/kgent || true   # report only
+  # mutmut 3.x: config lives in pyproject [tool.mutmut] — the old
+  # --paths-to-mutate CLI flag was removed in 3.0, which made this stage fail
+  # silently under `|| true`. Native Windows is unsupported by mutmut
+  # (boxed/mutmut#397): the tool exits with a "please use the WSL" notice, so
+  # route that refusal to the explicit manual fallback instead of absorbing it.
+  # Report only — mutation never gates the gauntlet.
+  mutmut_output=$(mutmut run 2>&1) || true
+  if echo "$mutmut_output" | grep -q "please use the WSL"; then
+    echo "mutmut unavailable on native Windows (boxed/mutmut#397); using tools/mutants.py fallback"
+    python tools/mutants.py
+  else
+    echo "$mutmut_output" | tr '\r' '\n' | grep -v '^$' | tail -3
+  fi
 else
   echo "mutmut unavailable; using tools/mutants.py fallback"
   python tools/mutants.py

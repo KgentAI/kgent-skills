@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import pytest
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
 
 from kgent.adapters import registry
 from kgent.router.audit import AuditLog
@@ -13,7 +16,7 @@ from kgent.types import DocumentMetadata
 from tests.fakes.fake_backend import FakeBackend
 
 
-def _full_caps() -> dict:
+def _full_caps() -> dict[str, Any]:
     return {
         "document_storage": {
             "supported": True,
@@ -29,7 +32,7 @@ def _meta(backend: str, title: str) -> DocumentMetadata:
 
 
 @pytest.fixture
-def router_env(tmp_home, monkeypatch):
+def router_env(tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
     """Build a Router with 3 fake backends."""
     backends = {
         "lark": FakeBackend("lark", "internal", _full_caps()),
@@ -71,7 +74,7 @@ def router_env(tmp_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_s65_same_orchestration_across_backends(router_env):
+def test_s65_same_orchestration_across_backends(router_env: dict[str, Any]) -> None:
     """S65: same store_workflow works for lark, dingtalk, wecom — only adapter differs."""
     from kgent.skills.knowledge_storage import store_workflow
 
@@ -82,7 +85,7 @@ def test_s65_same_orchestration_across_backends(router_env):
         # The proposal targets the requested backend
         assert proposal.targets[0][0] == backend_name
         # Execute — should work identically across backends
-        # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+        # pi-lens-ignore: python-sql-injection
         result = router_env["router"].execute(proposal, confirmation="interactive-yes")
         assert result.exit_code == 0
         assert router_env["backends"][backend_name].docs
@@ -93,7 +96,7 @@ def test_s65_same_orchestration_across_backends(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_s66_resolve_intent_returns_adapter_name(router_env):
+def test_s66_resolve_intent_returns_adapter_name(router_env: dict[str, Any]) -> None:
     """S66: resolve_intent returns adapter_name for the resolved target."""
     intent = router_env["router"].resolve_intent("create", content_type="meeting_notes")
     # The first target should have adapter info
@@ -108,7 +111,7 @@ def test_s66_resolve_intent_returns_adapter_name(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_s67_explicit_input_overrides_preferences(router_env):
+def test_s67_explicit_input_overrides_preferences(router_env: dict[str, Any]) -> None:
     """S67: explicit 'store to dingtalk' outranks preferences (lark) + conversation."""
     from kgent.skills.knowledge_storage import store_workflow
 

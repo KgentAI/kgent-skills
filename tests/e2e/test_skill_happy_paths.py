@@ -73,7 +73,7 @@ def test_e2e_knowledge_storage_creates_with_provenance(router):
 
     proposal = store_workflow("save the new doc 'Welcome to kgent'", {}, router)
     assert proposal.operation == "create"
-    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+    # pi-lens-ignore: python-sql-injection
     result = router.execute(proposal, confirmation="interactive-yes")
     assert result.exit_code == 0
     assert router.backends["lark"].docs
@@ -84,7 +84,7 @@ def test_e2e_knowledge_storage_update_first(router):
     from kgent.skills.knowledge_storage import store_workflow
 
     p1 = store_workflow("save 'API Guidelines'", {}, router)
-    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+    # pi-lens-ignore: python-sql-injection
     router.execute(p1, confirmation="interactive-yes")
     p2 = store_workflow("save 'API Guidelines' - add more details", {}, router)
     assert p2.operation == "update"  # update-first bias

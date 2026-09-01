@@ -9,6 +9,9 @@ angle for traceability.
 from __future__ import annotations
 
 import pytest
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
 
 from kgent.adapters import registry
 from kgent.router.audit import AuditLog
@@ -18,7 +21,7 @@ from kgent.types import DocumentMetadata, WriteProposal
 from tests.fakes.fake_backend import FakeBackend
 
 
-def _full_caps() -> dict:
+def _full_caps() -> dict[str, Any]:
     return {
         "document_storage": {
             "supported": True,
@@ -34,7 +37,7 @@ def _meta(backend: str, title: str) -> DocumentMetadata:
 
 
 @pytest.fixture
-def router_env(tmp_home, monkeypatch):
+def router_env(tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
     """Build a Router with fake backends + shared config."""
     backends = {
         "lark": FakeBackend("lark", "internal", _full_caps()),
@@ -73,7 +76,7 @@ def router_env(tmp_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_n1_no_write_without_confirmation(router_env):
+def test_n1_no_write_without_confirmation(router_env: dict[str, Any]) -> None:
     """N1: every journaled write op has a matching confirmation entry."""
     router = router_env["router"]
     proposal = WriteProposal(
@@ -82,7 +85,7 @@ def test_n1_no_write_without_confirmation(router_env):
         title="Test",
         content="content",
     )
-    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+    # pi-lens-ignore: python-sql-injection
     result = router.execute(proposal, confirmation="interactive-yes")
     assert result.exit_code == 0
     # Journal has the op
@@ -97,7 +100,7 @@ def test_n1_no_write_without_confirmation(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n2_no_overwrite_on_version_conflict(router_env):
+def test_n2_no_overwrite_on_version_conflict(router_env: dict[str, Any]) -> None:
     """N2: version conflict prevents overwrite."""
     router = router_env["router"]
     # Create a doc
@@ -115,7 +118,7 @@ def test_n2_no_overwrite_on_version_conflict(router_env):
         expected_version="v999",  # wrong version
     )
     # Should not raise, but journal should show conflict or failure
-    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+    # pi-lens-ignore: python-sql-injection
     result = router.execute(proposal, confirmation="interactive-yes")
     # Either exits with conflict code or journal shows error
     assert result.exit_code != 0 or result.error
@@ -126,7 +129,7 @@ def test_n2_no_overwrite_on_version_conflict(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n3_no_hard_delete_if_archive_failed(router_env):
+def test_n3_no_hard_delete_if_archive_failed(router_env: dict[str, Any]) -> None:
     """N3: hard-delete blocked if archive op failed."""
     # Archive failure + hard-delete gating is tested in test_archive_delete_undo.py
     # This is a placeholder asserting the invariant exists
@@ -138,7 +141,7 @@ def test_n3_no_hard_delete_if_archive_failed(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n4_no_confidential_to_external(router_env):
+def test_n4_no_confidential_to_external(router_env: dict[str, Any]) -> None:
     """N4: confidential-tier content cannot go to external-zone backends."""
     router = router_env["router"]
     proposal = WriteProposal(
@@ -150,7 +153,7 @@ def test_n4_no_confidential_to_external(router_env):
     )
     # Should raise PolicyError or return exit code 3
     try:
-        # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+        # pi-lens-ignore: python-sql-injection
         result = router.execute(proposal, confirmation="interactive-yes")
         assert result.exit_code == 3
     except Exception as e:
@@ -163,7 +166,7 @@ def test_n4_no_confidential_to_external(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n5_forbidden_keys_ignored(tmp_home, monkeypatch):
+def test_n5_forbidden_keys_ignored(tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """N5: forbidden keys in project-local config are rejected."""
     from kgent.config.loader import load_effective_config
     from kgent.errors import ConfigError
@@ -202,7 +205,7 @@ def test_n5_forbidden_keys_ignored(tmp_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_n6_fetched_content_not_instructions(router_env):
+def test_n6_fetched_content_not_instructions(router_env: dict[str, Any]) -> None:
     """N6: fetched backend content is data, not instructions."""
     router = router_env["router"]
     # Seed a doc with prompt injection content
@@ -224,7 +227,7 @@ def test_n6_fetched_content_not_instructions(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n7_no_write_without_approval(router_env):
+def test_n7_no_write_without_approval(router_env: dict[str, Any]) -> None:
     """N7: gated writes require valid approval token."""
     # Approval gating is tested in test_approval_gates.py
     # This is a placeholder asserting the invariant exists
@@ -236,7 +239,7 @@ def test_n7_no_write_without_approval(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n8_no_auto_merge_duplicates(router_env):
+def test_n8_no_auto_merge_duplicates(router_env: dict[str, Any]) -> None:
     """N8: near-duplicates are not auto-merged."""
     # Create two similar docs
     router_env["backends"]["lark"].create_document(
@@ -254,7 +257,7 @@ def test_n8_no_auto_merge_duplicates(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n9_no_plaintext_credentials(tmp_home, monkeypatch):
+def test_n9_no_plaintext_credentials(tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """N9: credentials are not stored in plaintext."""
     from kgent.secrets import EncryptedFileStore
 
@@ -271,7 +274,7 @@ def test_n9_no_plaintext_credentials(tmp_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_n10_no_silent_failure_drop(router_env):
+def test_n10_no_silent_failure_drop(router_env: dict[str, Any]) -> None:
     """N10: backend failures are reported, not silently dropped."""
     router = router_env["router"]
     # Inject fault
@@ -288,7 +291,7 @@ def test_n10_no_silent_failure_drop(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n11_no_fabricate_content(router_env):
+def test_n11_no_fabricate_content(router_env: dict[str, Any]) -> None:
     """N11: QA answers do not fabricate content without sources."""
     from kgent.skills.question_answering import answer
 
@@ -306,7 +309,7 @@ def test_n11_no_fabricate_content(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n12_no_parse_prose_as_config(tmp_home, monkeypatch):
+def test_n12_no_parse_prose_as_config(tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """N12: discovery does not parse free-form prose as capability data."""
     # Discovery is tested in test_discovery_doctor.py
     # This is a placeholder asserting the invariant exists
@@ -318,7 +321,7 @@ def test_n12_no_parse_prose_as_config(tmp_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_n13_rate_limit_not_retry_budget(router_env):
+def test_n13_rate_limit_not_retry_budget(router_env: dict[str, Any]) -> None:
     """N13: rate-limit queueing does not count against transient-retry budget."""
     # This is a design invariant; actual implementation is in retry logic
     # For now, assert the invariant conceptually
@@ -330,7 +333,9 @@ def test_n13_rate_limit_not_retry_budget(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n14_no_off_machine_telemetry(router_env, monkeypatch):
+def test_n14_no_off_machine_telemetry(
+    router_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
     """N14: suite runs do not send telemetry off-machine."""
     # Network gate is a design invariant; actual network capture is complex
     # This test asserts the invariant conceptually
@@ -343,7 +348,9 @@ def test_n14_no_off_machine_telemetry(router_env, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_n15_no_credential_prompt_during_discovery(tmp_home, monkeypatch):
+def test_n15_no_credential_prompt_during_discovery(
+    tmp_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """N15: discovery does not prompt for credentials."""
     # Discovery is non-interactive; this is a design invariant
     # Actual discovery tests are in test_discovery_doctor.py
@@ -355,7 +362,7 @@ def test_n15_no_credential_prompt_during_discovery(tmp_home, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_n16_no_unencrypted_confidential_snapshots(router_env):
+def test_n16_no_unencrypted_confidential_snapshots(router_env: dict[str, Any]) -> None:
     """N16: confidential snapshots are not persisted unencrypted."""
     router = router_env["router"]
     # Create a confidential doc
@@ -373,7 +380,7 @@ def test_n16_no_unencrypted_confidential_snapshots(router_env):
         content="",
         sensitivity="confidential",
     )
-    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+    # pi-lens-ignore: python-sql-injection
     result = router.execute(proposal, confirmation="interactive-yes")
     assert result.exit_code == 0
     # Snapshot encryption is a design invariant tested in test_archive_delete_undo.py
@@ -386,7 +393,7 @@ def test_n16_no_unencrypted_confidential_snapshots(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n17_no_resolve_disabled_adapter(router_env):
+def test_n17_no_resolve_disabled_adapter(router_env: dict[str, Any]) -> None:
     """N17: disabled adapters cannot be resolved."""
     router = router_env["router"]
     # Disable lark
@@ -415,7 +422,7 @@ def test_n17_no_resolve_disabled_adapter(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n18_no_create_when_match_exists(router_env):
+def test_n18_no_create_when_match_exists(router_env: dict[str, Any]) -> None:
     """N18: store_workflow proposes UPDATE when a match exists."""
     from kgent.skills.knowledge_storage import store_workflow
 
@@ -437,7 +444,7 @@ def test_n18_no_create_when_match_exists(router_env):
 # ---------------------------------------------------------------------------
 
 
-def test_n19_no_direct_backend_write(router_env):
+def test_n19_no_direct_backend_write(router_env: dict[str, Any]) -> None:
     """N19: all writes go through router enforcement."""
     # This is a design invariant: skills use router.execute(), not backend.write()
     # Actual enforcement is in the skill implementations

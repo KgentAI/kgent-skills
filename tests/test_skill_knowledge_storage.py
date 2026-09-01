@@ -167,7 +167,7 @@ def test_s63_skill_uses_resolve_intent(router_env):
     # The proposal should have targets resolved via resolve_intent
     assert proposal.targets
     # Execute via router (which uses resolve_intent internally)
-    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+    # pi-lens-ignore: python-sql-injection
     result = router_env["router"].execute(proposal, confirmation="interactive-yes")
     assert result.exit_code == 0
 
@@ -186,7 +186,7 @@ def test_s64_unconfirmed_write_blocked(router_env):
     proposal = store_workflow("save doc", context, router_env["router"])
     # Attempt to execute with "rejected" confirmation — raises PolicyError
     with pytest.raises(PolicyError):
-        # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+        # pi-lens-ignore: python-sql-injection
         router_env["router"].execute(proposal, confirmation="rejected")
     # No journal entry
     assert router_env["router"].journal.list_ops() == []

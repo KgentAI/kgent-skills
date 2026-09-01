@@ -35,3 +35,10 @@ python_version = "3.11"
 
 [tool.coverage.run]
 source = ["kgent"]
+
+[tool.mutmut]
+# mutmut 3.x config (CLI --paths-to-mutate was removed in 3.0). NOTE: the value
+# MUST be an array — a bare string is iterated character-by-character by mutmut
+# (each character becomes a walk path, including "/", the filesystem root).
+source_paths = ["src/kgent"]
+pytest_add_cli_args_test_selection = ["tests"]

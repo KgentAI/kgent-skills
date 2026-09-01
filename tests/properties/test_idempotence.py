@@ -6,14 +6,23 @@
 # pyright: basic
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any, Literal
+
 from hypothesis import HealthCheck, given, settings, strategies as st
 
 from kgent.adapters import registry
 from kgent.router.journal import Journal
 from tests.fakes.fake_backend import FakeBackend
 
+#: Hypothesis' stub types ``blacklist_categories`` as a Collection of Unicode
+#: category literals — the tuple annotation lets pyright infer "Cs" as its
+#: literal type (a bare ``("Cs",)`` infers ``tuple[str]``, which is not
+#: assignable to the stub's ``Collection[Literal[...]]`` parameter).
+_EXCLUDED_CATEGORIES: tuple[Literal["Cs"], ...] = ("Cs",)
 
-def _full_caps() -> dict:
+
+def _full_caps() -> dict[str, Any]:
     return {
         "document_storage": {
             "supported": True,
@@ -25,12 +34,14 @@ def _full_caps() -> dict:
 
 
 @given(
-    op_id=st.text(min_size=1, max_size=20, alphabet=st.characters(blacklist_categories=("Cs",))),  # pyright: ignore[reportArgumentType]
+    op_id=st.text(
+        min_size=1, max_size=20, alphabet=st.characters(blacklist_categories=_EXCLUDED_CATEGORIES)
+    ),
 )
 @settings(
     max_examples=100, derandomize=True, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
-def test_p2_repair_idempotence(tmp_path, op_id: str):
+def test_p2_repair_idempotence(tmp_path: Path, op_id: str) -> None:
     """P2: repair(op) ∘ repair(op) leaves state identical to repair(op) once."""
     # Create a fake backend
     backend = FakeBackend("lark", "internal", _full_caps())

@@ -223,7 +223,7 @@ def test_adversarial_backend_failure_recoverable(router_env):
         title="Test",
         content="content",
     )
-    # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+    # pi-lens-ignore: python-sql-injection
     result = router.execute(proposal, confirmation="interactive-yes")
     # Should fail (exit 1 or 2)
     assert result.exit_code in (1, 2)
@@ -262,7 +262,7 @@ def test_adversarial_concurrent_update_race(router_env):
             title="Shared",
             content=f"v{i + 2}",
         )
-        # pi-lens-ignore: python-sql-injection - ``execute`` is the router write gate, not SQL
+        # pi-lens-ignore: python-sql-injection
         result = router.execute(proposal, confirmation="interactive-yes")
         assert result.exit_code == 0
     # Final version should be v6
