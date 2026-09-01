@@ -1,9 +1,9 @@
 # kgent Packaging — Executable Acceptance Specification
 
 **Date**: 2026-08-26
-**Version**: 1.5
+**Version**: 1.6
 **Status**: Pending approval (implementation is forbidden until §10 records approval)
-**Companion to**: [2026-08-26-kgent-packaging-design.md](2026-08-26-kgent-packaging-design.md) (v1.7)
+**Companion to**: [2026-08-26-kgent-packaging-design.md](2026-08-26-kgent-packaging-design.md) (v1.8)
 **Methodology**: old-coder (spec-first; trust from constraints, not inspection)
 
 This is the artifact the human approves **before any implementation code is
@@ -692,6 +692,83 @@ Scenario: S76-workspace-domain-in-config-schema
   And   an example config shows workspace_domain set
 ```
 
+### F21 — Wiki (knowledge space) node operations (FM7, FM8)
+
+```gherkin
+Feature: Wiki nodes are first-class create/update/search targets through kgent primitives
+
+Scenario: S77-create-wiki-node-with-space-and-parent
+  Given wiki space 7123456 contains node wikiAAA titled "Operations"
+  When  I run `kgent create --title "Deploy Runbook" --content "…" --backends lark
+             --wiki-space 7123456 --parent-node-token wikiAAA --yes --json`
+  Then  a wiki node is created under parent wikiAAA in space 7123456
+  And   the JSON output reports node_token, space_id, and parent_node_token
+  And   the journal entry records operation "create" with node_type "wiki_node"
+  And   exit code is 0
+
+Scenario: S78-create-wiki-node-without-parent-lands-at-root
+  Given wiki space 7123456 exists
+  When  I run `kgent create --title "Welcome" --content "…" --backends lark
+             --wiki-space 7123456 --yes --json`
+  Then  the wiki node is created at the space root (parent_node_token is null)
+  And   exit code is 0
+
+Scenario: S79-wiki-flags-rejected-on-non-wiki-backend
+  Given backend dingtalk has no knowledge-space product
+  When  I run `kgent create --title "X" --content "…" --backends dingtalk --wiki-space 1 --yes`
+  Then  the command fails before any write with an error naming "--wiki-space
+        is not supported on backend 'dingtalk'"
+  And   exit code is 3
+
+Scenario: S80-search-returns-wiki-nodes-with-node-type
+  Given wiki space 7123456 contains node wikiBBB titled "Deploy Runbook"
+  And   a flat doc kgent://lark/docxCCC titled "Deploy Guide" exists
+  When  I run `kgent search --query "deploy runbook" --backends lark --json`
+  Then  results include the wiki node with node_type == "wiki_node"
+        and fields space_id == "7123456", parent_node_token
+  And   results include the flat doc with node_type == "doc"
+  And   no separate flag was needed to include wiki nodes
+
+Scenario: S81-update-wiki-node-keeps-position
+  Given wiki node kgent://lark/wikiBBB under parent wikiAAA in space 7123456
+  When  I run `kgent update kgent://lark/wikiBBB --content "new" --yes --json`
+  Then  the node content is updated
+  And   the node remains under parent wikiAAA in space 7123456 (position unchanged)
+  And   exit code is 0
+
+Scenario: S82-wiki-space-primitives
+  Given backend lark with knowledge spaces "Engineering Wiki" (7123456) and "Product Wiki"
+  When  I run `kgent wiki spaces list --backends lark --json`
+  Then  both spaces are listed with space_id and name
+  And   when I run `kgent wiki spaces create --name "New Wiki" --backends lark --yes --json`
+  Then  a new space is created and its space_id is returned
+  And   the write is journaled
+
+Scenario: S83-skill-places-wiki-node-under-fitting-parent
+  Given the knowledge-storage skill is storing "Deploy Runbook" as a wiki node
+  And   space 7123456 has a top-level node "Operations" (wikiAAA)
+  When  the skill builds the create proposal
+  Then  the proposal names parent "Operations (wikiAAA)" with the reason
+  And   no parent token appears in the proposal that was not obtained from
+        search or space listing (no guessed tokens)
+
+Scenario: S84-skill-asks-wiki-vs-doc-when-undetermined
+  Given the user says "save this to Lark" (no wiki/doc mention)
+  And   update-first search found no match
+  And   no sibling topic dictates a wiki space
+  When  the knowledge-storage skill builds the proposal
+  Then  it asks the user to choose wiki node vs flat doc before proposing
+  And   the provenance records "user choice" for the target type
+
+Scenario: S85-native-url-matches-node-type
+  Given workspace_domain is "mycompany.larksuite.com"
+  And   search results contain doc kgent://lark/docxCCC and wiki node kgent://lark/wikiBBB
+  When  the QA skill renders citations
+  Then  the doc citation is https://mycompany.larksuite.com/docx/docxCCC
+  And   the wiki citation is https://mycompany.larksuite.com/wiki/wikiBBB
+  And   neither URL uses the other's path segment
+```
+
 ---
 
 ## 3. Negative Constraints (Must NOT)
@@ -722,6 +799,9 @@ skipped-with-reason. Never silently absent.
 | N19 | Execute a backend write directly, outside resolve_intent/router enforcement | S63, S64 |
 | N20 | Present canonical URIs (kgent://...) to users in skill output | S73, S74 + skill output grep test |
 | N21 | Ship a skill without a SKILL.md manifest | S70 + skill directory structure test |
+| N22 | Use a parent node token that was not obtained from search or space listing (guessed placement) | S83 + skill transcript check |
+| N23 | Construct a native URL whose path does not match the node type (/docx/ for a wiki node or /wiki/ for a doc) | S85 + citation path test |
+| N24 | Move a wiki node within its hierarchy as a side effect of an update | S81 + position-invariant test |
 
 ---
 
@@ -893,6 +973,8 @@ Each skill must have ≥5 test cases covering:
 3. Create new (no matches)
 4. Multi-backend fan-out
 5. Sensitivity zone enforcement (confidential → external rejected)
+6. Wiki node creation with parent placement (update-first search covers wiki; skill proposes fitting parent, S83)
+7. Wiki vs doc asked when undetermined (S84)
 
 **question-answering**:
 1. Simple factual question with citations
@@ -900,6 +982,7 @@ Each skill must have ≥5 test cases covering:
 3. No results found (graceful handling)
 4. Conflicting results surfaced
 5. Stale results flagged
+6. Wiki node hit cited with correct /wiki/ native URL (S80, S85)
 
 **wiki-setup**:
 1. Multi-target create with approvals
@@ -993,7 +1076,8 @@ or **n-a** with reason — never blank, never "pass" for a skipped row.
 | ID | Scenario / constraint | Test | Status |
 |---|---|---|---|
 | S1–S76 | §2 scenarios | tests named after scenario ids | pending |
-| N1–N21 | §3 constraints | per-table mapping | pending |
+| S77–S85 | §2 wiki scenarios (F21) | tests named after scenario ids | pending |
+| N1–N24 | §3 constraints | per-table mapping | pending |
 | P1–P7 | §4 properties | `tests/properties/` | pending |
 | FM1–FM12 | §1 layers | §5 rehearsals + scenario refs | pending |
 
@@ -1001,6 +1085,7 @@ or **n-a** with reason — never blank, never "pass" for a skipped row.
 
 ## 9. Honest Notes (append-only during implementation)
 
+- v1.6 adds wiki (knowledge space) scenarios (F21, S77–S85, N22–N24): kgent primitives create/update wiki nodes (`--wiki-space`, `--parent-node-token`, `kgent wiki spaces list/create`), search covers wiki nodes with `node_type` by default, skills place wiki nodes under fitting parents (never guessed tokens), ask wiki-vs-doc when undetermined, and render native URLs matching the node type. **Skills were updated ahead of the CLI**: as of this revision the skill layer references these commands/flags but the CLI does not implement them yet — S77–S85 and N22–N24 are the spec for that implementation and remain pending.
 - v1.5 adds skill evaluation suite (§6): structured test framework for skills with assertions, grading, benchmarking, and iterative improvement loop. Each skill requires ≥5 test cases covering workflow correctness, output quality, policy compliance, and robustness. Eval suite runs as part of gauntlet; pass_rate < 0.95 blocks.
 - v1.4 adds skill packaging and native URL presentation requirements (§1.6, §1.7, F19–F20, S70–S76, N20–N21): skills must be packaged as SKILL.md files for Claude Code, installable via symlink, and must present native platform URLs (not canonical URIs) to users with workspace_domain configuration.
 - v1.3 adds explicit skill-layer scenarios (F16–F18, S60–S69, N18–N19): knowledge-storage (provenance, update-first, primitive invocation, confirmation), skill↔router/agent contract (backend-agnostic, intent consumption, resolution priority), QA (grounded citations), and wiki-setup (approval driving + journaling).

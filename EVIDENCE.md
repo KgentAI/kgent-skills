@@ -183,6 +183,51 @@ assert Journal(tmp_home).list_ops()  # journaled → undoable
 
 All 4 E2E tests pass.
 
+## Wiki (Knowledge Space) Update — 2026-08-31 (spec v1.8 / acceptance v1.6)
+
+Skills were extended to treat wiki nodes (knowledge-space pages) as first-class
+targets alongside flat docs. **The skill layer is ahead of the CLI**: the
+wiki CLI surface specified below is not implemented yet (`grep`-verified: no
+`wiki` subcommand, no `--wiki-space` flag in `src/kgent/cli.py`). Acceptance
+scenarios S77–S85 and constraints N22–N24 are the spec for that implementation
+and are **pending**.
+
+### What changed in the skills (committed: e5773ca, af45116, dd13bcd, d90fb79)
+
+| Skill | Change |
+|-------|--------|
+| knowledge-storage | Update-first search covers wiki nodes (`node_type` field); wiki matches update in place. New "Wiki vs Doc Preference": asks the user `[a] wiki node / [b] flat doc` when all other resolution factors are equal; skips asking when intent is determined (explicit mention, existing match, sibling topics). Wiki node creation with `--wiki-space` / `--parent-node-token`; proposes a topically-fitting parent, never guessed tokens; parent shown in proposal. New proposal template + Example 4. |
+| question-answering | Search documented as covering wiki nodes + docs by default; wiki hits are first-class. URL conversion matches path to node type: `/wiki/<node_token>` vs `/docx/<token>` — mismatched path = broken link. |
+| wiki-setup | All wiki operations route through kgent primitives: `kgent wiki spaces list/create`, `kgent create --wiki-space [--parent-node-token]`, `kgent search` (wiki by default). No `lark-cli` dependency remains. |
+
+### Spec updates
+
+- **Design v1.8**: "Changes in v1.8" summary; §1.7 wiki URL mapping; §3.6 wiki
+  node tokens + explicit `node_type`; §6.10 Wiki Node Operations (creation,
+  position-preserving updates, space primitives, skill placement rules);
+  §7.2 search result schema with `node_type`/`space_id`/`parent_node_token`;
+  §12 `--wiki-space`/`--parent-node-token` flags, `kgent wiki spaces`
+  subcommands, backend-conditional rule.
+- **Acceptance v1.6**: F21 scenarios S77–S85 (create with parent, root
+  fallback, non-wiki-backend rejection, search `node_type`, position-preserving
+  update, space primitives, skill placement, wiki-vs-doc question, node-type
+  URL match); N22 (no guessed parent tokens), N23 (URL path must match node
+  type), N24 (updates never move nodes); eval coverage extended (knowledge-storage
+  items 6–7, question-answering item 6); §8 mapping updated (S1–S85, N1–N24 — pending).
+
+### Skill eval evidence (skills-workspace/iteration-2, gitignored)
+
+| Eval | With skill | Baseline |
+|------|-----------|----------|
+| store-meeting-notes | 100% (7/7) | 57% (4/7) |
+| qa-password-policy | 100% (6/6)* | 67% (4/6) |
+
+\* Grading refined (`evals/grade_evals.py`, commit 2b2a5a8): `documents_read`
+and `claims_cited` assertions now treat the no-results path as passing — the
+skill correctly reports "no documents found" instead of reading/citing
+nothing. Wiki-specific evals (coverage items 6–7) are **not yet written**;
+they land together with the CLI implementation so runs exercise real commands.
+
 ## Conclusion
 
 ✅ **All acceptance criteria met**  

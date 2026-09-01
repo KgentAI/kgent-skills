@@ -1,9 +1,20 @@
 # kgent Service Packaging Design Spec
 
 **Date**: 2026-08-26
-**Last Revised**: 2026-08-31 (v1.7 — skill packaging and native URL presentation)
+**Last Revised**: 2026-08-31 (v1.8 — wiki / knowledge-space support)
 **Status**: Draft
-**Version**: 1.7
+**Version**: 1.8
+
+## Changes in v1.8
+
+Wiki (knowledge space) support across the CLI and skills:
+
+- **Wiki node creation** (§6.10): `kgent create --wiki-space <space_id>` creates a wiki node inside a knowledge space (hierarchical, platform-owned structure) rather than a flat Drive doc. `--parent-node-token` places the node under an existing parent.
+- **Wiki space management** (§12): `kgent wiki spaces list` and `kgent wiki spaces create` expose knowledge-space operations as primitives.
+- **Search covers wiki by default** (§7.2): `kgent search` returns wiki nodes alongside flat docs. Results carry `node_type` (`doc` | `wiki_node`) and wiki position metadata (space, parent). No separate wiki search.
+- **Updates keep wiki position** (§6.2, §6.10): updating a wiki node URI modifies content in place; the node stays in its hierarchy position.
+- **Native URLs for wiki nodes** (§1.7): Lark wiki nodes map to `https://<workspace_domain>/wiki/<node_token>`; docs map to `/docx/<token>`. Skills must match the URL path to the node type — a mismatched path is a broken link.
+- **Skill layer** (§5.2): knowledge-storage asks the user wiki-vs-doc when all other factors are equal, and places new wiki nodes under a topically-fitting parent (never guessed tokens). question-answering treats wiki hits as first-class results. wiki-setup uses kgent primitives for space management, node creation, and search.
 
 ## Changes in v1.7
 
@@ -267,7 +278,10 @@ Claude Code automatically discovers skills in `~/.claude/skills/` and `.claude/s
 
 **URL conversion:**
 
-- **Lark**: `kgent://lark/<token>` → `https://<workspace_domain>/docx/<token>`
+The URL path must match the node type (§7.2 `node_type`). Using the wrong path produces a broken link.
+
+- **Lark docs**: `kgent://lark/<token>` → `https://<workspace_domain>/docx/<token>`
+- **Lark wiki nodes**: `kgent://lark/<node_token>` → `https://<workspace_domain>/wiki/<node_token>`
 - **DingTalk**: `kgent://dingtalk/<id>` → `https://<workspace_domain>/...`
 - **WeCom**: `kgent://wecom/<id>` → `https://<workspace_domain>/...`
 
@@ -830,11 +844,13 @@ All cross-layer references use URIs of the form:
 ```
 kgent://<backend>/<backend-native-id>
 examples:
-  kgent://lark/docxABC123
+  kgent://lark/docxABC123        # flat doc (Drive)
+  kgent://lark/wikiXYZ789        # wiki node (knowledge space) — §6.10
   kgent://kgent/kb_9f8e7d
 ```
 
 - Adapters translate URI ↔ native ID at the boundary.
+- A URI's backend-native-id identifies the node type implicitly; search results and reads carry an explicit `node_type` (`doc` | `wiki_node`) so consumers don't parse tokens.
 - Search results, the write journal (§6.7), audit log (§8.4), and deduplication records all use URIs.
 - A registry (`~/.kgent/idmap.json`) maps content fingerprints → URIs across backends to support cross-backend dedupe (§6.5) and `also_available_in`.
 
@@ -1312,6 +1328,43 @@ Cross-backend fan-out (§6.4) changes formats; fidelity loss is declared, never 
 - **Fan-out fidelity**: multi-backend fan-out (§6.4) still converts native ↔ canonical across backends; lossy directions are warned and confirmed. Platform-native archive (§6.8) never converts — the document stays in its native format on its own platform, so archive/undo is inherently lossless.
 - **Never fabricate, never silently drop**: conversions must not invent content; unsupported elements become explicit placeholders (`[unsupported: vote block]`) that the user sees in the proposal diff.
 
+### 6.10 Wiki (Knowledge Space) Node Operations
+
+Backends with a knowledge-base product (e.g., Lark Wiki) expose a second document kind: **wiki nodes** — hierarchical pages inside a knowledge space, with space-level permissions, as distinct from flat docs in Drive. kgent treats wiki nodes as first-class write/search targets through the same primitives.
+
+**Creation:**
+
+```bash
+# wiki node in a space (hierarchical)
+kgent create --title T --content C --backends lark --wiki-space <space_id> \
+             [--parent-node-token <parent>] --yes --json
+
+# flat doc in Drive (unchanged behavior)
+kgent create --title T --content C --backends lark --yes --json
+```
+
+- `--wiki-space` routes the create to a wiki node; without it, the create is a flat doc.
+- `--parent-node-token` places the node under an existing parent; omitted → space root.
+- The JSON output carries the created `node_token` (for native URL construction, §1.7) and the node's position (space, parent).
+
+**Updates keep position.** Updating a wiki node URI (`kgent update kgent://lark/wikiXYZ789`) modifies content in place — the node never moves within the hierarchy as a side effect of an update. Moving a node is a separate, confirmed operation (platform-native move, treated like other writes: proposed, journaled, undoable).
+
+**Space management primitives:**
+
+```bash
+kgent wiki spaces list   [--backends SEL] [--json]   # spaces accessible to the user
+kgent wiki spaces create --name N [--backends SEL] [--yes] [--json]
+```
+
+Space list/create are primitives; choosing *which* space and *where in the hierarchy* a node belongs is skill-layer judgment (§5.2).
+
+**Skill-layer placement rules (normative for skills):**
+
+1. Skills inspect the space structure before proposing a create; a new node is proposed under a **topically-fitting parent**, not silently at the space root.
+2. **Parent tokens are never guessed** — only tokens returned by search or space listing are used. If no fitting parent is found, the skill places the node at the root and says so in the proposal.
+3. The proposed parent is shown in the proposal so the user can correct it before execution.
+4. **Wiki vs doc preference** (§5.2): when all other resolution factors are equal (no explicit user mention, no match dictating the target, no config preference), the skill asks the user wiki-node vs flat-doc rather than silently choosing. Provenance records which factor determined the target when it was not asked.
+
 ---
 
 ## 7. Search Aggregation
@@ -1345,6 +1398,22 @@ async def search_knowledge(query, backends="all_enabled", mode="hybrid"):
 - Results stream to the CLI as backends complete (`--stream`), so the slowest backend doesn't gate first output.
 
 ### 7.2 Result Aggregation
+
+**Search covers wiki nodes and flat docs by default** (§6.10). A single `kgent search` fans out across backends and returns both kinds; results carry an explicit `node_type` field:
+
+```json
+{
+  "doc_uri": "kgent://lark/wikiXYZ789",
+  "title": "Deploy Runbook",
+  "node_type": "wiki_node",
+  "space_id": "7123456",
+  "parent_node_token": "wikiAAA",
+  "snippet": "…",
+  "content_fingerprint": "…"
+}
+```
+
+Flat docs carry `node_type: "doc"` (no space/parent fields). Consumers (skills, QA citation rendering, §1.7 URL conversion) use `node_type` to pick the correct native-URL path — they never parse tokens to infer type. Wiki hits rank by the same position-based fusion as docs (§7.3); node kind is not a ranking input.
 
 ```python
 def merge_and_deduplicate(results_from_backends):
@@ -1623,10 +1692,15 @@ All commands support a common flag set; behaviors below are normative.
 # judgment-heavy workflows — §1.2, §1.4)
 kgent create  [--title T] (--file F | --stdin | --content C)
               [--backends SEL] [--content-type CT] [--sensitivity S]
+              [--wiki-space SPACE_ID] [--parent-node-token TOKEN]   # §6.10
               [--dry-run] [--yes] [--json]
 
 kgent update  <doc-uri> [--file F | --stdin | --content C]
               [--expected-version V] [--yes] [--json]
+              # wiki node URIs update in place; position never changes (§6.10)
+
+kgent wiki    spaces list [--backends SEL] [--json]
+              spaces create --name N [--backends SEL] [--yes] [--json]
 
 # `store` is the skill-backed convenience command: it performs the
 # update-first search ("does this knowledge already exist?"), then proposes
@@ -1668,6 +1742,7 @@ kgent config  validate | migrate | show-effective [--json]
 6. **Idempotency**: `store`/`update`/`delete` accept `--op-id` to reuse an existing operation id (safe retries, §6.6); omitted → new op id generated and printed.
 7. **Archive-first delete**: `kgent delete` always presents archive as the recommended option when the source backend supports native archiving (§6.8); hard delete remains an explicit choice. `kgent archive` performs the same confirmed, journaled platform-native archive directly.
 8. **Batch operations & cancellation**: multi-document operations (`kgent archive --older-than`, any bulk selector) show one batch proposal — count, per-document targets, total size — and one confirmation covers the batch; `--dry-run` lists every item; each item is individually journaled and undoable. Interrupting a running operation aborts unstarted legs; completed legs stay journaled (`status: partial`) and are inspectable via `kgent sync --status` — nothing is silently rolled back (§6.4).
+9. **Wiki flags are backend-conditional** (§6.10): `--wiki-space`/`--parent-node-token` are rejected with a clear error on backends without a knowledge-space product (dingtalk, wecom in the initial scope), and `kgent wiki spaces …` lists only backends that have one. Wiki node writes are journaled, undoable, and sensitivity-gated exactly like doc writes.
 
 ---
 
