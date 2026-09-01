@@ -43,10 +43,12 @@ Before creating a new document, search for existing similar content on the targe
 python -m kgent search --query "<title keywords>" --backends <backend> --top-k 5 --json
 ```
 
+Search covers **both flat docs and wiki nodes** by default. Results include a `node_type` field (`doc` vs `wiki_node`) — a wiki match is just as valid an update target as a doc match.
+
 Analyze results:
 
-**Single strong match** — a document with the same or very similar title exists:
-→ Propose **updating** that document. Show its URI and current content preview.
+**Single strong match** — a document or wiki node with the same or very similar title exists:
+→ Propose **updating** that document. Show its URI, node type, and current content preview.
 
 **Multiple matches** (same title on different backends, or near-duplicates):
 → Offer **per-copy options** (S62):
@@ -56,9 +58,29 @@ Analyze results:
   - Let the user decide
 
 **No matches**:
-→ Propose **creating** a new document.
+→ Propose **creating** a new document. Decide the target type — wiki node or flat doc (see "Wiki vs Doc Preference" below).
 
 Record the provenance: where the title came from, why you chose this backend, and what existing docs influenced the decision (S60).
+
+### Wiki vs Doc Preference
+
+When creating new content on Lark and **all other factors are equal** — no existing match dictates the target, the user hasn't said "wiki" or "doc", and no config preference exists — **ask the user** which they prefer:
+
+```
+Where should I put this on Lark?
+  [a] Wiki node — inside a knowledge space, organized in the wiki hierarchy
+  [b] Flat doc — standalone document in Drive
+
+Which? (a/b)
+```
+
+Don't ask when the answer is already determined:
+- The user said "wiki"/"知识库"/"knowledge base" → wiki node
+- The user said "doc"/"document"/"save to Drive" → flat doc
+- An update-first match exists → follow the match's type (update a wiki node as a wiki node)
+- A similar sibling topic lives in a wiki space → default to that wiki space and say so in the provenance
+
+If the user picks wiki, resolve the target space: `python -m kgent wiki spaces list --backends lark --json`. Ask which space if there are several; create one with `kgent wiki spaces create` if none fits.
 
 ### 3. Present Proposal
 
@@ -98,6 +120,23 @@ I found a matching document:
 Proceed? (yes/no/edit)
 ```
 
+**For new wiki nodes:**
+```
+I'll create this as a wiki node:
+
+  Title:  <title>
+  Space:  <space name> (<space_id>)
+  Parent: <parent title> (<node_token>)  ← why this parent
+  Content:
+  <content preview — first 200 chars or first section>
+
+  Provenance:
+  - intent: create (no matching wiki nodes or docs found)
+  - target: wiki node in <space> ← user chose wiki / sibling topics live here
+
+Proceed? (yes/no/edit)
+```
+
 **For multiple matches (S62):**
 ```
 I found 3 matching documents across backends:
@@ -124,9 +163,40 @@ The skill has already performed update-first search in Step 2, so call the **pri
 python -m kgent create --title "<title>" --content "<content>" --backends <backend> --yes --json
 ```
 
-**Update existing document** (when Step 2 found a match):
+**Create new wiki node** (when the target is a wiki space):
+```bash
+python -m kgent create --title "<title>" --content "<content>" --backends lark --wiki-space <space_id> --parent-node-token <parent_token> --yes --json
+```
+
+**Update existing document or wiki node** (when Step 2 found a match):
 ```bash
 python -m kgent update <doc_uri> --content "<content>" --yes --json
+```
+The URI determines the target type — updating a wiki node keeps it in place in the wiki hierarchy.
+
+#### Finding the Right Position in the Wiki Structure
+
+When creating a wiki node, don't dump it at the space root — place it where a human would look for it:
+
+1. **Inspect the space structure** first:
+   ```bash
+   python -m kgent wiki spaces list --backends lark --json
+   ```
+2. **Propose a parent** based on topical fit:
+   - A "Deploy Runbook" belongs under an "Operations" or "Runbooks" parent node, not at the root
+   - A meeting note about Project X belongs under the Project X section
+   - If a clearly matching parent exists, use it and show it in the proposal
+3. **If no parent fits**, place at the space root and say so in the proposal — let the user reposition later
+4. **Never guess a parent token** from memory — only use tokens returned by search or space listing. If unsure, show the top-level structure to the user and ask where to put it
+
+Include the chosen position in the proposal so the user can correct it before execution:
+```
+I'll create this as a wiki node:
+  Title:  "Deploy Runbook"
+  Space:  Engineering Wiki (7123456)
+  Parent: Operations (wiki_AAA)
+
+Proceed? (yes/no/edit)
 ```
 
 Parse the JSON output to extract the op_id and target URIs.
@@ -137,8 +207,9 @@ After execution, **never show `kgent://...` URIs to the user** (N20, S73). Conve
 
 **How to convert:**
 1. Read `~/.kgent/config.yaml` and look for `defaults.workspace_domain`
-2. Apply the mapping:
-   - **Lark**: `kgent://lark/<token>` → `https://<workspace_domain>/docx/<token>`
+2. Apply the mapping — match the path to the node type:
+   - **Lark docs**: `kgent://lark/<token>` → `https://<workspace_domain>/docx/<token>`
+   - **Lark wiki nodes**: `kgent://lark/<node_token>` → `https://<workspace_domain>/wiki/<node_token>`
    - **DingTalk**: `kgent://dingtalk/<id>` → `https://open.dingtalk.com/document/<id>` (or your org's DingTalk console URL)
    - **WeCom**: `kgent://wecom/<id>` → `https://open.work.weixin.qq.com/...` (WeCom admin console URL)
 
@@ -191,8 +262,10 @@ If the user says "edit" or wants to change the title/content at the proposal sta
 ## Important
 
 - **Never store without explicit user approval.** Always present the proposal first and wait for yes/no.
-- **Update-first bias:** Always search before creating. Propose UPDATE when a match exists, never CREATE (N18, S61).
-- **Native URLs only:** Convert `kgent://` URIs to native platform URLs using `workspace_domain` from config. Don't show canonical URIs to the user (N20).
+- **Update-first bias:** Always search before creating. Propose UPDATE when a match exists, never CREATE (N18, S61). Search covers wiki nodes and flat docs — a wiki match is updated as a wiki node, in place.
+- **Wiki placement matters:** When creating wiki nodes, find the right parent in the wiki structure rather than dumping at the space root. Show the chosen parent in the proposal.
+- **Ask wiki vs doc when ambiguous:** If no factor determines the target type on Lark, ask the user — don't silently pick (see "Wiki vs Doc Preference").
+- **Native URLs only:** Convert `kgent://` URIs to native platform URLs using `workspace_domain` from config. Don't show canonical URIs to the user (N20). Wiki nodes use `/wiki/<token>`, docs use `/docx/<token>`.
 - **Well-structured content:** Format the content as clean markdown, not raw conversation text. Add headings, lists, code blocks as appropriate.
 - **Support iterative refinement:** If the user wants to change the title or content at the proposal stage, revise and re-present.
 - **Show op_id:** Always tell the user the op_id so they can undo if needed.
@@ -253,4 +326,34 @@ Skill:
 5. User: "a"
 6. Execute update on both backends with same content
 7. Confirm both with native URLs
+```
+
+**Example 4: Creating a wiki node in the right position**
+```
+User: "Save this deploy runbook to the knowledge base."
+
+Skill:
+1. Extract: title="Deploy Runbook"
+2. Search: python -m kgent search --query "deploy runbook" --backends lark --json
+   → No matches (results would include wiki nodes if any existed)
+3. Target type ambiguous (no explicit wiki/doc mention, no match) → ask:
+   "Where should I put this on Lark?
+    [a] Wiki node — inside a knowledge space, organized in the wiki hierarchy
+    [b] Flat doc — standalone document in Drive"
+4. User: "a"
+5. Resolve space and structure:
+   python -m kgent wiki spaces list --backends lark --json
+   → "Engineering Wiki" (7123456), top-level nodes include "Operations" (wiki_AAA)
+6. Propose with position:
+   "I'll create this as a wiki node:
+    Title:  'Deploy Runbook'
+    Space:  Engineering Wiki (7123456)
+    Parent: Operations (wiki_AAA)  ← topical fit
+    Proceed? (yes/no/edit)"
+7. User: "yes"
+8. Execute:
+   python -m kgent create --title "Deploy Runbook" --content "..." --backends lark --wiki-space 7123456 --parent-node-token wiki_AAA --yes --json
+9. Confirm with wiki URL:
+   "✅ Created: 'Deploy Runbook' → https://mycompany.larksuite.com/wiki/wiki_BBB
+    Op ID: op-xxx (undo: kgent undo op-xxx)"
 ```
