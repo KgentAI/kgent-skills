@@ -84,14 +84,14 @@ When the user wants to set up a **wiki** or **knowledge base** on Lark (not just
 
 **Detecting wiki intent:** The user says "wiki", "knowledge base", "知识库", or asks to create a structured multi-page wiki on Lark. In these cases:
 
-1. **Resolve or create the target wiki space** using `lark-cli` (space management is Lark-specific, outside kgent's scope):
+1. **Resolve or create the target wiki space** via `kgent`:
    ```bash
-   # List existing spaces the user can write to
-   lark-cli wiki +space-list --as user --format json
+   # List existing wiki spaces the user can access
+   python -m kgent wiki spaces list --backends lark --json
    ```
    If the user named a specific space, match it by name. If no space exists and the user wants one, create it:
    ```bash
-   lark-cli wiki +space-create --name "<space name>" --as user --format json
+   python -m kgent wiki spaces create --name "<space name>" --backends lark --yes --json
    ```
 
 2. **Create pages as wiki nodes** via `kgent create --wiki-space`:
@@ -247,7 +247,7 @@ User: "Set up a project wiki on Lark — welcome page, architecture guide, and r
 Skill:
 1. Parse request: Lark wiki with 3 pages in one knowledge space
 2. Resolve target space:
-   lark-cli wiki +space-list --as user --format json
+   python -m kgent wiki spaces list --backends lark --json
    → Found "Engineering Wiki" (space_id: 7123456)
 3. Search for collisions (searches wiki by default):
    python -m kgent search --query "Welcome Architecture Guide Runbook" --backends lark --json
