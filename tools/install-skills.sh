@@ -22,7 +22,10 @@ while [ $# -gt 0 ]; do
   --copy) COPY=1 ;;
   --uninstall) UNINSTALL=1 ;;
   --no-cli) NO_CLI=1 ;;
-  *) echo "usage: install-skills.sh [--copy] [--backup] [--uninstall] [--no-cli]" >&2; exit 2 ;;
+  *)
+    echo "usage: install-skills.sh [--copy] [--backup] [--uninstall] [--no-cli]" >&2
+    exit 2
+    ;;
   esac
   shift
 done
@@ -168,7 +171,7 @@ install_cli() {
     echo "installing kgent CLI via uv"
     (cd "$REPO_ROOT" && uv tool install --force --from . kgent)
     mkdir -p "$HOME/.kgent"
-    printf 'uv\n' > "$state"
+    printf 'uv\n' >"$state"
     return 0
   fi
   if { [ "$backend" = "auto" ] || [ "$backend" = "venv" ]; } && [ -n "$py" ]; then
@@ -178,7 +181,7 @@ install_cli() {
     if [ "$is_windows" -eq 1 ]; then
       "$venv_dir/Scripts/python.exe" -m pip install -q -e "$REPO_ROOT"
       mkdir -p "$HOME/.kgent/bin"
-      printf '@echo off\r\n"%s" %%*\r\n' "$(cygpath -w "$venv_dir/Scripts/kgent.exe")" > "$HOME/.kgent/bin/kgent.cmd"
+      printf '@echo off\r\n"%s" %%*\r\n' "$(cygpath -w "$venv_dir/Scripts/kgent.exe")" >"$HOME/.kgent/bin/kgent.cmd"
       echo "NOTE: add \\"$HOME\\kgent\\bin\\" to PATH to use the kgent command"
     else
       "$venv_dir/bin/python" -m pip install -q -e "$REPO_ROOT"
@@ -187,7 +190,7 @@ install_cli() {
       echo "NOTE: ensure $HOME/.local/bin is on PATH to use the kgent command"
     fi
     mkdir -p "$HOME/.kgent"
-    printf 'venv\n' > "$state"
+    printf 'venv\n' >"$state"
     return 0
   fi
   if [ -n "$py" ]; then
@@ -197,7 +200,7 @@ install_cli() {
       "$py" -m pip install -q --user --break-system-packages -e "$REPO_ROOT"
     fi
     mkdir -p "$HOME/.kgent"
-    printf 'pip\n' > "$state"
+    printf 'pip\n' >"$state"
     return 0
   fi
   echo "WARNING: no supported CLI backend found - kgent will NOT be available" >&2
