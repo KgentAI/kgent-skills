@@ -18,10 +18,10 @@ def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str
 
     # Parse verification DSL (simple pattern matching)
     if name == "update_first_search":
-        has_search = "python -m kgent search" in response
-        search_pos = response.find("python -m kgent search")
-        create_pos = response.find("python -m kgent create")
-        store_pos = response.find("python -m kgent store")
+        has_search = "kgent search" in response
+        search_pos = response.find("kgent search")
+        create_pos = response.find("kgent create")
+        store_pos = response.find("kgent store")
         first_write = (
             min(p for p in [create_pos, store_pos] if p >= 0)
             if any(p >= 0 for p in [create_pos, store_pos])
@@ -100,14 +100,14 @@ def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str
         return has_prov, evidence
 
     elif name == "search_executed":
-        has_search = "python -m kgent search" in response
+        has_search = "kgent search" in response
         has_relevant = any(kw in response_lower for kw in ["password", "rotation", "policy"])
         passed = has_search and has_relevant
         evidence = f"search found: {has_search}, relevant terms: {has_relevant}"
         return passed, evidence
 
     elif name == "documents_read":
-        has_read = "python -m kgent read" in response
+        has_read = "kgent read" in response
         # If no results were found, reading is not expected
         no_results = any(
             kw in response_lower
@@ -178,7 +178,7 @@ def check_assertion(assertion: dict[str, Any], response: str) -> tuple[bool, str
         return has_attribution, evidence
 
     elif name == "wiki_space_listed":
-        has_list = "python -m kgent wiki spaces list" in response
+        has_list = "kgent wiki spaces list" in response
         evidence = (
             "wiki spaces list command found" if has_list else "no 'kgent wiki spaces list' found"
         )

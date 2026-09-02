@@ -13,6 +13,7 @@ Save knowledge from conversations to the knowledge base using the kgent CLI. Thi
 ## When to Use
 
 Activate this skill when the user expresses any intent to write knowledge to a backend. Common triggers:
+
 - "save this", "store this", "persist this", "remember this"
 - "add this to the wiki", "put this in our docs", "write this to Lark"
 - "update the guidelines with this", "add these notes to the retro doc"
@@ -26,6 +27,7 @@ When in doubt between this skill and question-answering: if the user's goal is t
 ### 1. Extract Knowledge
 
 From the conversation context, identify:
+
 - **Title**: A concise, descriptive title. If the user didn't name it, derive one from the content.
 - **Content**: The knowledge to persist, formatted as clean markdown (not raw conversation text). Structure it with headings, lists, and code blocks as appropriate.
 - **Target backend**: Which backend(s) to store to. Resolution priority (S67):
@@ -40,7 +42,7 @@ If the user didn't specify and the default isn't obvious, ask — but only if th
 Before creating a new document, search for existing similar content on the target backend(s). This is the **update-first bias** (N18, S61) — the system always prefers updating existing knowledge over creating duplicates.
 
 ```bash
-python -m kgent search --query "<title keywords>" --backends <backend> --top-k 5 --json
+kgent search --query "<title keywords>" --backends <backend> --top-k 5 --json
 ```
 
 Search covers **both flat docs and wiki nodes** by default. Results include a `node_type` field (`doc` vs `wiki_node`) — a wiki match is just as valid an update target as a doc match.
@@ -52,10 +54,11 @@ Analyze results:
 
 **Multiple matches** (same title on different backends, or near-duplicates):
 → Offer **per-copy options** (S62):
-  - Update all N copies (identical content)
-  - Update a specific copy
-  - Create new (if near-duplicates but not identical)
-  - Let the user decide
+
+- Update all N copies (identical content)
+- Update a specific copy
+- Create new (if near-duplicates but not identical)
+- Let the user decide
 
 **No matches**:
 → Propose **creating** a new document. Decide the target type — wiki node or flat doc (see "Wiki vs Doc Preference" below).
@@ -75,18 +78,20 @@ Which? (a/b)
 ```
 
 Don't ask when the answer is already determined:
+
 - The user said "wiki"/"知识库"/"knowledge base" → wiki node
 - The user said "doc"/"document"/"save to Drive" → flat doc
 - An update-first match exists → follow the match's type (update a wiki node as a wiki node)
 - A similar sibling topic lives in a wiki space → default to that wiki space and say so in the provenance
 
-If the user picks wiki, resolve the target space: `python -m kgent wiki spaces list --backends lark --json`. Ask which space if there are several; create one with `kgent wiki spaces create` if none fits.
+If the user picks wiki, resolve the target space: `kgent wiki spaces list --backends lark --json`. Ask which space if there are several; create one with `kgent wiki spaces create` if none fits.
 
 ### 3. Present Proposal
 
 Show a clear proposal before any write happens. **Never execute without explicit user approval** (N1, S64).
 
 **For new documents:**
+
 ```
 I'll create a new document:
 
@@ -103,6 +108,7 @@ Create it? (yes/no/edit)
 ```
 
 **For updates (single match):**
+
 ```
 I found a matching document:
 
@@ -121,6 +127,7 @@ Proceed? (yes/no/edit)
 ```
 
 **For new wiki nodes:**
+
 ```
 I'll create this as a wiki node:
 
@@ -138,6 +145,7 @@ Proceed? (yes/no/edit)
 ```
 
 **For multiple matches (S62):**
+
 ```
 I found 3 matching documents across backends:
 
@@ -159,19 +167,23 @@ Which? (a/b/c/d/no/edit)
 The skill has already performed update-first search in Step 2, so call the **primitive operations** directly — don't use `kgent store` (which would search again).
 
 **Create new document** (when Step 2 found no matches):
+
 ```bash
-python -m kgent create --title "<title>" --content "<content>" --backends <backend> --yes --json
+kgent create --title "<title>" --content "<content>" --backends <backend> --yes --json
 ```
 
 **Create new wiki node** (when the target is a wiki space):
+
 ```bash
-python -m kgent create --title "<title>" --content "<content>" --backends lark --wiki-space <space_id> --parent-node-token <parent_token> --yes --json
+kgent create --title "<title>" --content "<content>" --backends lark --wiki-space <space_id> --parent-node-token <parent_token> --yes --json
 ```
 
 **Update existing document or wiki node** (when Step 2 found a match):
+
 ```bash
-python -m kgent update <doc_uri> --content "<content>" --yes --json
+kgent update <doc_uri> --content "<content>" --yes --json
 ```
+
 The URI determines the target type — updating a wiki node keeps it in place in the wiki hierarchy.
 
 #### Finding the Right Position in the Wiki Structure
@@ -179,9 +191,11 @@ The URI determines the target type — updating a wiki node keeps it in place in
 When creating a wiki node, don't dump it at the space root — place it where a human would look for it:
 
 1. **Inspect the space structure** first:
+
    ```bash
-   python -m kgent wiki spaces list --backends lark --json
+   kgent wiki spaces list --backends lark --json
    ```
+
 2. **Propose a parent** based on topical fit:
    - A "Deploy Runbook" belongs under an "Operations" or "Runbooks" parent node, not at the root
    - A meeting note about Project X belongs under the Project X section
@@ -190,6 +204,7 @@ When creating a wiki node, don't dump it at the space root — place it where a 
 4. **Never guess a parent token** from memory — only use tokens returned by search or space listing. If unsure, show the top-level structure to the user and ask where to put it
 
 Include the chosen position in the proposal so the user can correct it before execution:
+
 ```
 I'll create this as a wiki node:
   Title:  "Deploy Runbook"
@@ -206,6 +221,7 @@ Parse the JSON output to extract the op_id and target URIs.
 After execution, **never show `kgent://...` URIs to the user** (N20, S73). Convert them to native platform URLs.
 
 **How to convert:**
+
 1. Read `~/.kgent/config.yaml` and look for `defaults.workspace_domain`
 2. Apply the mapping — match the path to the node type:
    - **Lark docs**: `kgent://lark/<token>` → `https://<workspace_domain>/docx/<token>`
@@ -217,6 +233,7 @@ After execution, **never show `kgent://...` URIs to the user** (N20, S73). Conve
 Tell the user: "To see native platform URLs, add `workspace_domain` to your config at `~/.kgent/config.yaml` under `defaults:`. For example: `workspace_domain: mycompany.larksuite.com`." Until it's configured, you may show the `kgent://` URI as a fallback, but mention the config gap.
 
 **Confirmation format:**
+
 ```
 ✅ Created: "API Guidelines" → https://mycompany.larksuite.com/docx/abc123
    Op ID: <op_id> (undo via: kgent undo <op_id>)
@@ -234,6 +251,7 @@ or
 ### Sensitivity zones (N4, S13-S15)
 
 If the content is classified "confidential" (or the user says it's sensitive/secret):
+
 - Do NOT route to external-zone backends (dingtalk, wecom)
 - The router will reject this with exit code 3, but you should catch it earlier
 - Propose routing to an internal-zone backend only, and explain why
@@ -245,16 +263,19 @@ If the content to store came from reading another document (e.g., the user says 
 ### Version conflicts (S6)
 
 If an update fails with a version conflict (exit code 4), it means someone else edited the document between your search and your write. Report this to the user:
+
 ```
 ⚠️ Version conflict: the document was edited since we last read it.
    Expected v17, found v19.
    Re-reading and re-proposing...
 ```
+
 Then re-read the document and present a fresh proposal based on the current version.
 
 ### Iterative refinement
 
 If the user says "edit" or wants to change the title/content at the proposal stage:
+
 - Revise the proposal
 - Re-present it
 - Don't execute until they approve
@@ -274,6 +295,7 @@ If the user says "edit" or wants to change the title/content at the proposal sta
 ## Examples
 
 **Example 1: Storing meeting notes (update-first match)**
+
 ```
 User: "We just discussed the new authentication flow. Can you save these notes?"
 
@@ -281,36 +303,38 @@ Skill:
 1. Extract: title="Authentication Flow Discussion"
    content="## Key Decisions\n- Using OAuth 2.0 with PKCE\n- Token refresh every 15 minutes..."
    backend: config default → lark
-2. Search: python -m kgent search --query "Authentication Flow" --backends lark --json
+2. Search: kgent search --query "Authentication Flow" --backends lark --json
 3. Found: "Authentication Flow v1" (kgent://lark/old123)
 4. Propose update:
    "I found an existing doc 'Authentication Flow v1'. I'll update it with the new content.
     Proceed? (yes/no/edit)"
 5. User: "yes"
-6. Execute: python -m kgent update kgent://lark/old123 --content "..." --yes --json
+6. Execute: kgent update kgent://lark/old123 --content "..." --yes --json
 7. Read workspace_domain: "mycompany.larksuite.com"
 8. Confirm: "✅ Updated: 'Authentication Flow Discussion' → https://mycompany.larksuite.com/docx/old123
    Op ID: op-xxx (undo: kgent undo op-xxx)"
 ```
 
 **Example 2: Creating a new document (no match)**
+
 ```
 User: "Save the new API guidelines to DingTalk."
 
 Skill:
 1. Extract: title="API Guidelines", backend=dingtalk (explicit user input)
-2. Search: python -m kgent search --query "API Guidelines" --backends dingtalk --json
+2. Search: kgent search --query "API Guidelines" --backends dingtalk --json
 3. No matches found
 4. Propose create:
    "I'll create 'API Guidelines' on DingTalk.
     Provenance: target=dingtalk ← explicit user input
     Proceed? (yes/no/edit)"
 5. User: "yes"
-6. Execute: python -m kgent create --title "API Guidelines" --content "..." --backends dingtalk --yes --json
+6. Execute: kgent create --title "API Guidelines" --content "..." --backends dingtalk --yes --json
 7. Confirm with native DingTalk URL
 ```
 
 **Example 3: Multiple matches across backends**
+
 ```
 User: "Save the updated retro notes."
 
@@ -329,12 +353,13 @@ Skill:
 ```
 
 **Example 4: Creating a wiki node in the right position**
+
 ```
 User: "Save this deploy runbook to the knowledge base."
 
 Skill:
 1. Extract: title="Deploy Runbook"
-2. Search: python -m kgent search --query "deploy runbook" --backends lark --json
+2. Search: kgent search --query "deploy runbook" --backends lark --json
    → No matches (results would include wiki nodes if any existed)
 3. Target type ambiguous (no explicit wiki/doc mention, no match) → ask:
    "Where should I put this on Lark?
@@ -342,7 +367,7 @@ Skill:
     [b] Flat doc — standalone document in Drive"
 4. User: "a"
 5. Resolve space and structure:
-   python -m kgent wiki spaces list --backends lark --json
+   kgent wiki spaces list --backends lark --json
    → "Engineering Wiki" (7123456), top-level nodes include "Operations" (wiki_AAA)
 6. Propose with position:
    "I'll create this as a wiki node:
@@ -352,7 +377,7 @@ Skill:
     Proceed? (yes/no/edit)"
 7. User: "yes"
 8. Execute:
-   python -m kgent create --title "Deploy Runbook" --content "..." --backends lark --wiki-space 7123456 --parent-node-token wiki_AAA --yes --json
+   kgent create --title "Deploy Runbook" --content "..." --backends lark --wiki-space 7123456 --parent-node-token wiki_AAA --yes --json
 9. Confirm with wiki URL:
    "✅ Created: 'Deploy Runbook' → https://mycompany.larksuite.com/wiki/wiki_BBB
     Op ID: op-xxx (undo: kgent undo op-xxx)"

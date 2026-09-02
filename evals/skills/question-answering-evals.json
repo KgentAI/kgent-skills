@@ -7,8 +7,8 @@
       "expected_output": "The skill should search the knowledge base, find relevant policy documents, and synthesize an answer with native URL citations for every factual claim.",
       "files": [],
       "expectations": [
-        "The skill runs 'python -m kgent search' with relevant query terms",
-        "The skill reads 2-5 of the most relevant documents using 'python -m kgent read'",
+        "The skill runs 'kgent search' with relevant query terms",
+        "The skill reads 2-5 of the most relevant documents using 'kgent read'",
         "Every factual claim in the answer has a source citation",
         "Citations use native platform URLs (https://...), not kgent:// URIs",
         "The answer has a Sources section listing all cited documents",
@@ -103,7 +103,7 @@
       "expected_output": "The skill searches (wiki nodes are first-class results — no separate wiki flag, S80), finds the runbook wiki node, and cites it with a native /wiki/ URL — never a /docx/ URL, and never a kgent:// URI (S85, N23).",
       "files": [],
       "expectations": [
-        "The skill searches with 'python -m kgent search' — results include wiki nodes by default (no separate wiki flag)",
+        "The skill searches with 'kgent search' — results include wiki nodes by default (no separate wiki flag)",
         "A wiki node hit is treated as a first-class source (not deprioritized)",
         "The citation for the wiki node uses a '/wiki/' native URL path",
         "No wiki citation uses '/docx/', and no flat-doc citation uses '/wiki/'",

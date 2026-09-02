@@ -7,7 +7,7 @@
       "expected_output": "The skill should search for existing Q4 planning documents, propose updating if found or creating new if not. Must show a proposal before executing, then confirm with a native URL (not kgent:// URI).",
       "files": [],
       "expectations": [
-        "The skill runs 'python -m kgent search' before proposing any write",
+        "The skill runs 'kgent search' before proposing any write",
         "The skill presents a proposal to the user and waits for approval before executing",
         "The proposal includes a title derived from the meeting content",
         "The content is formatted as clean markdown with structured headings/lists",
@@ -25,7 +25,7 @@
         "The skill searches for 'deployment guide' before proposing anything",
         "The skill proposes UPDATE of an existing document, not CREATE",
         "The proposal mentions the existing document title and URI",
-        "After approval, the skill calls 'python -m kgent update' with the existing doc URI",
+        "After approval, the skill calls 'kgent update' with the existing doc URI",
         "The confirmation message includes a native platform URL, not a kgent:// URI",
         "The provenance records intent=update because a matching doc was found"
       ]
@@ -102,11 +102,11 @@
     {
       "id": 8,
       "prompt": "Add our deployment runbook to the Engineering Wiki. We use progressive rollouts with a 5% canary.",
-      "expected_output": "The skill resolves the wiki intent, lists knowledge spaces, inspects the space structure, and proposes creating a wiki node under a topically-fitting parent (the parent token comes from the space listing — never guessed, S83/N22). It creates with 'python -m kgent create --wiki-space <space_id> --parent-node-token <token>' and confirms with a /wiki/ native URL.",
+      "expected_output": "The skill resolves the wiki intent, lists knowledge spaces, inspects the space structure, and proposes creating a wiki node under a topically-fitting parent (the parent token comes from the space listing — never guessed, S83/N22). It creates with 'kgent create --wiki-space <space_id> --parent-node-token <token>' and confirms with a /wiki/ native URL.",
       "files": [],
       "expectations": [
         "The skill recognizes the wiki intent and targets a knowledge space",
-        "The skill lists knowledge spaces with 'python -m kgent wiki spaces list'",
+        "The skill lists knowledge spaces with 'kgent wiki spaces list'",
         "The skill inspects the space structure to find a fitting parent (top-level nodes)",
         "The parent token passed to --parent-node-token matches a token from the space listing — never guessed (S83, N22)",
         "The create command passes '--wiki-space' and '--parent-node-token'",

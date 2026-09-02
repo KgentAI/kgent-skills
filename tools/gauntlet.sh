@@ -42,7 +42,8 @@ pytest tests/adversarial -v
 echo "== secret scan =="
 # negative control: must FAIL when a fixture token exists; see Task 10.1
 if grep -rEn "(sk-[A-Za-z0-9]{16,}|Bearer [A-Za-z0-9._-]{20,})" src tests --include='*.py' >/dev/null; then
-  echo "SECRET SCAN FAILURE" >&2; exit 1
+  echo "SECRET SCAN FAILURE" >&2
+  exit 1
 fi
 
 echo "== network capture check (N14) =="

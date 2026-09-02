@@ -507,3 +507,49 @@ def test_s85_qa_cites_wiki_hit_with_wiki_url(wiki_world: World) -> None:
         assert url.startswith("https://mycompany.larksuite.com/wiki/"), (
             "wiki citations must use the /wiki/ path, never /docx/ (N23)"
         )
+
+
+# ---------------------------------------------------------------------------
+# console encoding: non-ASCII output must survive a cp1252 Windows console
+# (found via the installer's health check on a real console)
+# ---------------------------------------------------------------------------
+
+
+class _Cp1252Stream:
+    """Simulates a Windows console whose encoding is cp1252: write() raises
+    UnicodeEncodeError for anything outside the codepage. reconfigure() mimics
+    TextIOWrapper so the CLI's UTF-8 fix can take effect."""
+
+    def __init__(self) -> None:
+        self.encoding = "cp1252"
+        self.buffer: list[str] = []
+
+    def write(self, s: str) -> None:
+        s.encode(self.encoding)  # raises UnicodeEncodeError for non-encodable chars
+        self.buffer.append(s)
+
+    def flush(self) -> None:
+        pass
+
+    def reconfigure(self, **kw: object) -> None:
+        if "encoding" in kw:
+            self.encoding = str(kw["encoding"])
+
+
+def test_cli_wiki_list_non_ascii_console_encoding(
+    wiki_world: "dict[str, Any]", monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    lark = wiki_world["backends"]["lark"]
+    _seed_space(lark, name="工程知识库")  # not representable in cp1252
+
+    stream = _Cp1252Stream()
+    monkeypatch.setattr(sys, "stdout", stream)
+    monkeypatch.setattr(sys, "stderr", stream)
+
+    code = main(["wiki", "spaces", "list", "--backends", "lark", "--json"])
+
+    assert code == 0
+    out = "".join(stream.buffer)
+    assert "工程知识库" in out  # the space name survives as UTF-8

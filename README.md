@@ -18,40 +18,55 @@ cd kgent-skills
 # Install in development mode
 pip install -e .
 
-# Or install with all optional dependencies
-pip install -e ".[all]"
+# Or install with the dev toolchain (pytest, mypy, ruff, ...)
+pip install -e ".[dev]"
 ```
 
 ### Claude Code Skills
 
-Install the Claude Code skills to enable natural language invocation:
+One command installs everything — all skills (as live links into
+`~/.agents/skills`, mirrored into `~/.claude/skills` when Claude Code is
+present), the `kgent` CLI itself, and a health check of the whole chain:
 
 ```bash
-# Option 1: Symlink to user-level skills directory (recommended)
-ln -s $(pwd)/skills/knowledge-storage ~/.agents/skills/knowledge-storage
-ln -s $(pwd)/skills/question-answering ~/.agents/skills/question-answering
-
-# Option 2: Symlink to project-level skills directory
-ln -s $(pwd)/skills/knowledge-storage .claude/skills/knowledge-storage
-ln -s $(pwd)/skills/question-answering .claude/skills/question-answering
-
-# Option 3: Copy skills (for distribution)
-cp -r skills/knowledge-storage ~/.agents/skills/
-cp -r skills/question-answering ~/.agents/skills/
+bash tools/install-skills.sh
 ```
 
-After installation, you can use natural language:
+Re-running it is the update. Useful flags:
+
+```bash
+bash tools/install-skills.sh --copy       # frozen copies instead of live links
+bash tools/install-skills.sh --no-cli     # skills only, skip the kgent CLI
+bash tools/install-skills.sh --uninstall  # remove skills + CLI
+bash tools/install-skills.sh --backup     # keep replaced dirs in ~/.agents/skills-backups
+```
+
+Under the hood, the script discovers every `skills/*/SKILL.md`, links it into
+the hub, mirrors the link into `~/.claude/skills`, and installs the CLI
+(preferring `uv tool install`, falling back to a dedicated venv, then ambient
+pip). The manual equivalent:
+
+```bash
+ln -s $(pwd)/skills/knowledge-storage ~/.agents/skills/knowledge-storage
+ln -s $(pwd)/skills/question-answering ~/.agents/skills/question-answering
+ln -s $(pwd)/skills/wiki-setup ~/.agents/skills/wiki-setup
+```
+
+After installation (and a Claude Code session restart), you can use natural
+language:
 
 - "Save this to the knowledge base" → invokes `knowledge-storage` skill
 - "What does X mean?" → invokes `question-answering` skill
+- "Set up a wiki" → invokes `wiki-setup` skill
 
-**Note**: The skills require the kgent CLI to be installed (via `pip install -e .` above) and configured with at least one backend (see Configuration section).
+**Note**: The skills require the `kgent` CLI (installed by the script) and a
+configured backend (see Configuration section).
 
 ### Dependencies
 
-- Python 3.10+
-- PyYAML
-- cryptography (for encrypted credential storage)
+- Python 3.11+
+- Runtime: stdlib only (no third-party runtime dependencies)
+- Dev toolchain (`.[dev]`): pytest, mypy, ruff, coverage, hypothesis, mutmut
 
 ## CLI Usage
 

@@ -144,7 +144,7 @@ routed to the explicit manual fallback). Full sweep of `src/kgent`,
 **Results (9,055 mutants)**:
 
 | Outcome | Count | Share |
-|---------|-------|-------|
+| --------- | ------- | ------- |
 | Killed (tests caught the mutant) | 4,832 | 53.4% |
 | Survived | 3,725 | 41.2% |
 | No coverage | 493 | 5.4% |

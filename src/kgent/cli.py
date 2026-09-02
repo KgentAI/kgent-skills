@@ -18,6 +18,7 @@ unless ``--yes`` is passed.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -996,6 +997,15 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], int]] = {
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point. Returns an exit code (0/1/2/3/4)."""
+    # Output is UTF-8 by contract (JSON consumers decode utf-8; skills print
+    # non-ASCII content). A Windows console with a legacy codepage (cp1252,
+    # GBK, ...) would otherwise crash on the first non-ASCII character.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        with contextlib.suppress(ValueError, OSError):  # detached/closed stream
+            reconfigure(encoding="utf-8")
     parser = _build_parser()
     try:
         args = parser.parse_args(argv)
