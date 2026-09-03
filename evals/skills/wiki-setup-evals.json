@@ -1,0 +1,93 @@
+{
+  "skill_name": "wiki-setup",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Set up our team wiki — create a welcome page on Lark and a partner guide on DingTalk.",
+      "expected_output": "The skill should parse this as a multi-backend wiki setup, search for collisions, present a unified proposal for both pages, and upon approval create both with native URL confirmations.",
+      "files": [],
+      "expectations": [
+        "The skill identifies 2 pages: welcome (lark) and partner guide (dingtalk)",
+        "The skill searches each backend for existing documents with similar titles",
+        "A unified proposal is shown listing all legs before any write",
+        "The user is asked to confirm before any write executes",
+        "Both kgent create calls are executed after approval",
+        "The confirmation includes native URLs for both backends",
+        "The op_id is reported for undo capability"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Create home pages for the new project on both Lark and DingTalk.",
+      "expected_output": "The skill should search for existing project home pages. If found, propose UPDATE instead of CREATE. Show per-leg status in the proposal.",
+      "files": [],
+      "expectations": [
+        "The skill searches both lark and dingtalk for existing 'home' or 'project' pages",
+        "If a match is found on either backend, the skill proposes UPDATE for that leg",
+        "The unified proposal shows operation type (CREATE or UPDATE) per leg",
+        "The user is asked to confirm before any write",
+        "Native URLs in the confirmation, not kgent:// URIs",
+        "If a collision is found, the existing document title is shown"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Initialize our knowledge base with documentation on Lark, DingTalk, and WeCom.",
+      "expected_output": "The skill should create documentation pages on all 3 backends. If one fails, the others should still succeed (partial success). Failed legs should be reported as repairable.",
+      "files": [],
+      "expectations": [
+        "The proposal lists all 3 backends as targets",
+        "The user confirms before any write",
+        "Each backend is attempted independently",
+        "If one backend fails, the skill reports the failure with the specific error",
+        "Successful backends are confirmed with native URLs",
+        "Failed legs mention repairability via 'kgent sync --repair <op_id>'",
+        "The op_id is reported for the overall operation"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I want to set up a FAQ page. Create it on Lark first, then we'll see about other backends.",
+      "expected_output": "The skill should respect the user's incremental approach — create on Lark only for now, and mention that additional backends can be added later.",
+      "files": [],
+      "expectations": [
+        "The skill targets only lark (as the user specified)",
+        "The skill does NOT create on other backends without explicit confirmation",
+        "The proposal is shown and confirmed before write",
+        "The confirmation includes a native Lark URL",
+        "The skill mentions that additional backends can be added later",
+        "The op_id is reported for undo"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Create 3 wiki pages: 'Getting Started', 'API Reference', and 'Troubleshooting'. All on Lark.",
+      "expected_output": "The skill should create all 3 pages on lark, show a unified proposal listing all 3, execute them, and report all 3 native URLs.",
+      "files": [],
+      "expectations": [
+        "The proposal lists all 3 pages with their titles and the target backend (lark)",
+        "The skill searches lark for existing pages with these titles",
+        "The user is asked to confirm before any write",
+        "All 3 pages are created (or updated if matches exist)",
+        "The confirmation shows native URLs for all 3 pages",
+        "If any page fails, the others still succeed",
+        "The op_id is reported"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "We need to set up documentation across all our backends. I have a global config at ~/.kgent/config.yaml.",
+      "expected_output": "The skill should read the config to discover enabled backends, propose creating docs on each, and execute after confirmation. Should handle the case where workspace_domain is or isn't configured.",
+      "files": [],
+      "expectations": [
+        "The skill reads ~/.kgent/config.yaml to discover enabled backends",
+        "The proposal lists all enabled backends as targets",
+        "The skill asks the user what content/pages to create (or proposes defaults)",
+        "If workspace_domain is configured, native URLs are shown",
+        "If workspace_domain is NOT configured, the skill tells the user to configure it (S75)",
+        "The user confirms before any write",
+        "The op_id is reported"
+      ]
+    }
+  ]
+}

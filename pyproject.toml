@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kgent"
+version = "0.1.0"
+description = "Federated multi-backend knowledge management router + CLI"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+kgent = "kgent.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8", "pytest-randomly", "mypy>=1.8", "ruff>=0.4",
+    "coverage[toml]>=7", "diff-cover>=9", "mutmut>=3", "hypothesis>=6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+kgent = ["py.typed"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+
+[tool.coverage.run]
+source = ["kgent"]
+
+[tool.mutmut]
+# mutmut 3.x config (CLI --paths-to-mutate was removed in 3.0). NOTE: the value
+# MUST be an array — a bare string is iterated character-by-character by mutmut
+# (each character becomes a walk path, including "/", the filesystem root).
+source_paths = ["src/kgent"]
+pytest_add_cli_args_test_selection = ["tests"]
