@@ -230,7 +230,7 @@ After execution, **never show `kgent://...` URIs to the user** (N20, S73). Conve
    - **WeCom**: `kgent://wecom/<id>` → `https://open.work.weixin.qq.com/...` (WeCom admin console URL)
 
 **If `workspace_domain` is not configured** (S75):
-Tell the user: "To see native platform URLs, add `workspace_domain` to your config at `~/.kgent/config.yaml` under `defaults:`. For example: `workspace_domain: mycompany.larksuite.com`." Until it's configured, you may show the `kgent://` URI as a fallback, but mention the config gap.
+Fix it before reporting results: run `kgent config set-workspace-domain` — it auto-discovers the tenant domain via a `lark-cli drive +search` probe and surgically writes only that one config key (your other config edits are preserved). If the probe finds nothing (no auth, rate limited, empty tenant), set it explicitly: `kgent config set-workspace-domain --domain mycompany.larksuite.com`. Until it's configured, you may show the `kgent://` URI as a fallback, but mention the config gap.
 
 **Confirmation format:**
 

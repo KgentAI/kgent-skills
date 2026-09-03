@@ -765,8 +765,46 @@ def _cmd_config(args: argparse.Namespace) -> int:
         else:
             _text_out(json.dumps(data, ensure_ascii=False, indent=2))
         return 0
+    elif sub == "set-workspace-domain":
+        return _cmd_config_set_workspace_domain(args)
     _text_out(f"unknown config action: {sub}")
     return 1
+
+
+def _cmd_config_set_workspace_domain(args: argparse.Namespace) -> int:
+    """Set ``defaults.workspace_domain`` — surgically, one key only (S75)."""
+    from kgent.config.workspace_domain import discover_and_set, set_workspace_domain, validate_domain
+
+    home = _home()
+    config_path = home / "config.yaml"
+    domain = getattr(args, "domain", None)
+    try:
+        if domain:
+            previous, workspace_domain = set_workspace_domain(
+                config_path, validate_domain(domain)
+            )
+            source = "explicit --domain"
+        else:
+            previous, workspace_domain = discover_and_set(config_path)
+            source = "lark-cli drive +search probe"
+    except KgentError as exc:
+        if getattr(args, "json", False):
+            _json_out({"ok": False, "error": str(exc)})
+        else:
+            _text_out(f"error: {exc}")
+        return 1
+    if getattr(args, "json", False):
+        _json_out(
+            {
+                "ok": True,
+                "workspace_domain": workspace_domain,
+                "previous": previous,
+                "source": source,
+            }
+        )
+    else:
+        _text_out(f"workspace_domain: {previous!r} -> {workspace_domain!r} ({source})")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -961,7 +999,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "config_action",
         nargs="?",
         default="validate",
-        choices=["validate", "migrate", "show-effective"],
+        choices=["validate", "migrate", "show-effective", "set-workspace-domain"],
+    )
+    p_config.add_argument(
+        "--domain",
+        default=None,
+        help="Explicit workspace domain (omit to auto-discover via lark-cli probe)",
     )
 
     # status (alias for auth status)

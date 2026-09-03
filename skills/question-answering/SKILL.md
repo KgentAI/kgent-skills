@@ -143,7 +143,7 @@ Format the answer with inline citations using **native platform URLs, not `kgent
 Citing a wiki node with a `/docx/` URL (or vice versa) produces a broken link — always match the path to the node type.
 
 **If `workspace_domain` is not configured** (S75):
-Mention it: "Tip: add `workspace_domain` to `~/.kgent/config.yaml` to see native URLs in citations."
+Fix it, then re-cite — don't just mention the gap. Run `kgent config set-workspace-domain`: it auto-discovers the tenant domain via a `lark-cli drive +search` probe (each hit's `result_meta.url` host is the tenant domain) and writes only that one config key. If the probe finds nothing (no auth, rate limited, empty tenant), set it explicitly: `kgent config set-workspace-domain --domain <host>` — the host is the tenant part of any native Lark doc URL you already have (e.g. `mycompany.larksuite.com`).
 
 **Answer format:**
 

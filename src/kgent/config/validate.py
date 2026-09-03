@@ -52,7 +52,25 @@ def validate_config(cfg: Config) -> list[str]:
             )
         findings.extend(_capability_findings(str(name), spec.get("capabilities")))
 
+    findings.extend(_workspace_domain_findings(cfg))
     return findings
+
+
+def _workspace_domain_findings(cfg: Config) -> list[str]:
+    """An enabled lark backend without ``defaults.workspace_domain`` cannot
+    render native citation URLs (N20) — point at the discovery command (S75)."""
+    lark_enabled = any(
+        str(name) == "lark" and spec.get("enabled")
+        for name, spec in cfg.backends.items()
+    )
+    if not lark_enabled:
+        return []
+    if cfg.defaults.get("workspace_domain"):
+        return []
+    return [
+        "defaults.workspace_domain is not set: lark citations will fall back to kgent:// URIs — "
+        "run 'kgent config set-workspace-domain' to discover and set it"
+    ]
 
 
 def _capability_findings(name: str, capabilities: Any) -> list[str]:

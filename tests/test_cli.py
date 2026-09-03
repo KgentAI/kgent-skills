@@ -78,6 +78,7 @@ def e2e(tmp_home, monkeypatch):
         "    write_seconds: 30\n"
         "  concurrency:\n"
         "    max_parallel_backends: 4\n"
+        "  workspace_domain: test.larksuite.com\n"
         "backends:\n"
         "  lark:\n"
         "    enabled: true\n"

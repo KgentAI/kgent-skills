@@ -82,7 +82,7 @@ Important details to include:
   - **Lark wiki nodes**: `kgent://lark/<token>` → `https://<workspace_domain>/wiki/<token>` (when the page was created as a wiki node inside a knowledge space)
   - DingTalk: show the DingTalk console URL format
   - WeCom: show the WeCom console URL format
-- If `workspace_domain` isn't configured, tell the user to add `defaults.workspace_domain` to `~/.kgent/config.yaml` (S75).
+- If `workspace_domain` isn't configured, fix it: `kgent config set-workspace-domain` auto-discovers the tenant domain via a `lark-cli drive +search` probe and writes only that one config key; if the probe finds nothing, pass it explicitly with `--domain <host>` (S75).
 
 ### Lark Wiki (Knowledge Space) Integration
 
