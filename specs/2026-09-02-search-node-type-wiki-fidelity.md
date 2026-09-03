@@ -1,9 +1,44 @@
 # Handoff Spec: search/read 将 wiki 节点误标为 `doc`，导致原生引用链接为死链
 
 - **Date:** 2026-09-02
-- **Status:** open / not started
+- **Status:** implemented (2026-09-03) — adapter 层全量落地，真机验收通过
 - **Priority:** high — skills 的引用链接（N20/S74/S85）在 wiki 内容上全部打不开
 - **Discovered while:** 排查「新人入职」问题时用 `drive +search` 反查 kgent 结果的原生 URL（见“实证”）
+
+## 实施结果（2026-09-03）
+
+按“分层修复”落地，有一处基于实测证据的关键修正：
+
+- **实际执行路径是 CLI adapter，不是 skill 委托。** 代码里“尚无 skill 调用实现”
+  （`lark.py` docstring）：`kgent` CLI 经 registry 恒以 `LarkAdapter`
+  （`docs +search` / `docs +fetch`）执行 search/read，config 的
+  `type: skill` 只影响 resolve 的 `adapter_name` 命名。因此本 spec 的修复
+  全部落在 adapter 层；skill 委托契约写入 `lark.py` 模块 docstring 备将来。
+- **类型事实比预期更便宜：`docs +search` 本身就带。** 实测每条 hit 携带
+  `entity_type`（`WIKI`/`DOC`…）与 `result_meta.url`（路径段 `/wiki/` vs
+  `/docx/`，含 `#块锚点`/`?sheet=` 噪声）。零额外调用即可定 `node_type`，
+  无需按原方案改用 `drive +search`。
+
+### 改动
+
+| 位置 | 内容 |
+|---|---|
+| `src/kgent/adapters/lark.py` | `_node_type_from_hit`（url 路径段优先，`entity_type` 兜底，其余保持 `doc`，不从 token 推断）；read 用一次 `wiki +node-get` 探测（成功 → `wiki_node`+space 位置；`131005 not_found` → `doc`；其它失败 → 退化为 `doc`，绝不抛异常）；search 对 wiki hit 做有界探测补 `space_id`/`parent_node_token`（cap 8 次 + 4s 墙钟预算——`fanout` 超时整个后端作废 S33，探测绝不越过预算；探测失败只缺位置字段，**永不降级 node_type**） |
+| `src/kgent/adapters/cli_adapter.py` | 协议 v1 通用路径：可选解析 `node_type`/`space_id`/`parent_node_token`，词表外/缺失一律 `doc`（N12：CLI 输出是未校验输入） |
+| `tests/test_lark_node_type.py` | 16 个 fixture 驱动用例（真实 payload 形状，不起真 lark-cli）：两条路径的赋值/缺省、锚点与 query 噪声、非 doc 实体（BITABLE）保持 `doc`、探测失败/超时退化、cap 与预算 |
+
+### 真机验收（2026-09-03，租户 `hjpiui0m07o0.jp.larksuite.com`）
+
+- wiki token `Lsu5wOin…`：search 与 read 均输出 `node_type: "wiki_node"`，
+  read 的 `space_id` 与服务端 `wiki +node-get` 原始返回一致（`7534610915493150753`）。
+- 普通 docx `Xg8sdBt8…`：两条路径仍为 `node_type: "doc"`。
+- `native_url` 渲染结果与 Lark 服务端自己的 `result_meta.url` **逐字符一致**
+  （wiki → `/wiki/`，doc → `/docx/`）——即浏览器可打开的规范链接。
+- 全套 446 passed / 2 skipped（Windows 既有跳过），ruff/mypy 干净。
+- 已知留痕：search 中部分 wiki hit 的 `space_id` 为 `None` —— 探测身份对
+  该空间无读权限（如他部门“Kgent测试版”所建节点），按设计退化，类型不失真。
+- 未做（按原 spec 范围外）：metas 970005 权限模型；capabilities cache 的
+  `unverified: [node_type]` 标注（仓库尚无该机制，未为其新造）。
 
 ## 问题陈述
 
