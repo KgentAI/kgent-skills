@@ -20,16 +20,19 @@ input (N12).
 Authentication is never prompted during discovery; every detected backend
 reports ``auth: "deferred"`` (S53).
 
-``setup`` runs discovery against ``os.environ`` and writes the generated
-``config.yaml`` (all detected backends ``enabled: false``) plus the capability
-cache via :func:`kgent.capabilities.cache.write_cache`, without prompting.
+``setup`` runs discovery against ``os.environ`` and writes ``config.yaml``
+plus the capability cache via :func:`kgent.capabilities.cache.write_cache`,
+without prompting. Rerun semantics: an existing ``config.yaml`` is merged,
+never clobbered — user keys (``enabled``, ``defaults``, ...) survive, newly
+discovered backends are appended disabled, an unparseable config aborts the
+run untouched, and a timestamped ``config.yaml.bak-<ts>`` backup is written
+before any rewrite (see :mod:`kgent.capabilities.setup_config`).
 """
 
 from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 from collections.abc import Mapping
@@ -39,6 +42,7 @@ from pathlib import Path
 from typing import Any
 
 from kgent.capabilities.cache import write_cache
+from kgent.capabilities.setup_config import write_setup_config
 from kgent.config import _yaml
 from kgent.errors import ConfigError
 
@@ -60,9 +64,6 @@ _CLI_BACKENDS: tuple[tuple[str, str], ...] = (
     ("dingtalk-cli", "dingtalk"),
     ("wecom-cli", "wecom"),
 )
-
-_PLAIN_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
-_RESERVED_SCALARS = frozenset({"true", "false", "null", "~"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,14 +100,17 @@ def discover(home: Path, env: Mapping[str, str]) -> DiscoveryReport:
 
 
 def setup(home: Path) -> tuple[DiscoveryReport, int]:
-    """Run discovery, then generate ``config.yaml`` + capability cache (§2.2).
+    """Run discovery, then write merged ``config.yaml`` + cache (§2.2).
 
     Never prompts. Returns ``(report, 0)``; the report carries one entry per
-    detected backend with ``auth: "deferred"``.
+    detected backend with ``auth: "deferred"``. Reruns merge into any existing
+    ``config.yaml`` (see :mod:`kgent.capabilities.setup_config`); an
+    unparseable existing config raises :class:`~kgent.errors.ConfigError` and
+    writes nothing.
     """
     home_path = Path(home)
     report = discover(home_path, os.environ)
-    _write_config(home_path, report)
+    write_setup_config(home_path, report.backends)
     caps_by_backend: dict[str, dict[str, Any]] = {}
     for name, entry in report.backends.items():
         caps = entry.get("capabilities")
@@ -307,63 +311,6 @@ def _read_mcp_servers(path: Path) -> dict[str, str | None]:
             url = spec
         result[str(name)] = url
     return result
-
-
-# ---------------------------------------------------------------------------
-# config.yaml generation (§2.2 step 4)
-# ---------------------------------------------------------------------------
-
-
-def _write_config(home: Path, report: DiscoveryReport) -> None:
-    created = not home.exists()
-    home.mkdir(parents=True, exist_ok=True)
-    if created:
-        os.chmod(home, 0o700)
-    text = _emit_config(report)
-    path = home / "config.yaml"
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(text)
-    os.chmod(path, 0o600)
-
-
-def _emit_config(report: DiscoveryReport) -> str:
-    lines = ["version: 1"]
-    if not report.backends:
-        lines.append("backends: {}")
-        return "\n".join(lines) + "\n"
-    lines.append("backends:")
-    for name in sorted(report.backends):
-        entry = report.backends[name]
-        btype = _backend_type(entry)
-        lines.append(f"  {_scalar(name)}:")
-        lines.append("    enabled: false")
-        lines.append(f"    type: {btype}")
-        if btype == "skill" and entry.get("adapter_name"):
-            lines.append(f"    skill_name: {_scalar(entry['adapter_name'])}")
-        elif btype == "cli" and entry.get("adapter_name"):
-            lines.append(f"    cli_name: {_scalar(entry['adapter_name'])}")
-        elif btype == "mcp" and entry.get("mcp_url"):
-            lines.append(f"    mcp_url: {_scalar(entry['mcp_url'])}")
-        lines.append("    trust_zone: external")
-    return "\n".join(lines) + "\n"
-
-
-def _backend_type(entry: dict[str, Any]) -> str:
-    via = entry.get("found_via")
-    if via == "mcp":
-        return "mcp"
-    if via == "cli":
-        return "cli"
-    return "skill"
-
-
-def _scalar(value: str) -> str:
-    if _PLAIN_RE.match(value) and value.lower() not in _RESERVED_SCALARS:
-        return value
-    if "'" not in value:
-        return f"'{value}'"
-    return f'"{value}"'
 
 
 def _now_iso() -> str:

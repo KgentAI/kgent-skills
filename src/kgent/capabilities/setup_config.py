@@ -62,9 +62,7 @@ def write_setup_config(home: Path, backends: dict[str, dict[str, Any]]) -> None:
         doc = dict(existing)
         doc["version"] = existing.get("version", 1)
         section = existing.get("backends")
-        doc["backends"] = merge_backends(
-            section if isinstance(section, dict) else {}, backends
-        )
+        doc["backends"] = merge_backends(section if isinstance(section, dict) else {}, backends)
         text = _dump(doc)  # may raise — always before backup/rewrite
         _backup(path, existing_text)
 

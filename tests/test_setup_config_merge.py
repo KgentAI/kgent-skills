@@ -178,11 +178,7 @@ def test_write_roundtrips_lists_and_scalars(tmp_path):
     home = tmp_path / "h"
     home.mkdir()
     (home / "config.yaml").write_text(
-        "version: 1\n"
-        "defaults:\n"
-        "  default_backends: [lark, wecom]\n"
-        "  empty: {}\n"
-        "  note: '123'\n",
+        "version: 1\ndefaults:\n  default_backends: [lark, wecom]\n  empty: {}\n  note: '123'\n",
         encoding="utf-8",
     )
     write_setup_config(home, {})
@@ -190,3 +186,28 @@ def test_write_roundtrips_lists_and_scalars(tmp_path):
     assert raw["defaults"]["default_backends"] == ["lark", "wecom"]
     assert raw["defaults"]["empty"] == {}
     assert raw["defaults"]["note"] == "123"
+
+
+def test_setup_rerun_preserves_enabled_and_defaults(tmp_home, monkeypatch):
+    """Acceptance 2 end-to-end through the real discover() + write path."""
+    import json
+
+    from kgent.capabilities.detect import setup
+    from kgent.config import _yaml
+
+    (tmp_home / "config.yaml").write_text(EXISTING_USER_CONFIG, encoding="utf-8")
+    skill_dir = tmp_home / ".claude" / "skills" / "lark-doc"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "manifest.json").write_text(
+        json.dumps({"name": "lark-doc", "version": "1.0.0"}), encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(tmp_home))
+    monkeypatch.setenv("PATH", "/nonexistent")
+    monkeypatch.delenv("APPDATA", raising=False)
+
+    report, code = setup(tmp_home)
+    assert code == 0
+    assert "lark" in report.backends
+    raw = _yaml.parse((tmp_home / "config.yaml").read_text(encoding="utf-8"))
+    assert raw["backends"]["lark"]["enabled"] is True
+    assert raw["defaults"]["workspace_domain"] == "acme.example.com"
