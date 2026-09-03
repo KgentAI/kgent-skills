@@ -339,3 +339,11 @@ def test_cli_json_output_schema_versioned(e2e, capsys):
 def test_cli_unknown_command_exit_1(capsys):
     code = main(["nonexistent-command"])
     assert code == 1
+
+
+def test_cli_help_exit_0(capsys):
+    # tools/install-skills.sh's pipefail'd health check greps `kgent --help`;
+    # argparse raises SystemExit(0) for help, which main() must not turn into 1.
+    code = main(["--help"])
+    assert code == 0
+    assert "wiki" in capsys.readouterr().out

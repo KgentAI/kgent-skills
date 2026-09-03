@@ -1052,8 +1052,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     try:
         args = parser.parse_args(argv)
-    except SystemExit:
-        return 1
+    except SystemExit as exc:
+        # argparse exits 0 for --help/-h and 2 for usage errors; help must
+        # stay 0 (tools/install-skills.sh's pipefail'd health check greps
+        # `kgent --help`), everything else maps to the CLI's failure code 1.
+        return 0 if exc.code in (None, 0) else 1
     command = args.command
 
     if command is None:
