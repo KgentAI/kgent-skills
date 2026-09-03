@@ -89,6 +89,28 @@ def _parse_timestamp(value: Any) -> datetime | None:
         return None
 
 
+def _optional_node_fields(payload: dict[str, Any]) -> tuple[str, str | None, str | None]:
+    """Read the optional §7.2 node fields from a wire-v1 payload.
+
+    Backends whose CLI contract carries ``node_type``/``space_id``/
+    ``parent_node_token`` get wiki fidelity for free; payloads without them
+    keep the historical defaults (``"doc"``, unset position). Values outside
+    the §7.2 vocabulary are ignored rather than trusted — CLI output is
+    unvalidated input (N12), and an unknown type must never leak into
+    ``native_url``'s two-path rendering.
+    """
+    node_type = payload.get("node_type")
+    if node_type not in ("doc", "wiki_node"):
+        node_type = "doc"
+    space_id = payload.get("space_id")
+    parent = payload.get("parent_node_token")
+    return (
+        str(node_type),
+        str(space_id) if space_id else None,
+        str(parent) if parent else None,
+    )
+
+
 class CliCapabilityAdapter(Adapter):
     """§3.1 capability implementation delegating to an external CLI via :func:`run_cli`.
 
@@ -221,12 +243,16 @@ class CliCapabilityAdapter(Adapter):
         title = str(payload["title"])
         content = str(payload["content"])
         version = str(payload["version"]) if payload.get("version") is not None else None
+        node_type, space_id, parent_node_token = _optional_node_fields(payload)
         meta = DocumentMetadata(
             doc_uri=doc_uri,
             title=title,
             backend=self.name,
             updated_at=_parse_timestamp(payload.get("updated_at")),
             version=version,
+            node_type=node_type,
+            space_id=space_id,
+            parent_node_token=parent_node_token,
         )
         return Document(doc_uri=doc_uri, title=title, content=content, metadata=meta)
 
@@ -307,13 +333,25 @@ class CliCapabilityAdapter(Adapter):
             title = str(item.get("title", ""))
             rank = int(item.get("rank", 0))
             snippet_value = item.get("snippet")
+            node_type, space_id, parent_node_token = _optional_node_fields(item)
+            meta = DocumentMetadata(
+                doc_uri=uri,
+                title=title,
+                backend=self.name,
+                node_type=node_type,
+                space_id=space_id,
+                parent_node_token=parent_node_token,
+            )
             results.append(
                 SearchResult(
                     doc_uri=uri,
-                    metadata=DocumentMetadata(doc_uri=uri, title=title, backend=self.name),
+                    metadata=meta,
                     rank=rank,
                     snippet=str(snippet_value) if snippet_value is not None else None,
                     mode_used="keyword",
+                    node_type=node_type,
+                    space_id=space_id,
+                    parent_node_token=parent_node_token,
                 )
             )
         return results
