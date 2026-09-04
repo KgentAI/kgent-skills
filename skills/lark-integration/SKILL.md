@@ -18,8 +18,8 @@ Gate open but the Lark side unavailable — lark-cli missing, lark skills not in
 Detect non-docx content **before** calling `kgent read` / `kgent update`, so the delegation matrix fires without a failed call first. Signals, strongest first:
 
 1. **User-supplied URL path** — `/base/`, `/sheets/`, `/slides/` name the type directly
-2. **Title or snippet shape** — 看板 / 名单 / 登记表 / 多维表格 in a title, or a snippet that reads like column headers and field names rather than prose
-3. **Search `node_type`** — `doc` vs `wiki_node`. Note: index metadata can lie; a bitable was observed indexed as `node_type: doc`. Treat signals 1-2 as overrides.
+2. **Title or snippet shape** — table-family titles (看板 / 名单 / 登记表 / 评审表 / 多维表格, … — illustrative, not exhaustive), or a snippet that reads like column headers and field names rather than prose
+3. **Search `node_type`** — `doc` vs `wiki_node`. Note: index metadata under-reports — a bitable was observed indexed as `node_type: doc`, and search gives no non-docx type hint at all (a sheet surfaced only when its read failed). Treat signals 1-2 as overrides.
 
 Then run the operation. If `kgent read` still fails with `Unsupported document type '<type>'. Only docx is supported.` — the fallback — delegate per the read matrix below.
 
