@@ -49,6 +49,8 @@ kgent search --query "<page title>" --backends <backend> --json
 
 `kgent search` searches both flat docs and wiki nodes by default. Results include a `node_type` field (`doc` vs `wiki_node`) so you can distinguish them. For Lark wiki targets, also note the `space_id` of matches so you can propose updating within the same space.
 
+A match whose content is a bitable 多维表格, sheet, or other non-docx Lark type is a **record-write target** — `kgent update` on it fails. With the Lark backend enabled, follow the write delegation matrix in [`../question-answering/references/lark-integration.md`](../question-answering/references/lark-integration.md) for that leg.
+
 If a matching document exists:
 
 - Record its URI and propose an **update** instead of a create
@@ -77,12 +79,7 @@ Important details to include:
 
 - Operation type per leg (CREATE or UPDATE)
 - Target backend per leg
-- Native platform URL (not the `kgent://` URI) — read `defaults.workspace_domain` from config and convert:
-  - **Lark docs**: `kgent://lark/<token>` → `https://<workspace_domain>/docx/<token>`
-  - **Lark wiki nodes**: `kgent://lark/<token>` → `https://<workspace_domain>/wiki/<token>` (when the page was created as a wiki node inside a knowledge space)
-  - DingTalk: show the DingTalk console URL format
-  - WeCom: show the WeCom console URL format
-- If `workspace_domain` isn't configured, fix it: `kgent config set-workspace-domain` auto-discovers the tenant domain via a `lark-cli drive +search` probe and writes only that one config key; if the probe finds nothing, pass it explicitly with `--domain <host>` (S75).
+- Native platform URL (not the `kgent://` URI) — for Lark legs, with the Lark backend enabled, convert per [`../question-answering/references/lark-integration.md`](../question-answering/references/lark-integration.md); for DingTalk/WeCom legs, show the platform console URL format
 
 ### Lark Wiki (Knowledge Space) Integration
 
@@ -126,13 +123,7 @@ When the user wants to set up a **wiki** or **knowledge base** on Lark (not just
 
    Results include both flat docs and wiki nodes, with the `node_type` field indicating which.
 
-5. **URL conversion for wiki nodes**: Wiki nodes use `/wiki/<node_token>` not `/docx/<obj_token>`:
-
-   ```
-   https://<workspace_domain>/wiki/<node_token>
-   ```
-
-   The `node_token` is returned by `kgent create --wiki-space` in the JSON output.
+5. **URL conversion for wiki nodes**: convert per [`../question-answering/references/lark-integration.md`](../question-answering/references/lark-integration.md) — wiki nodes cite the `node_token` returned by `kgent create --wiki-space`.
 
 6. **When the user just says "create a doc on Lark"** without wiki knowledge-base intent, use `kgent create` without `--wiki-space` (creates a flat doc in Drive). Only add `--wiki-space` when the intent is clearly wiki/knowledge-base shaped.
 
@@ -183,7 +174,8 @@ If all legs succeeded:
 ## Important
 
 - **Never execute writes without explicit user approval.** Always present the full multi-leg proposal first.
-- **Native URLs only:** Never show `kgent://...` URIs to the user. Convert to native platform URLs using `workspace_domain` from config (N20, S73-S75). Lark wiki nodes use `/wiki/<token>`, Lark docs use `/docx/<token>`.
+- **Native URLs only:** Never show `kgent://...` URIs to the user. Lark conversion rules live in [`../question-answering/references/lark-integration.md`](../question-answering/references/lark-integration.md), gated on the Lark backend being enabled (N20, S73-S75).
+- **Non-docx Lark legs delegate:** A collision match or target that is a bitable/sheet is a record write — follow the write delegation matrix in that same reference for the leg instead of `kgent update`.
 - **Lark wiki vs Lark doc:** When the user says "wiki" or "knowledge base" for Lark, use `kgent create --wiki-space <space_id>` to create wiki nodes. Without `--wiki-space`, `kgent create` makes a flat doc in Drive. `kgent search` covers both wiki nodes and flat docs by default.
 - **Update-first bias:** Search for existing docs before creating. If a match exists, propose update (N18, S61). `kgent search` covers wiki nodes and flat docs by default — no separate wiki search needed.
 - **One op_id per wiki setup:** Group all legs under one journal entry when possible so the user can undo the whole setup at once.

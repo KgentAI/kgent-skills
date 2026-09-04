@@ -47,6 +47,8 @@ kgent search --query "<title keywords>" --backends <backend> --top-k 5 --json
 
 Search covers **both flat docs and wiki nodes** by default. Results include a `node_type` field (`doc` vs `wiki_node`) — a wiki match is just as valid an update target as a doc match.
 
+A match whose content is a bitable 多维表格, sheet, or other non-docx Lark type is a **record-write target**, not a docx update — `kgent update` on it fails. With the Lark backend enabled, follow the write delegation matrix in [`../question-answering/references/lark-integration.md`](../question-answering/references/lark-integration.md) for that target.
+
 Analyze results:
 
 **Single strong match** — a document or wiki node with the same or very similar title exists:
@@ -220,17 +222,10 @@ Parse the JSON output to extract the op_id and target URIs.
 
 After execution, **never show `kgent://...` URIs to the user** (N20, S73). Convert them to native platform URLs.
 
-**How to convert:**
+**Lark results:** with the Lark backend enabled — `backends.lark.enabled: true` in `~/.kgent/config.yaml` — read [`../question-answering/references/lark-integration.md`](../question-answering/references/lark-integration.md) and convert each `kgent://lark/<token>` per its URL construction table. That file owns the Lark path mapping and the `workspace_domain` fix (`kgent config set-workspace-domain`).
 
-1. Read `~/.kgent/config.yaml` and look for `defaults.workspace_domain`
-2. Apply the mapping — match the path to the node type:
-   - **Lark docs**: `kgent://lark/<token>` → `https://<workspace_domain>/docx/<token>`
-   - **Lark wiki nodes**: `kgent://lark/<node_token>` → `https://<workspace_domain>/wiki/<node_token>`
-   - **DingTalk**: `kgent://dingtalk/<id>` → `https://open.dingtalk.com/document/<id>` (or your org's DingTalk console URL)
-   - **WeCom**: `kgent://wecom/<id>` → `https://open.work.weixin.qq.com/...` (WeCom admin console URL)
-
-**If `workspace_domain` is not configured** (S75):
-Fix it before reporting results: run `kgent config set-workspace-domain` — it auto-discovers the tenant domain via a `lark-cli drive +search` probe and surgically writes only that one config key (your other config edits are preserved). If the probe finds nothing (no auth, rate limited, empty tenant), set it explicitly: `kgent config set-workspace-domain --domain mycompany.larksuite.com`. Until it's configured, you may show the `kgent://` URI as a fallback, but mention the config gap.
+**DingTalk**: `kgent://dingtalk/<id>` → `https://open.dingtalk.com/document/<id>` (or your org's DingTalk console URL)
+**WeCom**: `kgent://wecom/<id>` → WeCom admin console URL
 
 **Confirmation format:**
 
@@ -286,7 +281,8 @@ If the user says "edit" or wants to change the title/content at the proposal sta
 - **Update-first bias:** Always search before creating. Propose UPDATE when a match exists, never CREATE (N18, S61). Search covers wiki nodes and flat docs — a wiki match is updated as a wiki node, in place.
 - **Wiki placement matters:** When creating wiki nodes, find the right parent in the wiki structure rather than dumping at the space root. Show the chosen parent in the proposal.
 - **Ask wiki vs doc when ambiguous:** If no factor determines the target type on Lark, ask the user — don't silently pick (see "Wiki vs Doc Preference").
-- **Native URLs only:** Convert `kgent://` URIs to native platform URLs using `workspace_domain` from config. Don't show canonical URIs to the user (N20). Wiki nodes use `/wiki/<token>`, docs use `/docx/<token>`.
+- **Native URLs only:** Convert `kgent://` URIs to native platform URLs (N20). Lark conversion rules live in [`../question-answering/references/lark-integration.md`](../question-answering/references/lark-integration.md), gated on the Lark backend being enabled.
+- **Non-docx Lark targets delegate:** A bitable/sheet match or target is a record write — follow the write delegation matrix in [`../question-answering/references/lark-integration.md`](../question-answering/references/lark-integration.md) rather than `kgent update`.
 - **Well-structured content:** Format the content as clean markdown, not raw conversation text. Add headings, lists, code blocks as appropriate.
 - **Support iterative refinement:** If the user wants to change the title or content at the proposal stage, revise and re-present.
 - **Show op_id:** Always tell the user the op_id so they can undo if needed.
