@@ -107,3 +107,82 @@ journal begin 在用户批准之后、执行之前调用；审批交互仍由各
   audit 出现空洞，可由 evals 的写后读回校验间接暴露。
 - **lark-doc 侧审批与 kgent journal 的时序**：begin 在批准后调用（见写入流），
   若 lark-doc 侧二次确认被拒，journal end 记 failed，不产生脏账。
+- **开放问题（维护者裁决）**：`LarkAdapter` 的写路径（`update_document`/
+  `create_document`）是保留 + 标注 deprecated，还是对 `--backends lark` 硬禁
+  （返回"改走 lark-doc 委托"错误）？硬禁更符合单一漏斗，但破坏向后兼容，
+  需盘点 `test_archive_delete_undo.py` 等既有测试的语义。
+
+---
+
+## old-coder 充实（Tier 3：数据丢失域）
+
+**Tier 声明：Tier 3。** 本变更的域就是本次事故的域——整篇文档数据丢失。
+通用 gauntlet 之上叠加失败模型；每条失败模式绑定一个能真正抓住它的层。
+
+### 失败模型
+
+| # | 失败模式 | 抓住它的层 |
+|---|---|---|
+| FM1 | 部分写：journal begin 后执行崩溃，台账留 open 脏账 | journal end 走 finally 语义（异常也落账 failed）；单测注入执行异常 |
+| FM2 | undo 打错版本：写入后他人又改，`history-revert` 到写前 revision 会埋掉他人编辑 | undo 前新鲜度检查：当前 revision ≠ 台账"写后 revision" → 拒绝（fail closed）；真机集成测试模拟写后第三方编辑 |
+| FM3 | 快照陈旧：非 Lark 后端快照写回覆盖他人并发编辑 | 同 FM2：写回前比对当前版本 vs 台账版本，不匹配即拒 |
+| FM4 | 路由绕过：confidential 内容进 external zone | `route --dry-run` 单测（拒绝语义沿用现有 router exit 3）+ eval 强制 route-before-execute |
+| FM5 | 快照泄漏：`~/.kgent/journal/` 明文快照含敏感内容 | 快照文件权限收紧（POSIX 0600；Windows 记录 ACL 现状）；目录加入 .gitignore；**已知限制：本地明文快照写入 EVIDENCE** |
+| FM6 | history 不可用：Lark 侧写前 revision 被清理/越界 | undo fail closed：`history-revert` 失败必须非零退出 + 明确错误，绝不静默成功 |
+| FM7 | `.cmd` 通道再吃内容（非 Lark @file 修复回归） | hypothesis 属性测试（多行/CJK/emoji 往返）+ fake CLI 断言 argv 完整 + 手工 mutant |
+| FM8 | 台账文件损坏/被篡改 | 读台账 fail closed：损坏 entry 硬失败，绝不跳过（checker 负控：喂损坏 JSON 看它失败） |
+| FM9 | 并发 begin 同一 target | op_id 含 uuid 后缀（回归 B1）；台账 append-only |
+| FM10 | lark-doc 写入半途失败但 skill 当成功 | 写后读回校验为流程硬步骤 + eval；journal end 前 fetch 比对 |
+
+### 可执行验收标准
+
+每条 = 一个具名行为；RED 阶段逐条见到失败（新测试先败，实现后绿）。
+
+- **B1 op_id 唯一性**：同一秒内 `journal begin` 两次（同 target）→ 两个不同
+  op_id，形如 `op-20260905-<8hex>`；回归本事故的 `op-20260905-01` 撞号。
+- **B2 台账生命周期**：begin → entry 可被 `audit` 读到且标记 open；
+  `journal end --op-id X --status ok` → 标记 finalized；`--status failed` →
+  标记 failed；注入执行异常（FM1）→ entry 仍以 failed 落账。
+- **B3 undo·Lark·update（真机）**：探针文档内容 A → begin → 写入内容 B →
+  undo → 读回 == A 且 revision 递增。**变体（FM2）**：undo 前再写入 C →
+  undo 拒绝，非零退出，错误含当前 revision 与台账期望。
+- **B4 undo·Lark·create（真机）**：begin(create) → 建文档 → undo → 文档删除
+  （`drive +delete` 已删/不存在 → 幂等成功）。
+- **B5 undo·非 Lark（fake 后端）**：快照写回路径；当前版本 ≠ 台账版本 →
+  拒绝（FM3）。
+- **B6 route --dry-run**：confidential 内容 + external 后端 → 拒绝（沿用
+  router exit 3 语义）；public 内容 → 放行；`--json` 输出结构化裁决
+  （sensitivity、allowed_backends、reasons）。
+- **B7 内容通道完整性**：fake CLI（回显收到的 argv）断言 content 含
+  `"第一段\n\n第二段\n\n第三段"` 与 `❤️` 逐字节到达；hypothesis 属性
+  （FM7）：任意 unicode 文本经通道往返无损；真机：三段中文 + emoji 经
+  非 Lark adapter 写入 → 读回全量。
+- **B8 skill 流程纪律（eval）**：knowledge-storage 写流程必须先 `route
+  --dry-run` 后执行、journal begin/end 成对、写后读回一致；三缺一即 eval 失败。
+- **B9 基线不变量**：现有测试套件零**新增**失败（先录 baseline，含
+  `test_archive_delete_undo.py` 的 undo 语义现状）；search/read/node_type
+  行为（2026-09-02 spec）不回归。
+- **B10 checker 负控**：台账读虫（FM8）与 @file 门（FM7）各喂一次已知坏
+  输入，目睹其失败后才信任其 pass。
+
+### Setup 计划（批准即授权）
+
+- **依赖：零新增。** pytest≥8 / pytest-randomly / mypy≥1.8 / ruff≥0.4 /
+  coverage+diff-cover≥9 / mutmut≥3 / hypothesis≥6 均已在 `[dev]` extra。
+- **git**：本 spec 已提交（094c0e6，分支 `feat/lark-integration-shared-doc`）；
+  每个 GREEN/REFACTOR 检查点提交一次，mutant 恢复以 `git diff` 验证。
+- **真机授权**：集成测试在租户 `hjpiui0m07o0.jp.larksuite.com` 创建/写入/
+  撤销/删除探针文档（命名带 `-probe-`，teardown 必删）——批准本 spec 即授权。
+- **gauntlet 新增文件**：`tests/test_journal.py`、`tests/test_undo_ledger.py`、
+  `tests/test_route_command.py`、`tests/test_cli_adapter_content_channel.py`、
+  `tests/properties/test_content_channel.py`、
+  `evals/skills/knowledge-storage-write-flow/`。
+- **环境改动登记**：除上述文件与检查点提交外无环境变更；安装类命令为零。
+
+### EVIDENCE 要求
+
+最终一次性 fresh run（最后一次代码编辑之后）：全套测试数（含随机序），
+`diff-cover` changed-line %（目标：变更行 100%，分支覆盖处注明），mutmut
+kill 数/等价存活分类，mypy/ruff 零新增，真机集成结果（含 B3/B4 撤销前后的
+revision 读数），负控记录（B10），skip 层带理由。入口命令：一条脚本重跑全部层，
+随仓库提交（`tools/gauntlet.sh` 若无现成等价物）。
