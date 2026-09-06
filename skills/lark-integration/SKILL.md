@@ -96,6 +96,10 @@ Lark 的 undo 补偿机制是 `docs +history-revert`。流程：
    `status == "rejected"` 时停止——文档在写后有并发编辑，禁止回滚）。
 2. `lark-cli docs +history-list --doc <token> --json` 定位
    `plan.plan.revision_before` 对应的 `history_version_id`。
-3. `lark-cli docs +history-revert --doc <token> --history-version-id <id> --json`，
+3. **执行前复核（TOCTOU，ADR 0005）**：`lark-cli docs +fetch --doc <token> --json`
+   （或 `+info`）核对当前 revision == `plan.plan.revision_current`。不符 →
+   停止并报告（取计划之后文档又被并发编辑——新鲜度检查的执行前半边，
+   绝不带着过期计划落 revert）。
+4. `lark-cli docs +history-revert --doc <token> --history-version-id <id> --json`，
    轮询 `status: done`。
-4. 读回校验：`lark-cli docs +fetch` 内容与 `plan.plan.snapshot`（存在时）一致。
+5. 读回校验：`lark-cli docs +fetch` 内容与 `plan.plan.snapshot`（存在时）一致。

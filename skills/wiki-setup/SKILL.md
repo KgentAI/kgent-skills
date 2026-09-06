@@ -115,11 +115,11 @@ kgent route --dry-run --content "<content>" --backends lark,dingtalk --json
 kgent journal begin --operation create --backend lark --doc-uri "kgent://lark/new" --json
 #   → lark-integration delegates the write: wiki node → lark-wiki, docx → lark-doc
 #     (`docs +create` / `docs +update`; prefer --content @file for multi-line/CJK content)
-kgent journal end --op-id <op_id> --status ok --json
+kgent journal end --op-id <op_id> --status ok --doc-uri <real URI of what was created> --json
 
 kgent journal begin --operation create --backend dingtalk --doc-uri "kgent://dingtalk/new" --json
 #   → dingtalk-integration performs the write
-kgent journal end --op-id <op_id> --status ok --json
+kgent journal end --op-id <op_id> --status ok --doc-uri <real URI of what was created> --json
 
 kgent journal begin --operation update --backend lark --doc-uri "kgent://lark/existing" --json
 #   → lark-integration delegates the docx update to lark-doc `docs +update`
@@ -127,6 +127,8 @@ kgent journal end --op-id <op_id> --status ok --json
 
 # 5. Read back through the same integration skill and verify each leg landed
 ```
+
+On create legs the begin `--doc-uri` is the planned placeholder — the real token/URI only exists after the platform write returns it. Close those legs with `journal end --doc-uri <real URI>`: `kgent undo` targets the end entry's URI, so a create left pointing at the placeholder can never be compensated. Update legs close without `--doc-uri` (their target was concrete from the start).
 
 Never write a platform leg with `kgent create` / `kgent update` — those stay reserved for the kgent hosted backend (not yet implemented, ADR 0004). If a leg fails, close its ledger window with `--status failed` and leave the other legs running.
 

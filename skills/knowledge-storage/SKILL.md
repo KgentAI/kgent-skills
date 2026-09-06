@@ -170,7 +170,9 @@ Execution follows one fixed sequence — routing decision, ledger, platform writ
 # 1. Routing decision (路由裁决) — read-only; the ruling must come back clean first
 kgent route --dry-run --content "<content>" --backends <backend> --json
 
-# 2. Open the ledger (台账) — one entry per leg; the output carries the op_id
+# 2. Open the ledger (台账) — one entry per leg; the output carries the op_id.
+#    On create legs the --doc-uri is the planned placeholder URI — the real
+#    token only exists after the write.
 kgent journal begin --operation <create|update> --backend <backend> \
   --doc-uri <planned kgent:// URI> --json
 
@@ -179,8 +181,11 @@ kgent journal begin --operation <create|update> --backend <backend> \
 #    lark-doc (`docs +create` / `docs +update`, prefer --content @file for
 #    multi-line/CJK content), wiki nodes to lark-wiki / lark-doc.
 
-# 4. Close the ledger
-kgent journal end --op-id <op_id> --status ok --json
+# 4. Close the ledger. On create legs the write has now produced the real
+#    document — pass it as --doc-uri so the ledger's undo target is the
+#    document that actually exists, not the begin placeholder.
+kgent journal end --op-id <op_id> --status ok \
+  [--doc-uri <real kgent:// URI of what was created>] --json
 
 # 5. Read back through the same integration skill and verify the content landed
 ```
@@ -217,7 +222,7 @@ I'll create this as a wiki node:
 Proceed? (yes/no/edit)
 ```
 
-Parse the JSON outputs: the op_id comes from `kgent journal begin` (step 2), the target token / native URL from the integration skill's write result (step 3).
+Parse the JSON outputs: the op_id comes from `kgent journal begin` (step 2), the target token / native URL from the integration skill's write result (step 3). On create legs, convert that write result into the real `kgent://` URI and pass it to `journal end --doc-uri` (step 4) — `kgent undo` targets the end entry's URI, so a create left pointing at the planned placeholder can never be compensated.
 
 ### 5. Convert to Native URLs and Confirm
 
@@ -328,7 +333,7 @@ Skill:
     Provenance: target=dingtalk ← explicit user input
     Proceed? (yes/no/edit)"
 5. User: "yes"
-6. Execute: route (dry-run) → journal begin (create, dingtalk) → dingtalk-integration performs the write → journal end → read back
+6. Execute: route (dry-run) → journal begin (create, dingtalk, planned placeholder URI) → dingtalk-integration performs the write → journal end --doc-uri <real URI> → read back
 7. Confirm with native DingTalk URL
 ```
 
@@ -376,8 +381,8 @@ Skill:
 7. User: "yes"
 8. Execute: route (dry-run) → journal begin (create, lark, kgent://lark/new)
    → lark-integration delegates the wiki-node create to lark-wiki
-     (space 7123456, parent node wiki_AAA)
-   → journal end → read back via lark-integration
+     (space 7123456, parent node wiki_AAA) → node_token wiki_BBB
+   → journal end --doc-uri kgent://lark/wiki_BBB → read back via lark-integration
 9. Confirm with wiki URL:
    "✅ Created: 'Deploy Runbook' → https://mycompany.larksuite.com/wiki/wiki_BBB
     Op ID: op-xxx (undo: kgent undo op-xxx)"
