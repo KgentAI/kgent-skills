@@ -47,7 +47,7 @@ skill 或平台 CLI；kgent CLI 的平台操作仅保留给 kgent hosted backend
 |---|---|
 | B+ vs C | 执行走平台 skill；MCP 直连平台 API；fan-out 由 skill 并行 subagent 承担；契约分叉税接受 |
 | v2 | search/read/write 全下沉（不只写入）；kgent skills 纯编排化；本 spec 落 lark-integration |
-| v3 | **dingtalk-integration / wecom-integration 一并进入本 spec**（CLI 来源：`WecomTeam/wecom-cli`、`DingTalk-Real-AI/dingtalk-workspace-cli`）；kgent hosted backend 为 CLI 平台操作的保留车道；分阶段落地 |
+| v3 | **dingtalk-integration / wecom-integration 一并进入本 spec**（CLI 来源：`WecomTeam/wecom-cli`、`DingTalk-Real-AI/dingtalk-workspace-cli`）；kgent hosted backend 是与三平台**并列的另一种后端**（尚未实现、本 PR 不实现），为其保留 CLI 平台操作；分阶段落地 |
 
 被否方案与理由沉淀于 `docs/adr/0004`；undo 设计沉淀于 `docs/adr/0005`；
 统一语言见根目录 `CONTEXT.md`。
@@ -127,7 +127,9 @@ journal begin 在用户批准之后、执行之前调用；审批交互仍由各
   kgent Python 子进程通道（skills 从 bash 调 CLI 经 node 垫片，无 `.cmd` 问题），
   adapter 进入 dormant；kgent hosted backend 车道启用时再议
 - MCP 侧平台能力 —— 由 MCP 直连平台 API
-- kgent hosted backend 本身的功能变更 —— 本 PR 仅确认其为 CLI 平台操作保留车道
+- kgent hosted backend 的实现 —— 它是与三平台并列的另一种后端，**尚未实现、
+  本 PR 不实现**；本 PR 仅确认 CLI 平台操作（store/wiki/update/create/read/
+  search）为它保留，三平台操作不经这些命令
 
 ## old-coder 充实（Tier 3：数据丢失域）
 

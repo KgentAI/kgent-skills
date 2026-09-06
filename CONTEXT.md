@@ -29,8 +29,8 @@ _Avoid_: 文档库
 _Avoid_: 空间
 
 **kgent hosted backend**:
-kgent 自有的云端托管知识库服务；kgent CLI 平台操作（store / wiki / update / create / read / search）的唯一保留对象。三大平台的操作不经它。
-_Avoid_: 本地后端、内置后端
+kgent 自有的云端托管知识库后端，与 lark / dingtalk / wecom 并列的另一种后端选择（尚未实现）；kgent CLI 平台操作（store / wiki / update / create / read / search）的唯一保留对象。三大平台的操作不经它。
+_Avoid_: 本地后端、内置后端、主后端
 
 **台账 (ledger)**:
 op 级写操作账本；一个逻辑操作一条 entry，只记变更不记读。对应 CLI 命令 `journal`。
