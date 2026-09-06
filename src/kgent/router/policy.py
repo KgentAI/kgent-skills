@@ -30,9 +30,9 @@ Only ``create`` and ``update`` are wired for now; ``delete``/``archive``/
 from __future__ import annotations
 
 import hashlib
+import uuid
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from itertools import count as _count
 from typing import Any, Protocol, cast
 
 from kgent.errors import ApprovalBindingMismatch, ApprovalRequired, PolicyError, VersionConflict
@@ -45,14 +45,13 @@ from kgent.types import Document, DocumentMetadata, WriteProposal
 
 __all__ = ["OpResult", "confirm", "execute_confirmed"]
 
-#: Monotonic per-process op counter: op ids double as idempotency keys, so
-#: they must never be reused within a process (F1 review finding).
-_OP_SEQ = _count(1)
-
-
 def _next_op_id() -> str:
-    """Unique ``op-<yyyymmdd>-<seq>`` id (plan format "op-20260826-01")."""
-    return f"op-{datetime.now(UTC).strftime('%Y%m%d')}-{next(_OP_SEQ):02d}"
+    """Unique ``op-<yyyymmdd>-<8hex>`` id (B1: uuid suffix — 同秒/跨进程均唯一).
+
+    历史格式 ``op-<yyyymmdd>-<seq>`` 按进程计数，跨进程同日必撞号
+    （2026-09-05 事故：全天操作共用 ``op-20260905-01``，undo 必然错乱）。
+    """
+    return f"op-{datetime.now(UTC).strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
 
 
 class WriteTarget(Protocol):
