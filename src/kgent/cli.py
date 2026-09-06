@@ -621,8 +621,10 @@ def _cmd_route(args: argparse.Namespace) -> int:
     real LLM classifier) and re-runs the router's zone gate per candidate
     backend — the same :func:`~kgent.router.sensitivity.enforce_zone` check a
     real write goes through, so the ruling a caller sees is the ruling a write
-    would get. Nothing is written, journaled, or audited. Every backend
-    rejected → exit 3 (the router's policy-rejected code).
+    would get. The zone comes from config (see
+    :func:`_backend_trust_zone`), never from the adapter object. Nothing is
+    written, journaled, or audited. Every backend rejected → exit 3 (the
+    router's policy-rejected code).
     """
     from kgent.router.sensitivity import analyze_sensitivity, enforce_zone
 
@@ -638,13 +640,12 @@ def _cmd_route(args: argparse.Namespace) -> int:
     allowed: list[str] = []
     rejected: list[dict[str, str]] = []
     for name in names:
-        backend = router.backends.get(name)
-        if backend is None:
+        if router.backends.get(name) is None:
             # Same contract as read/delete: a named-but-unavailable backend is
             # a failure (exit 1) — never a silent skip, never a policy 3.
             raise ConfigError(f"backend {name!r} is not available")
         try:
-            enforce_zone(tier, backend.trust_zone, name)
+            enforce_zone(tier, _backend_trust_zone(router.config, name), name)
             allowed.append(name)
         except PolicyError as exc:
             rejected.append({"backend": name, "reason": str(exc)})
@@ -661,6 +662,25 @@ def _cmd_route(args: argparse.Namespace) -> int:
     else:
         _text_out(f"{tier}: allowed={allowed} rejected={rejected}")
     return 0 if allowed else 3
+
+
+def _backend_trust_zone(config: Config, backend_name: str) -> str:
+    """Trust zone for ``backend_name``, read from config — the zone's source.
+
+    Adapters do not carry the label: the real CLI-backed adapters
+    (:class:`~kgent.adapters.lark.LarkAdapter` and siblings) expose no
+    ``trust_zone``, so reading it off the adapter object crashes on a real
+    config (only test fakes have the field). ``config/schema.py`` defaults +
+    validates ``backends.<name>.trust_zone`` (``external`` unless stated) and
+    ``kgent setup`` writes it, so config is where route and every other
+    consumer must read the zone from. Anything unexpected falls closed to the
+    schema default ``external``.
+    """
+    spec = config.backends.get(backend_name)
+    if not isinstance(spec, dict):
+        return "external"
+    zone = spec.get("trust_zone")
+    return zone if isinstance(zone, str) else "external"
 
 
 def _cmd_sync(args: argparse.Namespace) -> int:

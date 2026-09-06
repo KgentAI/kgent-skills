@@ -39,17 +39,19 @@ def route_world(tmp_home, monkeypatch, capsys):
         tier=None,
         select=None,
         as_json=True,
+        register_fakes=True,
     ):
         zones = zones or {}
-        for name in backends:
-            registry.register(
-                name,
-                FakeBackend(
-                    name=name,
-                    trust_zone=zones.get(name, "internal"),
-                    capabilities=_full_caps(),
-                ),
-            )
+        if register_fakes:
+            for name in backends:
+                registry.register(
+                    name,
+                    FakeBackend(
+                        name=name,
+                        trust_zone=zones.get(name, "internal"),
+                        capabilities=_full_caps(),
+                    ),
+                )
         backend_lines = []
         for name in backends:
             backend_lines += [
@@ -168,6 +170,44 @@ def test_route_real_stub_provenance_surfaces(route_world):
     rc, out = route_world(["lark"], content="team standup notes")
     assert out["sensitivity"] == "internal"
     assert "deterministic stub" in out["provenance"]
+    assert rc == 0
+
+
+def test_route_real_adapter_zone_comes_from_config(route_world):
+    """真实 LarkAdapter（无 trust_zone 属性）也必须可路由；zone 取自 config。
+
+    回归（fix round 1）：``_cmd_route`` 曾直接读 ``backend.trust_zone`` →
+    对本机真实 config 首跑即 ``AttributeError: 'LarkAdapter' object has no
+    attribute 'trust_zone'``。FakeBackend 有该字段，把缺陷整个掩蔽了。这里
+    注册 registry 里的真实类（仅构造，零网络——``CliCapabilityAdapter.__init__``
+    只存 cmd/name/timeout），并让 config 把 lark 标成 external（本机真实
+    config 正是 ``lark: trust_zone: external``）：confidential 被拒证明 zone
+    真的来自 config，而不是任何 adapter 属性；config 改回 internal 则同一
+    tier 放行——source of truth 可随配置翻转。
+    """
+    from kgent.adapters.lark import LarkAdapter
+
+    registry.register("lark", LarkAdapter())
+    rc, out = route_world(
+        ["lark"],
+        zones={"lark": "external"},
+        content="密: token-rotate-30d",
+        tier="confidential",
+        register_fakes=False,
+    )
+    assert out["sensitivity"] == "confidential"
+    assert out["allowed_backends"] == []
+    assert "lark" in out["rejected"][0]["reason"]
+    assert rc == 3
+
+    rc, out = route_world(
+        ["lark"],
+        content="密: token-rotate-30d",
+        tier="confidential",
+        register_fakes=False,
+    )
+    assert out["allowed_backends"] == ["lark"]
+    assert out["rejected"] == []
     assert rc == 0
 
 
