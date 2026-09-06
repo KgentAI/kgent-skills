@@ -13,7 +13,10 @@
         "The content is formatted as clean markdown with structured headings/lists",
         "The final confirmation message includes a native platform URL (https://...), not a kgent:// URI",
         "The skill shows the op_id so the user can undo if needed",
-        "The proposal shows provenance: where the target backend came from (explicit/preferences/config default)"
+        "The proposal shows provenance: where the target backend came from (explicit/preferences/config default)",
+        "The skill runs 'kgent route --dry-run' before executing any write",
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
+        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
       ]
     },
     {
@@ -27,7 +30,10 @@
         "The proposal mentions the existing document title and URI",
         "After approval, the skill calls 'kgent update' with the existing doc URI",
         "The confirmation message includes a native platform URL, not a kgent:// URI",
-        "The provenance records intent=update because a matching doc was found"
+        "The provenance records intent=update because a matching doc was found",
+        "The skill runs 'kgent route --dry-run' before executing any write",
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
+        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
       ]
     },
     {
@@ -41,7 +47,10 @@
         "The skill searches dingtalk for existing content before proposing",
         "A proposal is shown before any write",
         "The confirmation includes a native DingTalk URL format, not kgent://dingtalk/...",
-        "The content is formatted as markdown, not raw text"
+        "The content is formatted as markdown, not raw text",
+        "The skill runs 'kgent route --dry-run' before executing any write",
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
+        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
       ]
     },
     {
@@ -56,7 +65,10 @@
         "Both kgent create/store calls are executed",
         "The confirmation message includes native URLs for both backends",
         "If one backend fails, the other still succeeds (partial success reporting)",
-        "The op_id is reported for undo capability"
+        "The op_id is reported for undo capability",
+        "The skill runs 'kgent route --dry-run' before executing any write",
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
+        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
       ]
     },
     {
@@ -70,7 +82,10 @@
         "The skill searches for existing docs about API rate limits",
         "A proposal is shown before write",
         "Native URL in confirmation, not kgent:// URI",
-        "The skill handles the implicit 'save it' intent without needing explicit backend specification"
+        "The skill handles the implicit 'save it' intent without needing explicit backend specification",
+        "The skill runs 'kgent route --dry-run' before executing any write",
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
+        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
       ]
     },
     {
@@ -83,7 +98,10 @@
         "The skill does NOT propose routing to external-zone backends (dingtalk/wecom) without warning",
         "If proposing an external backend, the skill warns about the sensitivity zone restriction",
         "The proposal mentions the sensitivity classification",
-        "The skill asks the user to confirm the target backend given the sensitivity"
+        "The skill asks the user to confirm the target backend given the sensitivity",
+        "The skill runs 'kgent route --dry-run' before executing any write",
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
+        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
       ]
     },
     {
@@ -96,7 +114,10 @@
         "The skill proposes UPDATE (not CREATE) since a matching doc exists",
         "If multiple matches exist, the skill offers per-copy options (update all / update specific / create new)",
         "The proposal clearly names the existing document(s) found",
-        "The user is asked to choose which copy to update when multiple exist"
+        "The user is asked to choose which copy to update when multiple exist",
+        "The skill runs 'kgent route --dry-run' before executing any write",
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
+        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
       ]
     },
     {
@@ -111,7 +132,10 @@
         "The parent token passed to --parent-node-token matches a token from the space listing — never guessed (S83, N22)",
         "The create command passes '--wiki-space' and '--parent-node-token'",
         "The confirmation message uses a native URL with '/wiki/' path, not '/docx/'",
-        "No kgent:// URI appears in the confirmation"
+        "No kgent:// URI appears in the confirmation",
+        "The skill runs 'kgent route --dry-run' before executing any write",
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
+        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
       ]
     },
     {
@@ -124,7 +148,10 @@
         "When no factor determines the target type, the skill asks the user wiki vs flat doc (offers both options)",
         "The skill does NOT silently pick a target type",
         "The proposal records the user's choice and provenance notes the choice source ('user choice')",
-        "The chosen target type determines the create command shape (--wiki-space vs plain create)"
+        "The chosen target type determines the create command shape (--wiki-space vs plain create)",
+        "The skill runs 'kgent route --dry-run' before executing any write",
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
+        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
       ]
     }
   ]

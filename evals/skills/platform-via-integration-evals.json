@@ -1,0 +1,19 @@
+{
+  "skill_name": "knowledge-storage",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Save this to the wiki: our onboarding now includes a first-year performance review.",
+      "expected_output": "Route first, journal begin, delegate the Lark wiki write via lark-integration, journal end, verify by reading back, confirm with native URL.",
+      "files": [],
+      "expectations": [
+        "The skill runs 'kgent route --dry-run' before executing",
+        "The skill calls 'kgent journal begin' before the write",
+        "The write is delegated via lark-integration (not 'kgent update')",
+        "The skill calls 'kgent journal end' after the write",
+        "The skill reads the document back and compares before confirming",
+        "The confirmation includes a native https:// URL"
+      ]
+    }
+  ]
+}
