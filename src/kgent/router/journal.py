@@ -79,12 +79,14 @@ class Journal:
         *,
         encrypt: bool = False,
         retention_days: int = 30,
+        strict_load: bool = False,
     ) -> None:
         if home is None:
             home = os.environ.get("KGENT_HOME", str(Path.home() / ".kgent"))
         self.home = Path(home)
         self.encrypt = encrypt
         self.retention_days = retention_days
+        self.strict_load = strict_load
         self.journal_dir = self.home / "journal"
         self.path = self.journal_dir / "journal.ndjson"
         self.entries: list[dict[str, Any]] = []
@@ -94,7 +96,11 @@ class Journal:
     # -- persistence -----------------------------------------------------
 
     def _load(self) -> None:
-        """Load existing entries (best-effort: malformed lines are skipped)."""
+        """Load existing entries (best-effort: malformed lines are skipped).
+
+        ``strict_load=True`` (FM8) flips this to fail-closed: a malformed line
+        re-raises the :class:`json.JSONDecodeError` instead of being skipped.
+        """
         if not self.path.exists():
             return
         for line in self.path.read_text(encoding="utf-8").splitlines():
@@ -103,6 +109,8 @@ class Journal:
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
+                if self.strict_load:
+                    raise
                 continue
             if isinstance(entry, dict):
                 self.entries.append(entry)
