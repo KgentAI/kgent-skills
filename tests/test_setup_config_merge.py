@@ -30,7 +30,7 @@ def test_merge_appends_new_backends_disabled():
         "enabled": False,
         "type": "skill",
         "skill_name": "lark-doc",
-        "trust_zone": "external",
+        "trust_zone": "internal",
     }
 
 
@@ -39,7 +39,7 @@ def test_merge_preserves_user_enabled_and_fills_missing_keys():
     assert merged["lark"]["enabled"] is True
     assert merged["lark"]["type"] == "skill"
     assert merged["lark"]["skill_name"] == "lark-doc"
-    assert merged["lark"]["trust_zone"] == "external"
+    assert merged["lark"]["trust_zone"] == "internal"
 
 
 def test_merge_user_keys_win_over_report():
@@ -48,6 +48,27 @@ def test_merge_user_keys_win_over_report():
     )
     assert merged["lark"]["skill_name"] == "my-lark"
     assert merged["lark"]["enabled"] is True
+
+
+def test_merge_defaults_platform_backends_to_internal_trust_zone():
+    """lark/dingtalk/wecom generate as ``trust_zone: internal`` (maintainer ruling)."""
+    merged = merge_backends(
+        {},
+        {
+            "lark": SKILL_ENTRY,
+            "dingtalk": CLI_ENTRY,
+            "wecom": {**CLI_ENTRY, "adapter_name": "wecom-cli"},
+        },
+    )
+    assert merged["lark"]["trust_zone"] == "internal"
+    assert merged["dingtalk"]["trust_zone"] == "internal"
+    assert merged["wecom"]["trust_zone"] == "internal"
+
+
+def test_merge_defaults_unknown_backend_to_external_trust_zone():
+    """Undiscovered-tier names stay ``external`` — fail-safe default."""
+    merged = merge_backends({}, {"notion": {**SKILL_ENTRY, "adapter_name": "notion-clip"}})
+    assert merged["notion"]["trust_zone"] == "external"
 
 
 def test_merge_keeps_undiscovered_backends():
@@ -73,12 +94,12 @@ EXPECTED_FRESH = (
     "    enabled: false\n"
     "    type: cli\n"
     "    cli_name: dingtalk-cli\n"
-    "    trust_zone: external\n"
+    "    trust_zone: internal\n"
     "  lark:\n"
     "    enabled: false\n"
     "    type: skill\n"
     "    skill_name: lark-doc\n"
-    "    trust_zone: external\n"
+    "    trust_zone: internal\n"
 )
 
 EXISTING_USER_CONFIG = (
@@ -102,6 +123,14 @@ def test_write_fresh_home_matches_generated_format(tmp_path):
     home = tmp_path / "h"
     write_setup_config(home, {"lark": SKILL_ENTRY, "dingtalk": CLI_ENTRY})
     assert (home / "config.yaml").read_text(encoding="utf-8") == EXPECTED_FRESH
+
+
+def test_write_fresh_home_defaults_platform_trust_zone_internal(tmp_path):
+    from kgent.capabilities.setup_config import write_setup_config
+
+    home = tmp_path / "h"
+    write_setup_config(home, {"lark": SKILL_ENTRY})
+    assert "trust_zone: internal" in (home / "config.yaml").read_text(encoding="utf-8")
 
 
 def test_write_fresh_empty_report_matches_generated_format(tmp_path):
@@ -128,7 +157,7 @@ def test_write_preserves_enabled_and_defaults_on_rerun(tmp_path):
         "enabled": False,
         "type": "cli",
         "cli_name": "dingtalk-cli",
-        "trust_zone": "external",
+        "trust_zone": "internal",
     }
 
 
