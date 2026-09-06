@@ -609,6 +609,60 @@ def _cmd_journal(args: argparse.Namespace) -> int:
     return func(args)
 
 
+# ---------------------------------------------------------------------------
+# Route adjudication (read-only dry-run; B7/FM4)
+# ---------------------------------------------------------------------------
+
+
+def _cmd_route(args: argparse.Namespace) -> int:
+    """``kgent route`` — read-only adjudication: where may this content go?
+
+    Classifies ``--content`` (best-effort stub until the skill layer injects a
+    real LLM classifier) and re-runs the router's zone gate per candidate
+    backend — the same :func:`~kgent.router.sensitivity.enforce_zone` check a
+    real write goes through, so the ruling a caller sees is the ruling a write
+    would get. Nothing is written, journaled, or audited. Every backend
+    rejected → exit 3 (the router's policy-rejected code).
+    """
+    from kgent.router.sensitivity import analyze_sensitivity, enforce_zone
+
+    router, _config = _build_router()
+    # Confidence is fixed at 0.9 until a real classifier is injected: the
+    # stub's fail-safe raise only fires below 0.5 (sensitivity.py, S14).
+    tier, _confidence, provenance = analyze_sensitivity(args.content, 0.9)
+    names = (
+        [b.strip() for b in args.backends.split(",") if b.strip()]
+        if args.backends
+        else list(router.backends)
+    )
+    allowed: list[str] = []
+    rejected: list[dict[str, str]] = []
+    for name in names:
+        backend = router.backends.get(name)
+        if backend is None:
+            # Same contract as read/delete: a named-but-unavailable backend is
+            # a failure (exit 1) — never a silent skip, never a policy 3.
+            raise ConfigError(f"backend {name!r} is not available")
+        try:
+            enforce_zone(tier, backend.trust_zone, name)
+            allowed.append(name)
+        except PolicyError as exc:
+            rejected.append({"backend": name, "reason": str(exc)})
+    payload: dict[str, Any] = {
+        "operation": "route",
+        "dry_run": True,
+        "sensitivity": tier,
+        "provenance": provenance,
+        "allowed_backends": allowed,
+        "rejected": rejected,
+    }
+    if getattr(args, "json", False):
+        _json_out(payload)
+    else:
+        _text_out(f"{tier}: allowed={allowed} rejected={rejected}")
+    return 0 if allowed else 3
+
+
 def _cmd_sync(args: argparse.Namespace) -> int:
     """Sync/repair partial fan-outs (S29, S30)."""
     router, _config = _build_router()
@@ -1092,6 +1146,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_end.add_argument("--revision-after", dest="revision_after", default=None)
     p_end.set_defaults(func=_cmd_journal_end)
 
+    # route（只读裁决：这段内容能落到哪些 backend，B7/FM4）
+    p_route = sub.add_parser(
+        "route", help="Adjudicate content sensitivity per backend (read-only)", parents=[common]
+    )
+    p_route.add_argument("--content", required=True)
+    p_route.add_argument("--backends", default=None)
+
     # sync
     p_sync = sub.add_parser("sync", help="Sync / repair partial operations", parents=[common])
     p_sync.add_argument("--repair", default=None)
@@ -1152,6 +1213,7 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], int]] = {
     "unarchive": _cmd_unarchive,
     "undo": _cmd_undo,
     "journal": _cmd_journal,
+    "route": _cmd_route,
     "sync": _cmd_sync,
     "audit": _cmd_audit,
     "auth": _cmd_auth,
