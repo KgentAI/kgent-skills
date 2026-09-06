@@ -296,3 +296,32 @@ def test_route_accepts_spec_dry_run_flag(route_world):
     assert out["dry_run"] is True
     # 同一裁决以 spec 写法重放（旗标置于子命令后，与文件头 --json 惯例同因）
     assert main(["route", "--dry-run", "--content", "x", "--backends", "lark"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1 — zone 的 fail-closed 底（防御分支；公共 route 路径不可达）
+# ---------------------------------------------------------------------------
+
+
+def test_backend_trust_zone_falls_closed_on_unexpected_spec():
+    """读不到 zone（名字缺失 / spec 形态不对）→ 落回 schema 默认 external。
+
+    经 ``kgent route`` 不可达：``_cmd_route`` 先拒绝 ``router.backends`` 之外的
+    名字，而那些键就来自 ``config.backends``；schema 也只收 dict spec。这一
+    分支是 route 的 fail-closed 底——zone 读不出来就当 external，绝不把未知
+    当 internal 放行（docstring 明写的契约，这里钉死它）。
+    """
+    from kgent.cli import _backend_trust_zone
+    from kgent.config.schema import Config
+
+    config = Config(
+        version=1,
+        defaults={},
+        backends={"lark": {"enabled": True, "trust_zone": "internal"}},
+    )
+    assert _backend_trust_zone(config, "lark") == "internal"  # 常规路径不受影响
+    assert _backend_trust_zone(config, "ghost") == "external"  # 名字不在 config 里
+    config.backends["legacy"] = "internal"  # 形态漂移：非 dict spec
+    assert _backend_trust_zone(config, "legacy") == "external"
+    config.backends["nozone"] = {"enabled": True}  # dict 但没有 trust_zone 键
+    assert _backend_trust_zone(config, "nozone") == "external"

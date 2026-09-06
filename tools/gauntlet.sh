@@ -1,11 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Prefer the repo venv: the pytest/coverage/ruff on PATH may belong to another
+# interpreter that has neither kgent nor the dev deps (Windows + Git Bash).
+if [ -x ".venv/Scripts/python.exe" ]; then
+  export PATH="$PWD/.venv/Scripts:$PATH"
+elif [ -x ".venv/bin/python" ]; then
+  export PATH="$PWD/.venv/bin:$PATH"
+fi
+
 echo "== clean =="
-rm -rf .coverage htmlcov .pytest_cache .mypy_cache .ruff_cache build dist
+rm -rf .coverage coverage.xml htmlcov .pytest_cache .mypy_cache .ruff_cache build dist
 
 echo "== tests + coverage =="
-pytest -p no:randomly --cov=kgent --cov-report=term-missing
+# coverage.py, not pytest-cov: dev deps ship `coverage[toml]` (pyproject), and
+# pytest-cov is not installed. `coverage report --show-missing` is the
+# term-missing equivalent.
+coverage run -m pytest -p no:randomly
+coverage report --show-missing
+coverage xml
+
+echo "== changed lines (diff-cover) =="
+# Gate: 100% of the lines this branch changed (merge-base diff). diff-cover
+# exits non-zero below --fail-under (default 100), which set -e turns into a
+# gauntlet failure.
+git diff origin/main...HEAD > .diff-cover.diff
+diff-cover coverage.xml --diff-file .diff-cover.diff
+rm -f .diff-cover.diff
 
 echo "== types =="
 mypy src

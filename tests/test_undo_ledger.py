@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -61,8 +62,13 @@ def lark_backend(tmp_home):
 
 def test_plan_mechanism_history_revert(lark_backend, tmp_home):
     journal = Journal(tmp_home)
-    entry = begin(journal, operation="update", backend="lark",
-                  target_uri="kgent://lark/DOC1", revision_before=50)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
+        revision_before=50,
+    )
     end(journal, entry["op_id"], status="ok", revision_after=56)
     plan = compensation_plan(entry["op_id"], backends={"lark": lark_backend}, journal=journal)
     assert plan["status"] == "ok"
@@ -79,14 +85,21 @@ def test_plan_mechanism_history_revert(lark_backend, tmp_home):
     assert plan["plan"]["revision_current"] == 56
     assert plan["plan"]["snapshot"] is None
     # Task 10 的 Undo Compensation 流程第一步就吃这个提示
-    assert plan["plan"]["history_hint"] == "docs +history-list → history_version_id(revision_before)"
+    assert (
+        plan["plan"]["history_hint"] == "docs +history-list → history_version_id(revision_before)"
+    )
     assert "reason" not in plan
 
 
 def test_plan_rejected_when_edited_since(lark_backend, tmp_home):
     journal = Journal(tmp_home)
-    entry = begin(journal, operation="update", backend="lark",
-                  target_uri="kgent://lark/DOC1", revision_before=50)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
+        revision_before=50,
+    )
     end(journal, entry["op_id"], status="ok", revision_after=56)
     _set_version(lark_backend, "kgent://lark/DOC1", 57)  # 他人并发编辑
     plan = compensation_plan(entry["op_id"], backends={"lark": lark_backend}, journal=journal)
@@ -99,8 +112,13 @@ def test_plan_rejected_when_edited_since(lark_backend, tmp_home):
 def test_plan_rejects_version_string_vs_int_mismatch(lark_backend, tmp_home):
     """Lark 的 version 是字符串 revision_id，台账里是 int → 统一字符串化比较。"""
     journal = Journal(tmp_home)
-    entry = begin(journal, operation="update", backend="lark",
-                  target_uri="kgent://lark/DOC1", revision_before="50")
+    entry = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
+        revision_before="50",
+    )
     end(journal, entry["op_id"], status="ok", revision_after="56")
     _set_version(lark_backend, "kgent://lark/DOC1", 56)  # int 56 == str "56"
     plan = compensation_plan(entry["op_id"], backends={"lark": lark_backend}, journal=journal)
@@ -112,8 +130,13 @@ def test_plan_dingtalk_mechanism_version_revert(tmp_home):
     fb = FakeBackend(name="dingtalk", trust_zone="external", capabilities=_full_caps())
     fb.docs["kgent://dingtalk/D1"] = _doc("kgent://dingtalk/D1", 3)
     journal = Journal(tmp_home)
-    entry = begin(journal, operation="update", backend="dingtalk",
-                  target_uri="kgent://dingtalk/D1", revision_before=2)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="dingtalk",
+        target_uri="kgent://dingtalk/D1",
+        revision_before=2,
+    )
     end(journal, entry["op_id"], status="ok", revision_after=3)
     plan = compensation_plan(entry["op_id"], backends={"dingtalk": fb}, journal=journal)
     assert plan["status"] == "ok"
@@ -127,8 +150,9 @@ def test_plan_unknown_backend_rejected(tmp_home):
     fb = FakeBackend(name="gdoc", trust_zone="internal", capabilities=_full_caps())
     fb.docs["kgent://gdoc/G1"] = _doc("kgent://gdoc/G1", 1)
     journal = Journal(tmp_home)
-    entry = begin(journal, operation="update", backend="gdoc",
-                  target_uri="kgent://gdoc/G1", revision_before=1)
+    entry = begin(
+        journal, operation="update", backend="gdoc", target_uri="kgent://gdoc/G1", revision_before=1
+    )
     plan = compensation_plan(entry["op_id"], backends={"gdoc": fb}, journal=journal)
     assert plan["status"] == "rejected"
     assert plan["plan"]["mechanism"] is None
@@ -143,8 +167,13 @@ def test_plan_create_delete(tmp_home):
     fb = FakeBackend(name="lark", trust_zone="internal", capabilities=_full_caps())
     fb.docs["kgent://lark/NEW1"] = _doc("kgent://lark/NEW1", 1)
     journal = Journal(tmp_home)
-    entry = begin(journal, operation="create", backend="lark",
-                  target_uri="kgent://lark/NEW1", revision_before=None)
+    entry = begin(
+        journal,
+        operation="create",
+        backend="lark",
+        target_uri="kgent://lark/NEW1",
+        revision_before=None,
+    )
     end(journal, entry["op_id"], status="ok")
     plan = compensation_plan(entry["op_id"], backends={"lark": fb}, journal=journal)
     assert plan["status"] == "ok"
@@ -157,11 +186,21 @@ def test_plan_create_delete(tmp_home):
 def test_plan_create_already_deleted_is_still_ok(tmp_home):
     """B4：已删除 → 幂等成功，计划仍为 ok（revision_current 缺席）。"""
     journal = Journal(tmp_home)
-    entry = begin(journal, operation="create", backend="lark",
-                  target_uri="kgent://lark/GONE", revision_before=None)
+    entry = begin(
+        journal,
+        operation="create",
+        backend="lark",
+        target_uri="kgent://lark/GONE",
+        revision_before=None,
+    )
     end(journal, entry["op_id"], status="ok")
-    plan = compensation_plan(entry["op_id"], backends={"lark": FakeBackend(
-        name="lark", trust_zone="internal", capabilities=_full_caps())}, journal=journal)
+    plan = compensation_plan(
+        entry["op_id"],
+        backends={
+            "lark": FakeBackend(name="lark", trust_zone="internal", capabilities=_full_caps())
+        },
+        journal=journal,
+    )
     assert plan["status"] == "ok"
     assert plan["plan"]["revision_current"] is None
 
@@ -180,8 +219,14 @@ def wecom_backend(tmp_home):
 
 def test_plan_wecom_snapshot_restore_ok(wecom_backend, tmp_home):
     journal = Journal(tmp_home)
-    entry = begin(journal, operation="update", backend="wecom",
-                  target_uri="kgent://wecom/W1", revision_before=7, content="A")
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=7,
+        content="A",
+    )
     end(journal, entry["op_id"], status="ok")  # 无 revision_after → 快照比对
     plan = compensation_plan(entry["op_id"], backends={"wecom": wecom_backend}, journal=journal)
     assert plan["status"] == "ok"
@@ -195,8 +240,14 @@ def test_plan_wecom_snapshot_restore_ok(wecom_backend, tmp_home):
 def test_plan_wecom_rejected_when_content_changed_since(wecom_backend, tmp_home):
     """FM3：快照之后内容被第三方改过 → 拒绝，reason 指明当前 revision。"""
     journal = Journal(tmp_home)
-    entry = begin(journal, operation="update", backend="wecom",
-                  target_uri="kgent://wecom/W1", revision_before=7, content="A")
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=7,
+        content="A",
+    )
     end(journal, entry["op_id"], status="ok")
     _set_content(wecom_backend, "kgent://wecom/W1", "C")
     plan = compensation_plan(entry["op_id"], backends={"wecom": wecom_backend}, journal=journal)
@@ -209,8 +260,13 @@ def test_plan_update_without_revision_or_snapshot_rejected(tmp_home):
     fb = FakeBackend(name="lark", trust_zone="internal", capabilities=_full_caps())
     fb.docs["kgent://lark/DOC1"] = _doc("kgent://lark/DOC1", 56)
     journal = Journal(tmp_home)
-    entry = begin(journal, operation="update", backend="lark",
-                  target_uri="kgent://lark/DOC1", revision_before=50)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
+        revision_before=50,
+    )
     end(journal, entry["op_id"], status="ok")
     plan = compensation_plan(entry["op_id"], backends={"lark": fb}, journal=journal)
     assert plan["status"] == "rejected"
@@ -303,8 +359,13 @@ def test_undo_cli_ledger_op_outputs_plan(undo_world, capsys):
     fb = undo_world["lark"]
     fb.docs["kgent://lark/DOC1"] = _doc("kgent://lark/DOC1", 56)
     journal = Journal(undo_world["home"])
-    entry = begin(journal, operation="update", backend="lark",
-                  target_uri="kgent://lark/DOC1", revision_before=50)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
+        revision_before=50,
+    )
     end(journal, entry["op_id"], status="ok", revision_after=56)
 
     code = main(["undo", entry["op_id"], "--json"])
@@ -322,8 +383,13 @@ def test_undo_cli_ledger_op_rejected_exits_1(undo_world, capsys):
     fb = undo_world["lark"]
     fb.docs["kgent://lark/DOC1"] = _doc("kgent://lark/DOC1", 56)
     journal = Journal(undo_world["home"])
-    entry = begin(journal, operation="update", backend="lark",
-                  target_uri="kgent://lark/DOC1", revision_before=50)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
+        revision_before=50,
+    )
     end(journal, entry["op_id"], status="ok", revision_after=56)
     _set_version(fb, "kgent://lark/DOC1", 57)
 
@@ -338,8 +404,13 @@ def test_undo_cli_ledger_op_text_output(undo_world, capsys):
     fb = undo_world["lark"]
     fb.docs["kgent://lark/DOC1"] = _doc("kgent://lark/DOC1", 56)
     journal = Journal(undo_world["home"])
-    entry = begin(journal, operation="update", backend="lark",
-                  target_uri="kgent://lark/DOC1", revision_before=50)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
+        revision_before=50,
+    )
     end(journal, entry["op_id"], status="ok", revision_after=56)
 
     code = main(["undo", entry["op_id"]])
@@ -379,3 +450,417 @@ def test_undo_cli_legacy_non_integration_backend_restores(undo_world):
 def test_undo_cli_unknown_op_id_still_fails(undo_world):
     """未知 op_id 不进计划分支，沿用既有 undo 的失败语义（exit 1）。"""
     assert main(["undo", "op-20260905-missing0", "--json"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1 — 变更行缺口：这些分支各自钉住一个真实契约（非摸行）
+# ---------------------------------------------------------------------------
+
+
+def test_plan_ignores_other_ops_entries(lark_backend, tmp_home):
+    """多 op 台账：A 的计划只认 A 的 begin/end，B 的 begin/end 不串味。
+
+    真实台账一天几十个 op 交错落盘；把 B 的 revision_after 记到 A 头上就是
+    错误的新鲜度判定（要么误拒、要么误放行）。
+    """
+    lark_backend.docs["kgent://lark/DOC2"] = _doc("kgent://lark/DOC2", 10)
+    journal = Journal(tmp_home)
+    a = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
+        revision_before=50,
+    )
+    b = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC2",
+        revision_before=9,
+    )
+    end(journal, b["op_id"], status="ok", revision_after=999)  # 故意穿插
+    end(journal, a["op_id"], status="ok", revision_after=56)
+
+    plan = compensation_plan(a["op_id"], backends={"lark": lark_backend}, journal=journal)
+    assert plan["status"] == "ok"
+    assert plan["plan"]["revision_after"] == 56  # 不是 B 的 999
+    assert plan["plan"]["revision_before"] == 50
+    assert plan["plan"]["target"] == "kgent://lark/DOC1"
+
+
+def test_plan_legacy_entry_bad_target_uri_fails_closed(tmp_home):
+    """legacy entry 的 target 不是 canonical URI → backend None → 拒绝。
+
+    解析失败绝不能让计划落到「某个猜测的后端」上；fail closed 才守得住
+    「绝不盲回滚」。
+    """
+    journal = Journal(tmp_home)
+    journal.append(
+        {
+            "schema_version": 1,
+            "op_id": "op-20260906-baduri01",
+            "ts": "2026-09-06T00:00:00+00:00",
+            "operation": "update",
+            "targets": ["not-a-canonical-uri"],
+            "idempotency_key": "op-20260906-baduri01",
+            "snapshot": {"content_before": "A", "version_after": "5"},
+            "confirmation": "--yes",
+            "sensitivity": "internal",
+            "status": "ok",
+        }
+    )
+    plan = compensation_plan("op-20260906-baduri01", backends={}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert plan["plan"]["backend"] is None
+    assert plan["plan"]["mechanism"] is None
+    assert "no compensation mechanism" in plan["reason"]
+
+
+def test_plan_entry_without_target_or_backend_rejected(tmp_home):
+    """既无 target 也无 backend 的 begin entry → 定位不到补偿对象，拒绝。
+
+    entry 形态漂移（字段改名/丢失）时宁可拒绝，也不能规划一次无处落笔的补偿。
+    """
+    journal = Journal(tmp_home)
+    journal.append(
+        {
+            "schema_version": 1,
+            "op_id": "op-20260906-notarget01",
+            "kind": "begin",
+            "ts": "2026-09-06T00:00:00+00:00",
+            "operation": "update",
+        }
+    )
+    plan = compensation_plan("op-20260906-notarget01", backends={}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert plan["plan"]["target"] is None
+    assert plan["plan"]["mechanism"] is None
+    assert "no compensation mechanism" in plan["reason"]
+
+
+def test_plan_legacy_nested_snapshot_version_after(lark_backend, tmp_home):
+    """多 target 快照形态（snapshot["targets"][uri]["version_after"]）也喂 FM2。
+
+    journal 对多 target 写入就是用嵌套形态落盘的（journal._version_after_by_uri），
+    这类 entry 的 freshness 必须同样比对 revision。
+    """
+    lark_backend.docs["kgent://lark/DOC1"] = _doc("kgent://lark/DOC1", 9)
+    journal = Journal(tmp_home)
+    journal.append(
+        {
+            "schema_version": 1,
+            "op_id": "op-20260906-nestva01",
+            "ts": "2026-09-06T00:00:00+00:00",
+            "operation": "update",
+            "targets": ["kgent://lark/DOC1"],
+            "idempotency_key": "op-20260906-nestva01",
+            "snapshot": {"targets": {"kgent://lark/DOC1": {"version_after": "9"}}},
+            "confirmation": "--yes",
+            "sensitivity": "internal",
+            "status": "ok",
+        }
+    )
+    plan = compensation_plan(
+        "op-20260906-nestva01", backends={"lark": lark_backend}, journal=journal
+    )
+    assert plan["status"] == "ok"
+    assert plan["plan"]["revision_after"] == "9"
+    assert plan["plan"]["revision_current"] == 9
+
+
+def test_plan_legacy_nested_snapshot_content_before(lark_backend, tmp_home):
+    """嵌套形态只有 content_before（无 version_after）→ FM3 内容比对。"""
+    lark_backend.docs["kgent://lark/DOC1"] = _doc("kgent://lark/DOC1", 9, content="A")
+    journal = Journal(tmp_home)
+    journal.append(
+        {
+            "schema_version": 1,
+            "op_id": "op-20260906-nestcb01",
+            "ts": "2026-09-06T00:00:00+00:00",
+            "operation": "update",
+            "targets": ["kgent://lark/DOC1"],
+            "idempotency_key": "op-20260906-nestcb01",
+            "snapshot": {"targets": {"kgent://lark/DOC1": {"content_before": "A"}}},
+            "confirmation": "--yes",
+            "sensitivity": "internal",
+            "status": "ok",
+        }
+    )
+    ok = compensation_plan("op-20260906-nestcb01", backends={"lark": lark_backend}, journal=journal)
+    assert ok["status"] == "ok"
+
+    _set_content(lark_backend, "kgent://lark/DOC1", "B")
+    drifted = compensation_plan(
+        "op-20260906-nestcb01", backends={"lark": lark_backend}, journal=journal
+    )
+    assert drifted["status"] == "rejected"
+    assert "snapshot no longer matches" in drifted["reason"]
+
+
+def test_plan_legacy_nested_snapshot_missing_target_rejected(tmp_home):
+    """嵌套快照里没有该 target 的键 → 无内容证据，拒绝（不是 ok）。"""
+    journal = Journal(tmp_home)
+    journal.append(
+        {
+            "schema_version": 1,
+            "op_id": "op-20260906-nestothers01",
+            "ts": "2026-09-06T00:00:00+00:00",
+            "operation": "update",
+            "targets": ["kgent://lark/DOC1"],
+            "idempotency_key": "op-20260906-nestothers01",
+            "snapshot": {"targets": {"kgent://lark/OTHER": {"content_before": "A"}}},
+            "confirmation": "--yes",
+            "sensitivity": "internal",
+            "status": "ok",
+        }
+    )
+    plan = compensation_plan("op-20260906-nestothers01", backends={}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert "no snapshot content available" in plan["reason"]
+
+
+def test_plan_legacy_flat_snapshot_content_before(wecom_backend, tmp_home):
+    """单 target 快照的扁平形态（snapshot["content_before"]）→ FM3 内容比对。
+
+    journal.build_entry 对单 target 写入落的就是扁平形态——这是 legacy entry 的
+    主形态，不是边角。
+    """
+    journal = Journal(tmp_home)
+    journal.append(
+        {
+            "schema_version": 1,
+            "op_id": "op-20260906-flatcb01",
+            "ts": "2026-09-06T00:00:00+00:00",
+            "operation": "update",
+            "targets": ["kgent://wecom/W1"],
+            "idempotency_key": "op-20260906-flatcb01",
+            "snapshot": {"content_before": "A"},
+            "confirmation": "--yes",
+            "sensitivity": "internal",
+            "status": "ok",
+        }
+    )
+    ok = compensation_plan(
+        "op-20260906-flatcb01", backends={"wecom": wecom_backend}, journal=journal
+    )
+    assert ok["status"] == "ok"
+    assert ok["plan"]["mechanism"] == "snapshot-restore"
+
+    _set_content(wecom_backend, "kgent://wecom/W1", "C")
+    drifted = compensation_plan(
+        "op-20260906-flatcb01", backends={"wecom": wecom_backend}, journal=journal
+    )
+    assert drifted["status"] == "rejected"
+
+
+def test_plan_legacy_empty_snapshot_rejected(tmp_home):
+    """空 snapshot dict：既无 version_after 也无 content_before → 拒绝盲回滚。"""
+    journal = Journal(tmp_home)
+    journal.append(
+        {
+            "schema_version": 1,
+            "op_id": "op-20260906-emptysnap01",
+            "ts": "2026-09-06T00:00:00+00:00",
+            "operation": "update",
+            "targets": ["kgent://lark/DOC1"],
+            "idempotency_key": "op-20260906-emptysnap01",
+            "snapshot": {},
+            "confirmation": "--yes",
+            "sensitivity": "internal",
+            "status": "ok",
+        }
+    )
+    plan = compensation_plan("op-20260906-emptysnap01", backends={}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert "cannot verify freshness" in plan["reason"]
+
+
+def test_plan_snapshot_file_lost_rejected(wecom_backend, tmp_home):
+    """台账内容快照文件丢失（清理/搬运）→ 无新鲜度证据，拒绝盲回滚。
+
+    FM5 快照是明文落盘的已知限制；它一旦不可读，plan 必须拒，而不是当它不存在。
+    """
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=7,
+        content="A",
+    )
+    end(journal, entry["op_id"], status="ok")  # 无 revision_after → 只能靠快照文件
+    Path(entry["snapshot"]).unlink()
+
+    plan = compensation_plan(entry["op_id"], backends={"wecom": wecom_backend}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert "no snapshot content available" in plan["reason"]
+
+
+def test_plan_create_already_deleted_is_idempotent_ok(tmp_home):
+    """B4：create 的补偿是删除；文档已不在 → 幂等 ok（即使带着 revision 证据）。
+
+    与「带 revision_after 的 update 撞上文档消失要拒绝」相对：create 撞上消失是
+    期待结局，不是新鲜度疑点。
+    """
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="create",
+        backend="lark",
+        target_uri="kgent://lark/GONE",
+        revision_before=None,
+    )
+    end(journal, entry["op_id"], status="ok", revision_after=5)
+    plan = compensation_plan(
+        entry["op_id"],
+        backends={
+            "lark": FakeBackend(name="lark", trust_zone="internal", capabilities=_full_caps())
+        },
+        journal=journal,
+    )
+    assert plan["status"] == "ok"
+    assert "reason" not in plan
+    assert plan["plan"]["revision_current"] is None
+    assert plan["plan"]["history_hint"] is None  # create 走删除，不查平台 history
+
+
+def test_plan_document_gone_without_revision_evidence_rejected(wecom_backend, tmp_home):
+    """FM3：文档被删后只剩快照内容可查 → 拒绝（既不 ok 也不崩）。"""
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=7,
+        content="A",
+    )
+    end(journal, entry["op_id"], status="ok")
+    gone = FakeBackend(name="wecom", trust_zone="external", capabilities=_full_caps())
+
+    plan = compensation_plan(entry["op_id"], backends={"wecom": gone}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert "is gone" in plan["reason"]
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1 — CLI 分流兜底（cli._entry_backend_name 的 targets 兜底分支）
+# 与文本模式 undo 的 rejected reason
+# ---------------------------------------------------------------------------
+
+
+def _begin_entry_targets_only(op_id: str, targets: list[str]) -> dict:
+    """begin 形态但不带 backend 字段：backend 只能从 targets 兜底解析。"""
+    return {
+        "schema_version": 1,
+        "op_id": op_id,
+        "kind": "begin",
+        "ts": "2026-09-06T00:00:00+00:00",
+        "operation": "update",
+        "targets": targets,
+        "revision_before": 50,
+    }
+
+
+def test_undo_cli_begin_entry_with_targets_only_routes_to_plan(undo_world, capsys):
+    """begin entry 只有 targets（无 backend 字段）→ 仍按 parse_uri 进计划分支。
+
+    CLI 分流只看 backend 名；begin entry 若以 targets 记名，也应进计划分支，
+    而不是落到会真改文档的 best-effort undo。
+    """
+    fb = undo_world["lark"]
+    fb.docs["kgent://lark/DOC1"] = _doc("kgent://lark/DOC1", 56)
+    journal = Journal(undo_world["home"])
+    journal.append(_begin_entry_targets_only("op-20260906-tgtly01", ["kgent://lark/DOC1"]))
+    end(journal, "op-20260906-tgtly01", status="ok", revision_after=56)
+
+    code = main(["undo", "op-20260906-tgtly01", "--json"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert out["mode"] == "plan"
+    assert out["plan"]["mechanism"] == "history-revert"
+    assert fb.write_calls == []  # 只产计划，不动文档
+
+
+def test_undo_cli_begin_entry_without_targets_falls_back(undo_world, capsys):
+    """begin entry 的 targets 为空 → 进不了计划分支，既有 undo 报失败（exit 1）。
+
+    没有可回滚 target 的 op 绝不能成功收场：退出码 1、无 restored、无副作用。
+    （注：JSON 的 ``status`` 字段来自 ``OpResult.status`` 默认值 ``"ok"``——
+    ``journal.undo`` 从不覆盖它，真实结果在 exit code 与 journal entry 里，
+    这是既有行为，此处只钉退出码与无副作用。）
+    """
+    journal = Journal(undo_world["home"])
+    journal.append(_begin_entry_targets_only("op-20260906-notgt01", []))
+
+    code = main(["undo", "op-20260906-notgt01", "--json"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert out["operation"] == "undo"
+    assert out["error"] is None
+    assert undo_world["lark"].write_calls == []  # 没有任何回滚动作发生
+
+
+def test_undo_cli_begin_entry_with_unparseable_target_falls_back(undo_world, capsys):
+    """begin entry 的 targets 解析不了 → 不进计划分支，best-effort undo 逐 target 报错。
+
+    错误要点名 uri 并带上 canonical-URI 提示——这正是 parse_uri 的契约，而不是
+    一个含糊的“undo 失败”。
+    """
+    journal = Journal(undo_world["home"])
+    journal.append(_begin_entry_targets_only("op-20260906-badtgt01", ["not-a-uri"]))
+
+    code = main(["undo", "op-20260906-badtgt01", "--json"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert out["error"].startswith("not-a-uri:")
+    assert "canonical kgent:// URI" in out["error"]
+    assert undo_world["lark"].write_calls == []
+
+
+def test_undo_cli_text_output_surfaces_rejection_reason(undo_world, capsys):
+    """文本模式 undo 被拒 → 输出机制/集成 skill 与 reason（人读路径）。
+
+    JSON 模式的 reason 已有断言；文本模式少这一行，维护者在终端上就只看到
+    rejected 而不知道为什么。
+    """
+    fb = undo_world["lark"]
+    fb.docs["kgent://lark/DOC1"] = _doc("kgent://lark/DOC1", 56)
+    journal = Journal(undo_world["home"])
+    entry = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
+        revision_before=50,
+    )
+    end(journal, entry["op_id"], status="ok", revision_after=56)
+    _set_version(fb, "kgent://lark/DOC1", 57)
+
+    code = main(["undo", entry["op_id"]])
+    text = capsys.readouterr().out
+    assert code == 1
+    assert "rejected: history-revert via lark-integration" in text
+    assert "reason:" in text
+    assert "57" in text  # reason 里点明当前 revision
+
+
+def test_plan_update_gone_with_revision_evidence_rejected(tmp_home):
+    """FM2：带 revision_after 的 update 撞上文档已删 → 拒绝。
+
+    与 create 相对：create 的补偿是删除，文档已不在是期待结局（幂等 ok）；
+    update 的补偿是写回，文档没了就必须拒绝，不能当成“无证据”放过。
+    """
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal, operation="update", backend="lark", target_uri="kgent://lark/DOC1",
+        revision_before=50,
+    )
+    end(journal, entry["op_id"], status="ok", revision_after=56)
+    plan = compensation_plan(entry["op_id"], backends={"lark": FakeBackend(
+        name="lark", trust_zone="internal", capabilities=_full_caps())}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert "is gone" in plan["reason"]
+    assert "56" in plan["reason"]  # reason 点明台账里的 revision

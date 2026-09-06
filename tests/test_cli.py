@@ -9,6 +9,7 @@ boundary is faked (acceptance §6).
 # pyright: basic
 from __future__ import annotations
 
+import argparse
 import json
 
 import pytest
@@ -456,3 +457,82 @@ def test_journal_end_unknown_id_fails(tmp_home, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "failed"
     assert "op-20260905-00000000" in payload["error"]
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1 — journal 的文本模式输出契约（非 --json 路径）
+# ---------------------------------------------------------------------------
+
+
+def test_journal_begin_text_output(tmp_home, capsys):
+    """文本模式 begin → ``begin <op_id>``（scripts/终端的人读契约）。"""
+    code = main(
+        [
+            "journal",
+            "begin",
+            "--operation",
+            "update",
+            "--backend",
+            "lark",
+            "--doc-uri",
+            "kgent://lark/ABC",
+            "--revision-before",
+            "50",
+        ]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert out.startswith("begin op-")
+    assert out.strip() == f"begin {_last_op_id(tmp_home)}"
+
+
+def test_journal_end_text_output(tmp_home, capsys):
+    """文本模式 end → ``end <op_id> <status>``。"""
+    main(
+        [
+            "journal",
+            "begin",
+            "--operation",
+            "update",
+            "--backend",
+            "lark",
+            "--doc-uri",
+            "kgent://lark/ABC",
+        ]
+    )
+    capsys.readouterr()
+    op_id = _last_op_id(tmp_home)
+
+    code = main(["journal", "end", "--op-id", op_id, "--status", "ok", "--revision-after", "56"])
+    assert code == 0
+    assert capsys.readouterr().out.strip() == f"end {op_id} ok"
+
+
+def test_journal_end_unknown_id_text_output(tmp_home, capsys):
+    """文本模式 end 撞未知 op id → 退出 1 并点名原因（JSON 路径的镜像）。"""
+    code = main(["journal", "end", "--op-id", "op-20260905-00000000", "--status", "ok"])
+    assert code == 1
+    text = capsys.readouterr().out
+    assert text.startswith("journal end failed:")
+    assert "op-20260905-00000000" in text
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1 — 防御分支的契约（经公共 CLI 路径不可达，直接测函数契约）
+# ---------------------------------------------------------------------------
+
+
+def test_journal_dispatch_without_handler_fails_closed(capsys):
+    """``journal`` 子命令没有 handler → 退出 1 并说明原因。
+
+    经 ``main()`` 不可达：argparse 对 ``journal`` 子解析器是 ``required=True``，
+    缺子命令在解析期就退出（exit 2 → main 映射为 1）。这一分支防的是将来新增
+    ``journal <sub>`` 子解析器时忘了 ``set_defaults(func=…)``——此时宁要一个
+    明确的失败，也不要 ``None()`` 崩溃或静默成功。
+    """
+    from kgent.cli import _cmd_journal
+
+    namespace = argparse.Namespace(command="journal", journal_cmd=None, json=False)
+    code = _cmd_journal(namespace)
+    assert code == 1
+    assert capsys.readouterr().out.strip() == "unknown journal command"

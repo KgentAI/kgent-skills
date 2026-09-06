@@ -1,9 +1,10 @@
 # Design Spec: 平台操作下沉集成 skill（integration skill 中心制）+ kgent 台账
 
 - **Date:** 2026-09-05
-- **Status:** implemented（Phase 1 — lark，2026-09-06 真机验收）。验收摘要：
-  套件 515 passed / 1 failed（预先存在 `test_s5b_backend_none_fails_loudly`）/ 3 skipped，
-  mypy strict 52 文件 0 错，diff-cover 变更行 85%（39 行缺口见 task-11-report），
+- **Status:** implemented（Phase 1 — lark，2026-09-06 真机验收 + fix round 1）。验收摘要：
+  套件 537 passed / 0 failed / 3 skipped（POSIX mode-bit 平台 skip），
+  mypy strict 52 文件 0 错，diff-cover 变更行 **100%**（origin/main...HEAD 269 行，0 缺口），
+  `bash tools/gauntlet.sh` → GAUNTLET PASS，
   手工 mutant 5 中 4 杀（快照 0600→0644 在 Windows 存活：mode 断言 POSIX-only），
   B3/B4 真机 undo 探针 revision 3→5 → `docs +history-revert`(2048) → 读回 AAA-CONTENT（rev 6）。
   Phase 2/3（dingtalk / wecom）待凭据就绪后各自动实施计划
