@@ -1,8 +1,8 @@
 # Design Spec: 平台操作下沉集成 skill（integration skill 中心制）+ kgent 台账
 
 - **Date:** 2026-09-05
-- **Status:** proposed v3 — B+ 写入设计 → v2 集成 skill 中心制 → v3 扩为三平台
-  （lark / dingtalk / wecom）+ kgent hosted backend 车道，待 spec 评审
+- **Status:** approved v3（2026-09-05 维护者批准）— Phase 1（lark）先行实施；
+  Phase 2/3（dingtalk / wecom）待凭据就绪后各自动实施计划
 - **Priority:** high — 现有 Lark 写入路径对多块内容是**确定性数据丢失**，且 undo 无法兜底
 - **Discovered while:** 用 knowledge-storage 给「部门新人入职」wiki 追加"第一年末"任务行，
   `kgent update` 返回 ok 但整篇文档被清空为 `<callout emoji="💡"></callout>`
