@@ -1,7 +1,8 @@
-# Design Spec: Lark 写入路径下沉 skill 层 + kgent 台账（B+ 方案）
+# Design Spec: Lark 操作下沉集成 skill（lark-integration 中心制）+ kgent 台账
 
 - **Date:** 2026-09-05
-- **Status:** proposed — 设计已与维护者逐条对齐，待 spec 评审
+- **Status:** proposed v2 — B+ 写入设计与维护者逐条对齐；v2 经维护者裁决扩大
+  为集成 skill 中心制（search/read/write 全下沉），待 spec 评审
 - **Priority:** high — 现有 Lark 写入路径对多块内容是**确定性数据丢失**，且 undo 无法兜底
 - **Discovered while:** 用 knowledge-storage 给「部门新人入职」wiki 追加"第一年末"任务行，`kgent update` 返回 ok 但整篇文档被清空为 `<callout emoji="💡"></callout>`
 
@@ -48,17 +49,44 @@ revision 50）完成，内容零损失 —— 该原语同时成为 B+ 方案里
 B+ 的直接收益：lark-doc 的 DocxXML / 块级 / media / history 知识是现成的，
 零重写；不依赖 kgent 发版；策略/执行分离的架构表达更清晰。
 
-## 写入流（改造后）
+### v2 追加裁决（维护者，2026-09-05）：集成 skill 中心制
+
+范围从"写入下沉"扩大为：**Lark 的 search / read / write 全部经
+lark-integration**（由它调用原生 lark skill 或 lark-cli）；kgent skills
+（knowledge-storage / question-answering / wiki-setup）只做编排；每个已集成
+平台在 kgent-skills 打包自己的 integration skill，**本 PR 只落地
+lark-integration**，dingtalk/wecom 维持现状（其 integration skill 是后续 PR）。
+
+推论：
+- kgent 的 `LarkAdapter` search/read/write 对 skills 退役（标 deprecated，
+  CLI 面保留供调试）；台账（journal/audit）、策略（route）、非 Lark adapter
+  不受影响。
+- 2026-09-02 spec 沉淀在 LarkAdapter Python 里的 search 保真知识
+  （node_type 判定、wiki 位置、原生 URL）改以 lark-integration 的文档化
+  步骤承载（skill 层），不再在 kgent 内复刻。
+- undo 的 Lark 补偿同理：`kgent undo` 对 Lark 目标产出**补偿计划**（含
+  history_version_id），由 skill 经 lark-integration 执行 `history-revert`；
+  非 Lark 后端由 kgent 直接执行快照写回（无 integration skill 可委托）。
+
+## 操作流（改造后：search / read / write 全景）
 
 ```
-extract → kgent search（update-first 不变）→ proposal → 用户批准
-  → kgent route --dry-run      # 策略：敏感级 + 后端裁决；复用 kgent router，只读暴露
-  → kgent journal begin        # 台账：op_id(uuid) + target + 写前 revision + 内容快照
-  → 执行：
-      Lark        → lark-doc skill（lark-integration 写委托矩阵；DocxXML/块级写）
-      其它后端    → kgent update/create（各自 adapter；@file 内容通道修复见下）
-  → kgent journal end          # 落账（status ok/failed）
-  → 读回校验（kgent read 或 docs +fetch）→ 原生 URL 确认
+kgent skill（纯编排：extract / update-first / proposal / 用户批准 / 引用规范）
+  ├─ 检索与读取
+  │    Lark     → lark-integration（search 步骤 + read 委托矩阵）→ lark-cli / 原生 lark skill
+  │    其它后端 → kgent search / read（各自 adapter）
+  ├─ 策略        → kgent route --dry-run   # 敏感级 + 后端裁决；复用 kgent router，只读暴露
+  ├─ 台账        → kgent journal begin     # op_id(uuid) + target + 写前 revision + 内容快照
+  ├─ 执行写入
+  │    Lark     → lark-integration（写委托矩阵）→ lark-doc / lark-cli（DocxXML/块级写）
+  │    其它后端 → kgent update/create（各自 adapter；@file 内容通道修复见下）
+  ├─ 台账        → kgent journal end       # 落账（status ok/failed）
+  └─ 校验与确认  → 读回（lark-integration read / kgent read）比对 → 原生 URL 引用
+
+undo：kgent 查台账 → 产出补偿计划
+  Lark     → 计划含 history_version_id；新鲜度检查（当前 revision ≠ 台账写后
+             revision → 计划即拒绝）；skill 经 lark-integration 执行 history-revert
+  非 Lark  → kgent 直接快照写回（版本不匹配即拒）
 ```
 
 journal begin 在用户批准之后、执行之前调用；审批交互仍由各层自洽
@@ -69,13 +97,15 @@ journal begin 在用户批准之后、执行之前调用；审批交互仍由各
 | 位置 | 内容 |
 |---|---|
 | `src/kgent/cli.py`（journal） | 新增 `journal begin/end`；op_id 改为 uuid 后缀；台账落 `~/.kgent/journal/`（entry：op_id、op 类型、target uri、backend、写前 revision_id、内容快照路径、时间戳） |
-| `src/kgent/cli.py`（undo） | 按台账补偿：Lark 目标 → `docs +history-revert` 回写前 revision（内部包装，非用户命令）；create → delete target；其它后端 → 快照经本后端 adapter 写回。`kgent audit` 改读台账目录 |
+| `src/kgent/cli.py`（undo） | 按台账补偿。**Lark 目标：产出补偿计划**（JSON：history_version_id、期望 revision、新鲜度检查结果；当前 revision ≠ 台账写后 revision → 计划为"拒绝"并说明），由 skill 经 lark-integration 执行 `history-revert`；**非 Lark：kgent 直接执行**——create → delete target，update → 快照写回（版本不匹配即拒）。`kgent audit` 改读台账目录 |
 | `src/kgent/cli.py`（route） | 新增只读 `route --dry-run --content X --backends Y`：暴露现有 router 的敏感级 + 后端裁决，不执行任何写 |
+| `src/kgent/adapters/lark.py` | search/read/write 标注 deprecated（docstring 指明 skills 改走 lark-integration；CLI 面保留供调试），**不删代码**——2026-09-02 spec 的行为与测试原样保留为回归装甲 |
 | `src/kgent/adapters/cli_adapter.py` | 非 Lark 通道保留并修复：内容含换行或非 ASCII 字符时一律改走 CLI 的 `@file`/stdin 通道（dingtalk-cli / wecom-cli 同款 `.cmd` 包装问题预防性覆盖） |
-| `skills/knowledge-storage/SKILL.md` | 写流程按上图重写：Lark 分支委派 lark-doc（经 lark-integration 矩阵），前后包 journal begin/end；dingtalk/wecom 分支维持 `kgent update/create`；加"route-before-execute"为硬性步骤 |
-| `skills/wiki-setup/SKILL.md` | 同构改造：Lark 节点创建/内容写入走委托路径；多目标 fan-out 用并行 subagent，分目标 journaling 保持 |
-| `skills/lark-integration/SKILL.md` | 写委托矩阵从"非 docx 才委托"扩展为"**所有 Lark 内容写入都委托**"（docx → lark-doc；wiki 节点 → lark-wiki/lark-doc；记录类不变）；补"文档损坏 → `+history-list`/`+history-revert`"条目 |
-| `evals/` | 新增两条：写流程必须先 route 再执行；写后读回校验（写入内容与读回一致） |
+| `skills/lark-integration/SKILL.md` | 升格为 **Lark 唯一接口**：① 新增 search 章节（`docs +search` / `drive +search` 选型；node_type 判定：URL 路径段 `/wiki/` vs `/docx/` 优先、`entity_type` 兜底；wiki 位置字段；原生 URL 构造引用 2026-09-02 spec 规则）② read 委托矩阵从"非 docx 才委托"扩展为**所有 Lark 内容**（docx/wiki 节点 → 本 skill 直读或 lark-doc）③ 写矩阵：**所有 Lark 内容写入都委托**（docx → lark-doc；wiki 节点 → lark-wiki/lark-doc）④ 新增 undo 补偿章节（`+history-list` / `+history-revert` 用法与新鲜度前提）⑤ 错误处理与 `_notice` 条目保留 |
+| `skills/knowledge-storage/SKILL.md` | 纯编排化：对 Lark 后端，search/read/写执行/读回校验/undo 全部经 lark-integration；journal begin/end 与 route 经 kgent CLI；非 Lark 后端维持 `kgent update/create`（@file 修复覆盖）；route-before-execute 为硬性步骤 |
+| `skills/question-answering/SKILL.md` | Lark 后端的 search/read 步骤改指 lark-integration（其余后端维持 kgent search/read）；原生 URL 引用与脚注规则不变 |
+| `skills/wiki-setup/SKILL.md` | 同 knowledge-storage：Lark 分支全部经 lark-integration；多目标 fan-out 用并行 subagent，分目标 journaling 保持 |
+| `evals/` | 新增：route-before-execute 纪律；写后读回校验；**Lark 操作必须经 lark-integration**（skill 文档静态检查 + 流程 eval）；lark-integration search 步骤的 node_type/URL 保真用例 |
 
 ## 非目标（明确不做）
 
@@ -84,6 +114,10 @@ journal begin 在用户批准之后、执行之前调用；审批交互仍由各
 - kgent 不复刻 DocxXML 知识 —— Lark 写入不再流经 kgent，往返契约（根因 3）对 Lark 自动消解；非 Lark 后端维持各 CLI 自己的内容格式
 - MCP 侧 Lark 写能力 —— 由 MCP 直接接平台 API，不经 kgent/skill
 - dingtalk/wecom 的 history 级 undo —— 先用快照写回，平台原生 history 后续再说
+- dingtalk-integration / wecom-integration skill —— 后续 PR；本 PR 只落地
+  lark-integration，两平台的 kgent adapter 路径维持现状
+- kgent CLI 的 Lark search/read/write 面 —— deprecated 但**不删除**（调试可用）；
+  硬禁留作观测到真实泄漏后的 fallback
 
 ## 测试
 
@@ -107,10 +141,9 @@ journal begin 在用户批准之后、执行之前调用；审批交互仍由各
   audit 出现空洞，可由 evals 的写后读回校验间接暴露。
 - **lark-doc 侧审批与 kgent journal 的时序**：begin 在批准后调用（见写入流），
   若 lark-doc 侧二次确认被拒，journal end 记 failed，不产生脏账。
-- **开放问题（维护者裁决）**：`LarkAdapter` 的写路径（`update_document`/
-  `create_document`）是保留 + 标注 deprecated，还是对 `--backends lark` 硬禁
-  （返回"改走 lark-doc 委托"错误）？硬禁更符合单一漏斗，但破坏向后兼容，
-  需盘点 `test_archive_delete_undo.py` 等既有测试的语义。
+- **已裁决（v2）**：`LarkAdapter` search/read/write 保留 + deprecated，不硬禁
+  —— skills 层以 eval 强制"Lark 操作经 lark-integration"；若未来观测到真实
+  泄漏，再升级为硬禁。
 
 ---
 
@@ -144,10 +177,11 @@ journal begin 在用户批准之后、执行之前调用；审批交互仍由各
   `journal end --op-id X --status ok` → 标记 finalized；`--status failed` →
   标记 failed；注入执行异常（FM1）→ entry 仍以 failed 落账。
 - **B3 undo·Lark·update（真机）**：探针文档内容 A → begin → 写入内容 B →
-  undo → 读回 == A 且 revision 递增。**变体（FM2）**：undo 前再写入 C →
-  undo 拒绝，非零退出，错误含当前 revision 与台账期望。
-- **B4 undo·Lark·create（真机）**：begin(create) → 建文档 → undo → 文档删除
-  （`drive +delete` 已删/不存在 → 幂等成功）。
+  `kgent undo` 产出补偿计划（含 history_version_id）→ 经 lark-integration 执行
+  `history-revert` → 读回 == A 且 revision 递增。**变体（FM2）**：undo 前再
+  写入 C → 计划本身为"拒绝"，指明当前 revision 与台账期望，不产生可执行补偿。
+- **B4 undo·Lark·create（真机）**：begin(create) → 建文档 → 补偿计划 → 经
+  lark-integration 删除文档（`drive +delete` 已删/不存在 → 幂等成功）。
 - **B5 undo·非 Lark（fake 后端）**：快照写回路径；当前版本 ≠ 台账版本 →
   拒绝（FM3）。
 - **B6 route --dry-run**：confidential 内容 + external 后端 → 拒绝（沿用
@@ -161,9 +195,14 @@ journal begin 在用户批准之后、执行之前调用；审批交互仍由各
   --dry-run` 后执行、journal begin/end 成对、写后读回一致；三缺一即 eval 失败。
 - **B9 基线不变量**：现有测试套件零**新增**失败（先录 baseline，含
   `test_archive_delete_undo.py` 的 undo 语义现状）；search/read/node_type
-  行为（2026-09-02 spec）不回归。
+  行为（2026-09-02 spec）不回归；三个 kgent skills 的文档中不再出现对
+  Lark 后端的 `kgent search/read/update/create` 直调（eval 静态检查）。
 - **B10 checker 负控**：台账读虫（FM8）与 @file 门（FM7）各喂一次已知坏
   输入，目睹其失败后才信任其 pass。
+- **B11 search 保真迁移**：lark-integration search 步骤对同一组真实查询的
+  node_type 判定与原生 URL 输出，与 2026-09-02 spec 的规则一致（URL 路径段
+  `/wiki/` vs `/docx/` 优先、`entity_type` 兜底、锚点/query 噪声剥离）——
+  fixture 驱动用例固化，payload 形状沿用 `tests/test_lark_node_type.py`。
 
 ### Setup 计划（批准即授权）
 
