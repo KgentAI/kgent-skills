@@ -300,3 +300,33 @@ def test_audit_skips_blank_lines_in_audit_ndjson(tmp_home, capsys):
     assert code == 0
     assert [e["op_id"] for e in payload["entries"]] == ["op-1"]
     assert payload["ledger"] == []
+
+
+def test_audit_skips_corrupt_line_in_audit_ndjson(tmp_home, capsys):
+    """audit.ndjson 损坏行跳过（宽容面在 audit 文件侧保留；台账侧才是 strict）。"""
+    from kgent.cli import main
+
+    (tmp_home / "audit.ndjson").write_text(
+        '{"op_id": "op-1", "operation": "create"}\n{broken json\n',
+        encoding="utf-8",
+    )
+    code = main(["audit", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert [e["op_id"] for e in payload["entries"]] == ["op-1"]
+
+
+def test_audit_ledger_entry_without_op_id_skipped(tmp_home, capsys):
+    """台账 entry 没有 string op_id（形态漂移）→ 不进生命周期视图，不炸。"""
+    from kgent.cli import main
+    from kgent.router.ledger import begin
+
+    journal = Journal(tmp_home)
+    journal.append({"kind": "begin", "ts": "2026-09-06T00:00:00+00:00"})  # 无 op_id
+    begin(journal, operation="update", backend="lark",
+          target_uri="kgent://lark/ABC", revision_before=1)
+
+    code = main(["audit", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert [r["target"] for r in payload["ledger"]] == ["kgent://lark/ABC"]
