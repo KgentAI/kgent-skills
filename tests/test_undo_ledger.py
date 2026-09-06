@@ -855,12 +855,20 @@ def test_plan_update_gone_with_revision_evidence_rejected(tmp_home):
     """
     journal = Journal(tmp_home)
     entry = begin(
-        journal, operation="update", backend="lark", target_uri="kgent://lark/DOC1",
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
         revision_before=50,
     )
     end(journal, entry["op_id"], status="ok", revision_after=56)
-    plan = compensation_plan(entry["op_id"], backends={"lark": FakeBackend(
-        name="lark", trust_zone="internal", capabilities=_full_caps())}, journal=journal)
+    plan = compensation_plan(
+        entry["op_id"],
+        backends={
+            "lark": FakeBackend(name="lark", trust_zone="internal", capabilities=_full_caps())
+        },
+        journal=journal,
+    )
     assert plan["status"] == "rejected"
     assert "is gone" in plan["reason"]
     assert "56" in plan["reason"]  # reason 点明台账里的 revision

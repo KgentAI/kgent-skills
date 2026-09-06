@@ -32,7 +32,29 @@ echo "== types =="
 mypy src
 
 echo "== lint =="
-ruff check src tests && ruff format --check src tests
+# MAINTAINER RULING (fix round 2, 2026-09-06): this layer is explicitly
+# REPORT-ONLY while the pre-existing baseline debt is outstanding — measured at
+# 39 ruff errors / 11 files needing format, none introduced by the PR under
+# review (see .superpowers/sdd/2026-09-05-phase1-integration-skill-lark/
+# task-11-report.md).
+#
+# Why explicit: the previous single line `ruff check src tests && ruff format
+# --check src tests` was ACCIDENTALLY fail-open under `set -e` — a failure of
+# the non-final command in an `&&` list does not exit the shell, so a red
+# `ruff check` let the gauntlet pass while printing the errors.
+#
+# Restore the hard gate once the baseline debt is paid off by replacing this
+# block with exactly two plain lines:
+#   ruff check src tests
+#   ruff format --check src tests
+LINT_FAILED=0
+ruff check src tests || LINT_FAILED=1
+ruff format --check src tests || LINT_FAILED=1
+if [ "$LINT_FAILED" -eq 1 ]; then
+  echo "lint layer: report-only (baseline debt 39 errors / 11 files, none touched by this PR — see EVIDENCE)"
+else
+  echo "lint layer: clean"
+fi
 
 echo "== mutation =="
 if command -v mutmut >/dev/null 2>&1; then
