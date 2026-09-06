@@ -21,6 +21,7 @@ from kgent.router.audit import AuditLog
 from kgent.router.journal import Journal
 from kgent.router.policy import OpResult, execute_confirmed
 from kgent.router.resolve import resolve_intent
+from kgent.router.sensitivity import backend_trust_zone
 from kgent.search.fanout import fanout
 from kgent.types import RoutingIntent, SearchResult, WriteProposal
 
@@ -72,7 +73,12 @@ class Router:
         approval_tokens: dict[str, str] | None = None,
         op_id: str | None = None,
     ) -> OpResult:
-        """Execute a confirmed write and journal/audit the result (§5.6, S1–S4)."""
+        """Execute a confirmed write and journal/audit the result (§5.6, S1–S4).
+
+        The pre-write zone gate reads ``trust_zone`` from config (one shared
+        source with ``kgent route``), never from the adapter object — real
+        CLI-backed adapters expose no such attribute.
+        """
         return execute_confirmed(
             proposal,
             confirmation,
@@ -81,6 +87,7 @@ class Router:
             audit=self.audit,
             approval_tokens=approval_tokens,
             op_id=op_id,
+            trust_zones={name: backend_trust_zone(self.config, name) for name in self.backends},
         )
 
     async def search(

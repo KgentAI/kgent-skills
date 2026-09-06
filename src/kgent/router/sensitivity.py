@@ -18,11 +18,17 @@ call sites.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from kgent.errors import PolicyError
+
+if TYPE_CHECKING:
+    from kgent.config.schema import Config
 
 __all__ = [
     "TIER_ORDER",
     "analyze_sensitivity",
+    "backend_trust_zone",
     "enforce_floor",
     "enforce_zone",
     "warn_query_leakage",
@@ -79,6 +85,25 @@ def enforce_floor(tier: str, content_type: str, floors: dict[str, str]) -> tuple
     if floor is not None and TIER_ORDER[floor] > TIER_ORDER[tier]:
         return floor, f"floor applied: {content_type} ≥ {floor}"
     return tier, ""
+
+
+def backend_trust_zone(config: Config, backend_name: str) -> str:
+    """Trust zone for ``backend_name``, read from config — the zone's source.
+
+    Adapters do not carry the label: the real CLI-backed adapters
+    (:class:`~kgent.adapters.lark.LarkAdapter` and siblings) expose no
+    ``trust_zone``, so reading it off the adapter object crashes on a real
+    config (only test fakes have the field). ``config/schema.py`` defaults +
+    validates ``backends.<name>.trust_zone`` (``external`` unless stated) and
+    ``kgent setup`` writes it, so config is where route and the write gate
+    must read the zone from — one shared helper, no second source. Anything
+    unexpected falls closed to the schema default ``external``.
+    """
+    spec = config.backends.get(backend_name)
+    if not isinstance(spec, dict):
+        return "external"
+    zone = spec.get("trust_zone")
+    return zone if isinstance(zone, str) else "external"
 
 
 def enforce_zone(

@@ -129,3 +129,174 @@ def test_lenient_load_still_skips_corrupt_line(tmp_home):
 
 def test_mechanism_map_covers_integration_backends():
     assert set(MECHANISM_BY_BACKEND) == INTEGRATION_SKILL_BACKENDS
+
+
+# ---------------------------------------------------------------------------
+# I3/I5（final review）：audit 是台账的读视图；台账读 fail closed（FM8）
+# ---------------------------------------------------------------------------
+
+
+def _write_corrupt_line(tmp_home) -> None:
+    jdir = tmp_home / "journal"
+    jdir.mkdir(parents=True, exist_ok=True)
+    with (jdir / "journal.ndjson").open("a", encoding="utf-8") as fh:
+        fh.write('{"op_id": "op-1"}\n{broken json\n')
+
+
+def test_audit_reads_ledger_lifecycle_json(tmp_home, capsys):
+    """audit 的 JSON 模式给结构化 ``ledger``：begin/end 生命周期 + dangling begin。"""
+    from kgent.cli import main
+    from kgent.router.ledger import begin, end
+
+    journal = Journal(tmp_home)
+    closed = begin(journal, operation="update", backend="lark",
+                   target_uri="kgent://lark/ABC", revision_before=50)
+    end(journal, closed["op_id"], status="ok", revision_after=56)
+    dangling = begin(journal, operation="create", backend="lark",
+                     target_uri="kgent://lark/planned", revision_before=None)
+
+    code = main(["audit", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    by_op = {r["op_id"]: r for r in payload["ledger"]}
+    assert by_op[closed["op_id"]]["status"] == "ok"
+    assert by_op[closed["op_id"]]["end_ts"] is not None
+    assert by_op[dangling["op_id"]]["status"] == "open"  # 有 begin 无 end
+    assert by_op[dangling["op_id"]]["end_ts"] is None
+
+
+def test_audit_text_output_ledger_lines(tmp_home, capsys):
+    """文本模式：可读行 ``ledger <op_id> <operation> <backend> <target> <status>``；
+    dangling begin 显式标注。"""
+    from kgent.cli import main
+    from kgent.router.ledger import begin, end
+
+    journal = Journal(tmp_home)
+    closed = begin(journal, operation="update", backend="lark",
+                   target_uri="kgent://lark/ABC", revision_before=50)
+    end(journal, closed["op_id"], status="ok", revision_after=56)
+    dangling = begin(journal, operation="create", backend="lark",
+                     target_uri="kgent://lark/planned", revision_before=None)
+
+    code = main(["audit"])
+    text = capsys.readouterr().out
+    assert code == 0
+    assert f"ledger {closed['op_id']} update lark kgent://lark/ABC ok" in text
+    assert f"ledger {dangling['op_id']} create lark kgent://lark/planned open" in text
+    assert "dangling begin" in text
+
+
+def test_audit_ledger_end_without_begin_recorded(tmp_home, capsys):
+    """end 无 begin（手改台账才会出现）→ 也照录，operation/target 缺席。"""
+    from kgent.cli import main
+
+    journal = Journal(tmp_home)
+    journal.append({"op_id": "op-20260906-orphan1", "kind": "end",
+                    "ts": "2026-09-06T00:00:00+00:00", "status": "ok"})
+
+    code = main(["audit", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["ledger"] == [
+        {
+            "op_id": "op-20260906-orphan1",
+            "operation": None,
+            "backend": None,
+            "target": None,
+            "ts": None,
+            "status": "ok",
+            "end_ts": "2026-09-06T00:00:00+00:00",
+        }
+    ]
+
+
+def test_audit_op_filter_applies_to_ledger(tmp_home, capsys):
+    """``--op`` 过滤同时作用于台账视图（按 operation 字段）。"""
+    from kgent.cli import main
+    from kgent.router.ledger import begin
+
+    journal = Journal(tmp_home)
+    begin(journal, operation="create", backend="lark",
+          target_uri="kgent://lark/A", revision_before=None)
+    begin(journal, operation="update", backend="lark",
+          target_uri="kgent://lark/B", revision_before=1)
+
+    code = main(["audit", "--op", "create", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert [r["operation"] for r in payload["ledger"]] == ["create"]
+
+
+def test_audit_empty_home_zero_exit(tmp_home, capsys):
+    """无 audit.ndjson 也无台账 → 两侧空、exit 0（既有空态语义保留）。"""
+    from kgent.cli import main
+
+    assert main(["audit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["entries"] == []
+    assert payload["ledger"] == []
+
+    assert main(["audit"]) == 0
+    assert capsys.readouterr().out.strip() == "no audit log"
+
+
+def test_audit_corrupt_ledger_fails_closed(tmp_home, capsys):
+    """FM8：台账损坏行 → audit 硬失败 exit 1，不静默吞半本台账。"""
+    from kgent.cli import main
+
+    _write_corrupt_line(tmp_home)
+    code = main(["audit", "--json"])
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "corrupt" in out
+
+
+def test_undo_corrupt_ledger_fails_closed(tmp_home, capsys):
+    """FM8：台账损坏行 → undo 在台账分流这步硬失败 exit 1（legacy 路径不再被走到）。"""
+    from kgent.cli import main
+
+    (tmp_home / "config.yaml").write_text(
+        "version: 1\n"
+        "defaults:\n"
+        "  routing_mode: configured\n"
+        "  default_backends: [lark]\n"
+        "backends:\n"
+        "  lark:\n"
+        "    enabled: true\n"
+        "    type: skill\n"
+        "    skill_name: lark-doc\n"
+        "    trust_zone: internal\n",
+        encoding="utf-8",
+    )
+    _write_corrupt_line(tmp_home)
+    code = main(["undo", "op-1", "--json"])
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "corrupt" in out
+
+
+def test_end_records_doc_uri_only_when_given(journal):
+    """``end(doc_uri=...)``：给了才落字段（C1 回填通道；不给不落，兼容旧形态）。"""
+    entry = begin(journal, operation="create", backend="lark",
+                  target_uri="kgent://lark/planned", revision_before=None)
+    done = end(journal, entry["op_id"], status="ok", doc_uri="kgent://lark/REAL1")
+    assert done["doc_uri"] == "kgent://lark/REAL1"
+    plain = begin(journal, operation="create", backend="lark",
+                  target_uri="kgent://lark/planned2", revision_before=None)
+    done2 = end(journal, plain["op_id"], status="ok")
+    assert "doc_uri" not in done2
+
+
+def test_audit_skips_blank_lines_in_audit_ndjson(tmp_home, capsys):
+    """audit.ndjson 里的空行跳过、好行照常解析（既有宽容语义不变）。"""
+    from kgent.cli import main
+
+    (tmp_home / "audit.ndjson").write_text(
+        '\n{"op_id": "op-1", "operation": "create"}\n\n',
+        encoding="utf-8",
+    )
+    code = main(["audit", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert [e["op_id"] for e in payload["entries"]] == ["op-1"]
+    assert payload["ledger"] == []

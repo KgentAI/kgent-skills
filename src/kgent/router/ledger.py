@@ -108,12 +108,18 @@ def end(
     *,
     status: str,
     revision_after: str | int | None = None,
+    doc_uri: str | None = None,
 ) -> dict[str, Any]:
     """落账。begin 不存在、或该 op 已 end 过 → :class:`LedgerError`（fail closed）。
 
     ``Journal.get`` 返回该 op_id 的**最新** entry，所以已 end 的 op 在这里
     看到的就是它的 end entry（``kind == "end"``）——二次 end 是调用方状态机
     bug，拒绝而不是追加第二条 end。
+
+    ``doc_uri``（可选）：create 腿的回填通道。begin 时只有 planned 占位
+    ``kgent://`` URI；写入成功拿到真实 token 后，由 end entry 记真实目标——
+    ``compensation_plan`` 取 target 时它优先于 begin 的占位（append-only
+    不变：只是 end entry 多一个字段，历史 entry 不改写）。
     """
     latest = journal.get(op_id)
     if latest is None:
@@ -125,6 +131,8 @@ def end(
     }
     if revision_after is not None:
         entry["revision_after"] = revision_after
+    if doc_uri:
+        entry["doc_uri"] = doc_uri
     journal.append(entry)
     return entry
 
@@ -232,7 +240,8 @@ def compensation_plan(
 
     台账 op（``kind == "begin"`` 的 begin/end 两条 entry）与 legacy 写 entry
     （``build_entry`` 形态）都认；``Journal.get`` 只回最新一条，所以这里直接
-    扫 entries 合并出 op 视图。
+    扫 entries 合并出 op 视图。op 的 target 取 end entry 的 ``doc_uri``（create
+    腿回填的真实 URI，C1）优先，无回填时用 begin 的 target（兼容旧式 entry）。
 
     新鲜度（ADR 0005，FM2/FM3）——有证据才允许规划，且证据不符即拒绝：
 
@@ -254,7 +263,13 @@ def compensation_plan(
         begin_entry, end_entry = legacy, None
 
     operation = str(begin_entry.get("operation", "")) or None
-    target = _target_of(begin_entry)
+    # target 优先级（C1）：同 op_id 的 end entry 的 ``doc_uri``（create 腿写入
+    # 成功后回填的真实 URI）> begin entry 的 target（create 腿是 planned 占位；
+    # 旧式无回填 entry 兼容——update 腿两者本就一致）。
+    end_doc_uri = (end_entry or {}).get("doc_uri")
+    target = (
+        end_doc_uri if isinstance(end_doc_uri, str) and end_doc_uri else _target_of(begin_entry)
+    )
     backend = _backend_of(begin_entry, target)
     mechanism = MECHANISM_BY_BACKEND.get(backend) if backend else None
 

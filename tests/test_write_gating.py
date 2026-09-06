@@ -149,3 +149,121 @@ def test_rejected_confirmation_never_executes(test_world):
         )
     assert backend.write_calls == []
     assert journal.entries == []
+
+
+# ---------------------------------------------------------------------------
+# I4（final review）：写路径 trust_zone 与 route 同源——config，不是 adapter 属性
+# ---------------------------------------------------------------------------
+
+
+def test_n4_real_adapter_without_zone_attr_falls_closed_external(tmp_home):
+    """真实 LarkAdapter（无 ``trust_zone`` 属性）+ confidential → 按外部拒，不炸。
+
+    写路径曾直接读 ``backends[name].trust_zone``：FakeBackend 有该字段把缺陷
+    整个掩蔽，真实 adapter 首跑即 ``AttributeError``。修复后无 map 的直调走
+    legacy 属性读，属性缺失时 fail-closed 落到 ``external``（同 route 的底）。
+    构造真实 adapter 是零网络的（只存 cmd/name/timeout）；zone 检查先于任何
+    adapter 调用，本用例也不会触发子进程。
+    """
+    from kgent.adapters.lark import LarkAdapter
+
+    journal = Journal(tmp_home)
+    audit = AuditLog(path=tmp_home / "audit.ndjson")
+    prop = _prop(sensitivity="confidential")
+    with pytest.raises(PolicyError, match="external-zone backend 'lark'"):
+        execute_confirmed(
+            prop,
+            "interactive-yes",
+            backends={"lark": LarkAdapter()},
+            journal=journal,
+            audit=audit,
+        )
+    assert journal.entries == []
+
+
+def test_n4_zone_map_missing_name_falls_closed_external(tmp_home):
+    """config 派生的 zone map 里没有该 backend → 落 external 拒绝（map 的底）。"""
+    journal = Journal(tmp_home)
+    audit = AuditLog(path=tmp_home / "audit.ndjson")
+    prop = _prop(sensitivity="confidential")
+    with pytest.raises(PolicyError, match="external-zone backend 'lark'"):
+        execute_confirmed(
+            prop,
+            "interactive-yes",
+            backends=_internal_backends(),
+            journal=journal,
+            audit=audit,
+            trust_zones={"other": "internal"},  # lark 缺席 → external
+        )
+
+
+def _internal_backends() -> dict:
+    return {"lark": FakeBackend("lark", "internal", {})}
+
+
+def test_n4_router_wires_zone_map_from_config(tmp_home, capsys):
+    """Router.execute 把 config 派生的 zone map 接进写门（与 route 同源，I4）。
+
+    config.yaml 不写 trust_zone → schema 默认 external：confidential 写经真实
+    LarkAdapter 也被 exit 3 拒绝——zone 来自 config，而不是 adapter 属性；
+    把 trust_zone 写成 internal 后同一 tier 放行，证明 source of truth 是配置。
+    """
+    import json
+
+    from kgent.adapters import registry
+    from kgent.adapters.lark import LarkAdapter
+    from kgent.cli import main
+
+    registry.register("lark", LarkAdapter())
+    (tmp_home / "config.yaml").write_text(
+        "version: 1\n"
+        "defaults:\n"
+        "  routing_mode: configured\n"
+        "  default_backends: [lark]\n"
+        "  approval_ttl_hours: 24\n"
+        "backends:\n"
+        "  lark:\n"
+        "    enabled: true\n"
+        "    type: skill\n"
+        "    skill_name: lark-doc\n",
+        encoding="utf-8",
+    )
+    argv = [
+        "create",
+        "--title",
+        "Secrets",
+        "--content",
+        "acquisition plan",
+        "--sensitivity",
+        "confidential",
+        "--backends",
+        "lark",
+        "--json",
+    ]
+    try:
+        code = main(argv)
+        out = json.loads(capsys.readouterr().out)
+        assert code == 3  # zone 拒（policy-rejected），不是 AttributeError 崩溃
+        assert "external-zone backend 'lark'" in out["error"]
+
+        # 同一 adapter，config 翻成 internal → 放行（写入会真的发生，
+        # 但 zone 检查后 FakeBackend 才会被调用——这里换回 fake 验证放行面）
+        registry.register("lark", FakeBackend("lark", "internal", {}))
+        (tmp_home / "config.yaml").write_text(
+            "version: 1\n"
+            "defaults:\n"
+            "  routing_mode: configured\n"
+            "  default_backends: [lark]\n"
+            "  approval_ttl_hours: 24\n"
+            "backends:\n"
+            "  lark:\n"
+            "    enabled: true\n"
+            "    type: skill\n"
+            "    skill_name: lark-doc\n"
+            "    trust_zone: internal\n",
+            encoding="utf-8",
+        )
+        code = main(argv)
+        assert code == 0
+    finally:
+        registry.clear()

@@ -872,3 +872,133 @@ def test_plan_update_gone_with_revision_evidence_rejected(tmp_home):
     assert plan["status"] == "rejected"
     assert "is gone" in plan["reason"]
     assert "56" in plan["reason"]  # reason 点明台账里的 revision
+
+
+# ---------------------------------------------------------------------------
+# C1（final review）：create 腿的占位 URI 由 end --doc-uri 回填，计划指向真身
+# ---------------------------------------------------------------------------
+
+
+def test_plan_create_end_doc_uri_overrides_placeholder(tmp_home):
+    """create begin 只登记了 planned 占位 → end 回填真实 URI → 计划指向真身。
+
+    补偿（删除）必须落在真实创建出来的文档上——指向占位 token 的计划删不到
+    任何东西却报成功，正是本 finding 的缺陷。
+    """
+    fb = FakeBackend(name="lark", trust_zone="internal", capabilities=_full_caps())
+    fb.docs["kgent://lark/REAL123"] = _doc("kgent://lark/REAL123", 1)
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="create",
+        backend="lark",
+        target_uri="kgent://lark/planned",
+        revision_before=None,
+    )
+    end(journal, entry["op_id"], status="ok", doc_uri="kgent://lark/REAL123")
+
+    plan = compensation_plan(entry["op_id"], backends={"lark": fb}, journal=journal)
+    assert plan["status"] == "ok"
+    assert plan["plan"]["target"] == "kgent://lark/REAL123"  # 不是 begin 的占位
+    # 新鲜度读的也是真身（current revision 来自真实文档）
+    assert plan["plan"]["revision_current"] == 1
+
+
+def test_plan_create_without_backfill_keeps_begin_target(tmp_home):
+    """旧式 create（end 无回填）→ 计划仍用 begin 的 target（兼容，行为不变）。"""
+    fb = FakeBackend(name="lark", trust_zone="internal", capabilities=_full_caps())
+    fb.docs["kgent://lark/DOC1"] = _doc("kgent://lark/DOC1", 1)
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="create",
+        backend="lark",
+        target_uri="kgent://lark/DOC1",
+        revision_before=None,
+    )
+    end(journal, entry["op_id"], status="ok")
+
+    plan = compensation_plan(entry["op_id"], backends={"lark": fb}, journal=journal)
+    assert plan["plan"]["target"] == "kgent://lark/DOC1"
+
+
+def test_plan_update_end_doc_uri_also_wins(lark_backend, tmp_home):
+    """update 腿 end 回填的 doc_uri 同样优先（重指向场景）；begin 的 backend 保留。"""
+    lark_backend.docs["kgent://lark/MOVED"] = _doc("kgent://lark/MOVED", 7)
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="lark",
+        target_uri="kgent://lark/OLD",
+        revision_before=6,
+    )
+    end(journal, entry["op_id"], status="ok", revision_after=7, doc_uri="kgent://lark/MOVED")
+
+    plan = compensation_plan(entry["op_id"], backends={"lark": lark_backend}, journal=journal)
+    assert plan["plan"]["target"] == "kgent://lark/MOVED"
+    assert plan["plan"]["backend"] == "lark"  # backend 仍来自 begin entry
+    assert plan["status"] == "ok"
+
+
+def test_journal_end_cli_doc_uri_flag(tmp_home, capsys):
+    """CLI：``journal end --doc-uri`` 落进 end entry（JSON 输出原样携带）。"""
+    assert (
+        main(
+            [
+                "journal",
+                "begin",
+                "--operation",
+                "create",
+                "--backend",
+                "lark",
+                "--doc-uri",
+                "kgent://lark/planned",
+            ]
+        )
+        == 0
+    )
+    op_id = next(o["op_id"] for o in Journal(tmp_home).entries if o.get("kind") == "begin")
+    capsys.readouterr()  # 丢弃 begin 的文本输出，让 end 的 JSON 独占缓冲
+
+    code = main(
+        [
+            "journal",
+            "end",
+            "--op-id",
+            op_id,
+            "--status",
+            "ok",
+            "--doc-uri",
+            "kgent://lark/REAL9",
+            "--json",
+        ]
+    )
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert out["entry"]["doc_uri"] == "kgent://lark/REAL9"
+    # 台账里 end entry 确实带 doc_uri，begin entry 不受影响（append-only）
+    kinds = {e["kind"]: e for e in Journal(tmp_home).entries if e["op_id"] == op_id}
+    assert kinds["end"]["doc_uri"] == "kgent://lark/REAL9"
+    assert "doc_uri" not in kinds["begin"]
+
+
+def test_undo_cli_create_with_backfilled_uri_plans_delete_of_real_doc(undo_world, capsys):
+    """端到端：占位 begin → end --doc-uri 回填 → ``kgent undo`` 计划删真实文档。"""
+    fb = undo_world["lark"]
+    fb.docs["kgent://lark/REAL7"] = _doc("kgent://lark/REAL7", 2)
+    journal = Journal(undo_world["home"])
+    entry = begin(
+        journal,
+        operation="create",
+        backend="lark",
+        target_uri="kgent://lark/planned",
+        revision_before=None,
+    )
+    end(journal, entry["op_id"], status="ok", doc_uri="kgent://lark/REAL7")
+
+    code = main(["undo", entry["op_id"], "--json"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert out["plan"]["target"] == "kgent://lark/REAL7"
+    assert fb.write_calls == []  # 只产计划：删除归 lark-integration 执行
