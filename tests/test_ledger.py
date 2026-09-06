@@ -165,6 +165,29 @@ def test_audit_reads_ledger_lifecycle_json(tmp_home, capsys):
     assert by_op[dangling["op_id"]]["end_ts"] is None
 
 
+def test_audit_backfills_end_doc_uri_over_begin_target(tmp_home, capsys):
+    """C1 回填的读视图侧：end.doc_uri（真实 URI）覆盖 begin 的占位 target。"""
+    import json
+
+    from kgent.cli import main
+    from kgent.router.ledger import begin, end
+
+    journal = Journal(tmp_home)
+    entry = begin(journal, operation="create", backend="lark",
+                  target_uri="kgent://lark/planned", revision_before=None)
+    real = "kgent://lark/NusCd6DJdoJQ9zxnY7VjfVOgpXe"
+    end(journal, entry["op_id"], status="ok", revision_after=3, doc_uri=real)
+
+    code = main(["audit", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    by_op = {r["op_id"]: r for r in payload["ledger"]}
+    assert by_op[entry["op_id"]]["target"] == real
+
+    code = main(["audit"])
+    out = capsys.readouterr().out
+    assert real in out and "kgent://lark/planned" not in out
+
+
 def test_audit_text_output_ledger_lines(tmp_home, capsys):
     """文本模式：可读行 ``ledger <op_id> <operation> <backend> <target> <status>``；
     dangling begin 显式标注。"""

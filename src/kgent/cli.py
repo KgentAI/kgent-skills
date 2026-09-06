@@ -770,6 +770,11 @@ def _ledger_lifecycle(journal: Journal) -> list[dict[str, Any]]:
             if record is not None:
                 record["status"] = entry.get("status")
                 record["end_ts"] = entry.get("ts")
+                # C1 回填优先级与 compensation_plan 一致：end.doc_uri（真实
+                # URI）> begin.target（写入前的占位）
+                doc_uri = entry.get("doc_uri")
+                if isinstance(doc_uri, str) and doc_uri:
+                    record["target"] = doc_uri
             else:
                 ops[op_id] = {
                     "op_id": op_id,

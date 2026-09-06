@@ -70,7 +70,7 @@ Invoke the skill by name (Skill tool when available) and follow its workflow; it
 
 ## Write Delegation Matrix
 
-对 Lark 内容的一切写入经本 skill 委派（docx → lark-doc `docs +create/+update`；wiki 节点 → lark-wiki/lark-doc；bitable/sheet/slides 不变）。**多行/含 CJK 内容优先 `--content @file`**。
+对 Lark 内容的一切写入经本 skill 委派（docx → lark-doc `docs +create/+update`；wiki 节点 → lark-wiki/lark-doc；bitable/sheet/slides 不变）。**多行/含 CJK 内容优先 `--content @file`**（`@` 仅接受当前目录内的相对路径；其它位置或管道内容用 `--content -` 读 stdin）。
 
 | Target | Delegate to | Notes |
 |---|---|---|
