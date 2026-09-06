@@ -502,6 +502,60 @@ def _cmd_undo(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
+# ---------------------------------------------------------------------------
+# Ledger commands (journal; ADR 0005)
+# ---------------------------------------------------------------------------
+
+
+def _cmd_journal_begin(args: argparse.Namespace) -> int:
+    """B2: register a logical write op in the ledger."""
+    from kgent.router.ledger import begin
+
+    revision = int(args.revision_before) if args.revision_before else None
+    entry = begin(
+        Journal(_home()),  # 台账只依赖 home，不需要已配置的 backends
+        operation=args.operation,
+        backend=args.backend,
+        target_uri=args.doc_uri,
+        revision_before=revision,
+        content=args.snapshot_content,
+    )
+    if getattr(args, "json", False):
+        _json_out({"operation": "journal-begin", "entry": entry})
+    else:
+        _text_out(f"begin {entry['op_id']}")
+    return 0
+
+
+def _cmd_journal_end(args: argparse.Namespace) -> int:
+    """B2: finalize a ledger op; unknown op id → exit 1 (fail closed)."""
+    from kgent.router.ledger import LedgerError, end
+
+    revision = int(args.revision_after) if args.revision_after else None
+    try:
+        entry = end(Journal(_home()), args.op_id, status=args.status, revision_after=revision)
+    except LedgerError as exc:
+        if getattr(args, "json", False):
+            _json_out({"operation": "journal-end", "status": "failed", "error": str(exc)})
+        else:
+            _text_out(f"journal end failed: {exc}")
+        return 1
+    if getattr(args, "json", False):
+        _json_out({"operation": "journal-end", "entry": entry})
+    else:
+        _text_out(f"end {args.op_id} {args.status}")
+    return 0
+
+
+def _cmd_journal(args: argparse.Namespace) -> int:
+    """Dispatch ``kgent journal begin|end`` (subparsers set ``args.func``)."""
+    func: Callable[[argparse.Namespace], int] | None = getattr(args, "func", None)
+    if func is None:
+        _text_out("unknown journal command")
+        return 1
+    return func(args)
+
+
 def _cmd_sync(args: argparse.Namespace) -> int:
     """Sync/repair partial fan-outs (S29, S30)."""
     router, _config = _build_router()
@@ -969,6 +1023,22 @@ def _build_parser() -> argparse.ArgumentParser:
     p_undo = sub.add_parser("undo", help="Undo an operation", parents=[common])
     p_undo.add_argument("op_id")
 
+    # journal（台账，ADR 0005）
+    p_journal = sub.add_parser("journal", help="Ledger (op lifecycle)", parents=[common])
+    journal_sub = p_journal.add_subparsers(dest="journal_cmd", required=True)
+    p_begin = journal_sub.add_parser("begin", help="Register a logical write op", parents=[common])
+    p_begin.add_argument("--operation", required=True, choices=["create", "update", "delete"])
+    p_begin.add_argument("--backend", required=True)
+    p_begin.add_argument("--doc-uri", dest="doc_uri", required=True)
+    p_begin.add_argument("--revision-before", dest="revision_before", default=None)
+    p_begin.add_argument("--snapshot-content", dest="snapshot_content", default=None)
+    p_begin.set_defaults(func=_cmd_journal_begin)
+    p_end = journal_sub.add_parser("end", help="Finalize a ledger op", parents=[common])
+    p_end.add_argument("--op-id", dest="op_id", required=True)
+    p_end.add_argument("--status", required=True, choices=["ok", "failed"])
+    p_end.add_argument("--revision-after", dest="revision_after", default=None)
+    p_end.set_defaults(func=_cmd_journal_end)
+
     # sync
     p_sync = sub.add_parser("sync", help="Sync / repair partial operations", parents=[common])
     p_sync.add_argument("--repair", default=None)
@@ -1028,6 +1098,7 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], int]] = {
     "archive": _cmd_archive,
     "unarchive": _cmd_unarchive,
     "undo": _cmd_undo,
+    "journal": _cmd_journal,
     "sync": _cmd_sync,
     "audit": _cmd_audit,
     "auth": _cmd_auth,

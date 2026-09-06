@@ -347,3 +347,112 @@ def test_cli_help_exit_0(capsys):
     code = main(["--help"])
     assert code == 0
     assert "wiki" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Task 3 — `kgent journal begin/end` (B2; ledger ADR 0005)
+# ---------------------------------------------------------------------------
+
+
+def _last_op_id(tmp_home) -> str:
+    """Read the last line of the ledger and return its ``op_id``."""
+    lines = [
+        line
+        for line in (tmp_home / "journal" / "journal.ndjson")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    assert lines, "expected at least one ledger entry"
+    return json.loads(lines[-1])["op_id"]
+
+
+def test_journal_begin_end_cli(tmp_home, capsys):
+    # Ledger commands depend only on KGENT_HOME (no configured backends, no
+    # config.yaml — Ruling on Task 3): tmp_home alone is enough. Note: every
+    # main() call in this file puts `--json` after the subcommand — argparse
+    # subparser defaults would override a leading `--json` (repo-wide).
+    code = main(
+        [
+            "journal",
+            "begin",
+            "--operation",
+            "update",
+            "--backend",
+            "lark",
+            "--doc-uri",
+            "kgent://lark/ABC",
+            "--revision-before",
+            "50",
+            "--json",
+        ]
+    )
+    assert code == 0
+    begin_payload = json.loads(capsys.readouterr().out)
+    assert begin_payload["schema_version"] == 1
+    op_id = _last_op_id(tmp_home)
+    assert begin_payload["entry"]["op_id"] == op_id
+
+    code = main(
+        ["journal", "end", "--op-id", op_id, "--status", "ok", "--revision-after", "56", "--json"]
+    )
+    assert code == 0
+    end_payload = json.loads(capsys.readouterr().out)
+    assert end_payload["operation"] == "journal-end"
+
+    lines = (tmp_home / "journal" / "journal.ndjson").read_text(encoding="utf-8").splitlines()
+    begin_entry = json.loads(lines[0])
+    end_entry = json.loads(lines[1])
+    assert begin_entry["kind"] == "begin"
+    assert begin_entry["operation"] == "update"
+    assert begin_entry["backend"] == "lark"
+    assert begin_entry["target"] == "kgent://lark/ABC"
+    assert begin_entry["revision_before"] == 50
+    assert end_entry["op_id"] == op_id
+    assert end_entry["kind"] == "end"
+    assert end_entry["status"] == "ok"
+    assert end_entry["revision_after"] == 56
+
+
+def test_journal_begin_snapshot_content_writes_snapshot(tmp_home):
+    code = main(
+        [
+            "journal",
+            "begin",
+            "--operation",
+            "delete",
+            "--backend",
+            "wecom",
+            "--doc-uri",
+            "kgent://wecom/XYZ",
+            "--snapshot-content",
+            "body to restore",
+            "--json",
+        ]
+    )
+    assert code == 0
+    from kgent.router.journal import Journal
+
+    entry = Journal(tmp_home).entries[0]
+    assert entry["snapshot"], "begin with --snapshot-content must record the snapshot path"
+    assert (tmp_home / "journal" / "snapshots" / f"{entry['op_id']}.txt").read_text(
+        encoding="utf-8"
+    ) == "body to restore"
+
+
+def test_journal_end_unknown_id_fails(tmp_home, capsys):
+    code = main(
+        [
+            "journal",
+            "end",
+            "--op-id",
+            "op-20260905-00000000",
+            "--status",
+            "ok",
+            "--json",
+        ]
+    )
+    assert code != 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "failed"
+    assert "op-20260905-00000000" in payload["error"]
