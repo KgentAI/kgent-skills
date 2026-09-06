@@ -35,6 +35,15 @@ def test_end_without_begin_raises(journal):
         end(journal, "op-20260905-deadbeef", status="ok")
 
 
+def test_end_twice_raises(journal):
+    """对已 end 的 op_id 再 end → LedgerError（T2 审查 ruling：kind 校验收紧）。"""
+    entry = begin(journal, operation="update", backend="lark",
+                  target_uri="kgent://lark/ABC", revision_before=1)
+    end(journal, entry["op_id"], status="ok", revision_after=2)
+    with pytest.raises(LedgerError):
+        end(journal, entry["op_id"], status="ok")
+
+
 def test_same_second_begins_unique_ids(journal):
     a = begin(journal, operation="update", backend="lark",
               target_uri="kgent://lark/ABC", revision_before=1)

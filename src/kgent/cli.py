@@ -42,6 +42,7 @@ from kgent.router.policy import confirm
 from kgent.search.fanout import build_footer, exit_code_for_failures, truncate
 from kgent.search.rank import rrf
 from kgent.types import SearchResult, WriteProposal
+from kgent.uri import parse_uri
 
 __all__ = ["main"]
 
@@ -482,9 +483,61 @@ def _cmd_unarchive(args: argparse.Namespace) -> int:
     return 0
 
 
+def _entry_backend_name(entry: dict[str, Any] | None) -> str | None:
+    """entry 的 backend 名：显式 ``backend`` 优先，否则 ``targets[0]`` 经 parse_uri。
+
+    台账 begin entry 自带 ``backend``；legacy 写 entry 只有 ``targets``——
+    解析方式与 ``journal.undo`` 的既有路径一致。
+    """
+    if not entry:
+        return None
+    backend = entry.get("backend")
+    if isinstance(backend, str) and backend:
+        return backend
+    targets = [t for t in (entry.get("targets") or []) if isinstance(t, str)]
+    if not targets:
+        return None
+    try:
+        backend_name, _ = parse_uri(targets[0])
+    except ConfigError:
+        return None
+    return backend_name
+
+
+def _ledger_begin_entry(journal: Journal, op_id: str) -> dict[str, Any] | None:
+    """台账登记过的 op 的 ``kind == "begin"`` entry（ADR 0005 分流依据）。
+
+    legacy 写 entry（``build_entry`` 形态，无 ``kind``）→ ``None``：它们不走
+    计划分支，仍由既有 best-effort undo 处理（B12 基线不变量）。
+    """
+    for entry in journal.entries:
+        if entry.get("op_id") == op_id and entry.get("kind") == "begin":
+            return entry
+    return None
+
+
 def _cmd_undo(args: argparse.Namespace) -> int:
     router, _config = _build_router()
     op_id = args.op_id
+    # ADR 0005：台账登记过的 op（begin/end）只产补偿计划，执行归 integration
+    # skill；其余（legacy 写 entry、未知 op_id）走既有 best-effort undo 不变。
+    backend = _entry_backend_name(_ledger_begin_entry(router.journal, op_id))
+    if backend is not None:
+        from kgent.router.ledger import INTEGRATION_SKILL_BACKENDS, compensation_plan
+
+        if backend in INTEGRATION_SKILL_BACKENDS:
+            plan = compensation_plan(op_id, backends=router.backends, journal=router.journal)
+            if getattr(args, "json", False):
+                _json_out(plan)
+            else:
+                text = (
+                    f"{plan['status']}: {plan['plan']['mechanism']} via "
+                    f"{plan['integration_skill']}"
+                )
+                if plan["status"] == "rejected":
+                    text += f"\n  reason: {plan['reason']}"
+                _text_out(text)
+            return 0 if plan["status"] == "ok" else 1
     result = journal_undo(
         op_id, backends=router.backends, journal=router.journal, audit=router.audit
     )
