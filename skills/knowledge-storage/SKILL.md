@@ -167,8 +167,8 @@ Which? (a/b/c/d/no/edit)
 Execution follows one fixed sequence — routing decision, ledger, platform write, ledger close, read-back. The skill has already performed update-first search in Step 2, so don't use `kgent store` (which would search again), and never write platform content with `kgent create` / `kgent update` — those stay reserved for the kgent hosted backend (not yet implemented, ADR 0004).
 
 ```bash
-# 1. Routing decision (路由裁决) — read-only dry-run; the ruling must come back clean first
-kgent route --content "<content>" --backends <backend> --json
+# 1. Routing decision (路由裁决) — read-only; the ruling must come back clean first
+kgent route --dry-run --content "<content>" --backends <backend> --json
 
 # 2. Open the ledger (台账) — one entry per leg; the output carries the op_id
 kgent journal begin --operation <create|update> --backend <backend> \

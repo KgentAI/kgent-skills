@@ -1152,6 +1152,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_route.add_argument("--content", required=True)
     p_route.add_argument("--backends", default=None)
+    p_route.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        default=False,
+        help="Accepted for spec compatibility; route never writes (always a dry run)",
+    )
 
     # sync
     p_sync = sub.add_parser("sync", help="Sync / repair partial operations", parents=[common])

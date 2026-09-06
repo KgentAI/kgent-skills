@@ -108,8 +108,8 @@ When the user wants to set up a **wiki** or **knowledge base** on Lark (not just
 Run the same sequence per leg — the routing decision is shared, the ledger window and the platform write are per leg:
 
 ```bash
-# 1. Routing decision (路由裁决) — read-only dry-run, once for the whole setup
-kgent route --content "<content>" --backends lark,dingtalk --json
+# 1. Routing decision (路由裁决) — once for the whole setup
+kgent route --dry-run --content "<content>" --backends lark,dingtalk --json
 
 # 2-4. Per leg: open the ledger, write via that platform's integration skill, close the ledger
 kgent journal begin --operation create --backend lark --doc-uri "kgent://lark/new" --json

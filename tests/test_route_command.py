@@ -243,3 +243,16 @@ def test_route_unknown_backend_is_failure_not_policy(route_world):
 def test_route_requires_content():
     """--content 必填：缺省 → argparse usage error → main 映射 exit 1。"""
     assert main(["route"]) == 1
+
+
+def test_route_accepts_spec_dry_run_flag(route_world):
+    """spec 口径的 ``route --dry-run``：旗标被接受（恒真，route 从不写），rc==0。
+
+    文档/spec 一致地把裁决前调用写成 ``kgent route --dry-run``，agent 会原样
+    执行——CLI 必须认。旗标语义上恒真（route 本身只读），裁决行为不变。
+    """
+    rc, out = route_world(["lark"], content="team standup notes")
+    assert rc == 0
+    assert out["dry_run"] is True
+    # 同一裁决以 spec 写法重放（旗标置于子命令后，与文件头 --json 惯例同因）
+    assert main(["route", "--dry-run", "--content", "x", "--backends", "lark"]) == 0
