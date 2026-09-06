@@ -54,7 +54,7 @@ def test_begin_op_id_matches_global_format(journal):
 
 
 def test_begin_writes_snapshot_file_0600(journal, tmp_home):
-    """快照文件存在 + 内容逐字一致（FM5）；mode 断言见 ``test_begin_snapshot_mode_0600``。"""
+    """快照文件存在 + 内容逐字一致（FM5，全平台）；mode 断言见 ``test_begin_snapshot_file_0600_dir_0700``。"""
     entry = begin(journal, operation="update", backend="wecom",
                   target_uri="kgent://wecom/X", revision_before=3, content="秘密快照")
     snap = tmp_home / "journal" / "snapshots" / f"{entry['op_id']}.txt"
@@ -88,12 +88,16 @@ def test_end_records_revision_after_only_when_given(journal):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not representable on Windows")
-def test_begin_snapshot_mode_0600(journal, tmp_home):
-    """快照文件 0600（FM5）；POSIX 上才可断言 mode 位。"""
+def test_begin_snapshot_file_0600_dir_0700(journal, tmp_home):
+    """快照文件 0600 + 所在 snapshots 目录 0700（FM5）；POSIX 上才可断言 mode 位。
+
+    Windows 侧由 ``test_begin_writes_snapshot_file_0600`` 断言存在 + 内容一致。
+    """
     entry = begin(journal, operation="update", backend="wecom",
                   target_uri="kgent://wecom/X", revision_before=3, content="秘密快照")
     snap = tmp_home / "journal" / "snapshots" / f"{entry['op_id']}.txt"
     assert stat.S_IMODE(snap.stat().st_mode) == 0o600
+    assert stat.S_IMODE(snap.parent.stat().st_mode) == 0o700
 
 
 def test_strict_load_raises_on_corrupt_line(tmp_home):

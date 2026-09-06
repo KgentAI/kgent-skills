@@ -75,6 +75,10 @@ def begin(
     if content is not None:
         path = _snapshot_path(journal, op_id)
         path.parent.mkdir(parents=True, exist_ok=True)
+        # FM5: 快照目录也收紧到 0700（mkdir 的默认 mode 不够紧；mkdir 已存在时
+        # 顺带把既有目录一并收紧，与 Journal._ensure_permissions 同哲学）。
+        # POSIX only；Windows 上为无害 no-op。
+        os.chmod(path.parent, 0o700)
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(content)
