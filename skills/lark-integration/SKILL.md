@@ -92,7 +92,7 @@ An update-first match that resolves to a bitable or sheet is a record-write targ
 
 Lark 的 undo 补偿机制是 `docs +history-revert`。流程：
 
-1. `kgent undo <op_id> --json` 取补偿计划（`plan.mechanism == "history-revert"`；
+1. `kgent undo <op_id> --json` 取补偿计划（`plan.plan.mechanism == "history-revert"`；
    `status == "rejected"` 时停止——文档在写后有并发编辑，禁止回滚）。
 2. `lark-cli docs +history-list --doc <token> --json` 定位
    `plan.plan.revision_before` 对应的 `history_version_id`。
