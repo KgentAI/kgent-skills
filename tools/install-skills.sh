@@ -291,6 +291,7 @@ verify() {
   fi
   if [ "$ok" -eq 1 ]; then
     echo "install OK"
+echo "verify: bash tools/artifact-smoke.sh  (install OK does not check freshness - see the 2026-09-06 uv cache incident)"
   else
     echo "install FAILED" >&2
   fi

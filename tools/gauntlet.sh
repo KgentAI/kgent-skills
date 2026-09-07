@@ -9,6 +9,12 @@ elif [ -x ".venv/bin/python" ]; then
   export PATH="$PWD/.venv/bin:$PATH"
 fi
 
+echo "== artifact smoke (installed CLI surface — layer A) =="
+# Hard gate: the installed artifact (what users run) must expose the full
+# documented surface, independent of the green source-level suite below.
+# 2026-09-06: PATH kgent lacked route/journal while the suite was green.
+bash tools/artifact-smoke.sh
+
 echo "== clean =="
 rm -rf .coverage coverage.xml htmlcov .pytest_cache .mypy_cache .ruff_cache build dist
 

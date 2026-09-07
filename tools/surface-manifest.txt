@@ -1,0 +1,20 @@
+# Installed-artifact surface contract: every line must parse via `kgent <line>`.
+# tools/artifact-smoke.sh iterates this file (fail closed on any miss).
+# Keep in sync when adding subcommands — a stale manifest defeats the gate.
+route --help
+journal begin --help
+journal end --help
+undo --help
+audit --help
+sync --help
+search --help
+read --help
+create --help
+update --help
+store --help
+delete --help
+archive --help
+unarchive --help
+wiki spaces list --help
+wiki spaces create --help
+doctor --help
