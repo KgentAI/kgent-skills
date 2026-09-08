@@ -107,11 +107,11 @@
     },
     {
       "id": 7,
-      "prompt": "Add these notes to the API Guidelines doc.",
-      "expected_output": "The skill should search for 'API Guidelines', find it, and propose UPDATE. If multiple matches exist (e.g., on different backends), offer per-copy options.",
+      "prompt": "Add these notes to the Password Rotation Policy doc.",
+      "expected_output": "The skill should search for 'Password Rotation Policy' (密码轮换策略), find the existing wiki doc, and propose UPDATE. If multiple matches exist (e.g., on different backends), offer per-copy options. Fixture note: the target must be a doc that actually exists in the tenant — an earlier 'API Guidelines' premise here pointed at a nonexistent doc, driving the agent into the CREATE path and leaving a stray eval-created doc in the tenant (cleaned up 2026-09-07).",
       "files": [],
       "expectations": [
-        "The skill searches for 'API Guidelines' before proposing anything",
+        "The skill searches for 'Password Rotation Policy' before proposing anything",
         "The skill proposes UPDATE (not CREATE) since a matching doc exists",
         "If multiple matches exist, the skill offers per-copy options (update all / update specific / create new)",
         "The proposal clearly names the existing document(s) found",

@@ -9,3 +9,6 @@ htmlcov
 skills-workspace/
 build/
 dist/
+evals/transcripts/
+*.tmp.md
+coverage.xml
