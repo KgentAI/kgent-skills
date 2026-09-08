@@ -5,8 +5,9 @@
   工作项 1（SKILL.md 契约）、2（DOC_FILES）、3（evals fixture 回装）、
   4（B6/B8/B11）、5（EVIDENCE + agent evals）
 - **Tier:** 3（数据丢失域；失败模型 FM1–FM10 见母 spec）
-- **Source state:** commit `6431ddc`（分支 `feat/dingtalk-integration`，自
-  phase2-phase3-handoff @ `2c3bcd7` 切出；Task 7 新增两个收尾 commit 见 §3）
+- **Source state:** commit `ca6ba40` + `tools/gauntlet.sh` 的 diff-cover 显式门
+  `--fail-under 100`（与 EVIDENCE 同 commit 落盘；分支 `feat/dingtalk-integration`，
+  自 phase2-phase3-handoff @ `2c3bcd7` 切出；Task 7 新增收尾 commit 见 §3）
 - **Fresh run:** 2026-09-08，`bash tools/gauntlet.sh` → **GAUNTLET PASS（EXIT=0）**，
   本文件全部数字来自该次运行（最后一次代码编辑之后）
 - **Environment:** Windows 11 + Git Bash；`.venv` Python 3.12；dws
@@ -48,10 +49,10 @@ runbook（`DWS_PROBE_CONFIRM=yes` 确认门协议）。
 | 层 | 命令（tools/gauntlet.sh 内） | 结果 |
 |---|---|---|
 | 工件冒烟 | `bash tools/artifact-smoke.sh` | **17/17 surface probes passed**（装机 CLI 面，含 `kgent undo --help`） |
-| 全套测试 | `coverage run -m pytest -p no:randomly` | **579 passed, 6 skipped, 0 failed**（247.12s） |
+| 全套测试 | `coverage run -m pytest -p no:randomly` | **579 passed, 6 skipped, 0 failed**（243.08s） |
 | 随机序复核 | `.venv/Scripts/python.exe -m pytest tests -q`（不关 randomly） | **579 passed, 6 skipped, 0 failed**（254.49s，与固定序总数一致，EXIT=0） |
 | skip 构成 | `-rs` 单独核实 | 3 × POSIX mode-bit（`test_local_state.py:95`、`test_local_state.py:397`、`test_ledger.py:99`）+ 3 × dingtalk e2e 凭据门（`tests/e2e/test_dingtalk_undo_real.py:652/702/751`，reason `real-machine probe: dws identity unavailable (credentials blocked, 见 EVIDENCE)`） |
-| 变更行覆盖 | `diff-cover coverage.xml --diff-file <(git diff origin/main...HEAD)` | **Total 101 lines / Missing 0（100%）**——本分支唯一 src 变更文件 `src/kgent/adapters/dingtalk.py` |
+| 变更行覆盖 | `diff-cover coverage.xml --diff-file .diff-cover.diff --fail-under 100` | **Total 101 lines / Missing 0（100%）**——本分支唯一 src 变更文件 `src/kgent/adapters/dingtalk.py`。该门 2026-09-08 起为**显式硬门**（`--fail-under 100` + 双层负控，见 §3）；此前裸调用在任何覆盖率下都退 0 |
 | 静态类型 | `mypy src`（strict） | **Success: no issues found in 52 source files** |
 | 属性测试 | `pytest tests/properties -v` | **16 passed** |
 | 对抗通过 | `pytest tests/adversarial -v` | **39 passed**（prompt/string injection、模板/SQL/XSS 载荷） |
@@ -75,15 +76,37 @@ test-only 修复（产品代码零改动）：
 | `b861461` | `tests/test_dingtalk_adapter.py` 补 4 条：退出 0 但 stdout 非 JSON / 非 JSON 对象 → AdapterError；envelope `ok:false` → AdapterError；类型字段 `axls`（无 URL）→ `doc` + 类型字段缺失落 `workspaceId` 容器事实 → `wiki_node`；非 dict 命中段跳过 + rank 非 int 落 0。另把 Task 3 写下的两处既有行折叠为 ruff format 规范形（`format --check` 归零） |
 | `6431ddc` | `tests/test_agent_evals_runner.py`（Task 4 新增文件）归 ruff format 规范形（docstring 后空行 + 长参数列表折叠），断言零改动 |
 
-**修复后重跑 fresh run（§2 全部数字来自这次）**：diff-cover 100%（101/0）、
-`ruff format` 13 files（对照 origin/main 逐文件核实，13 件全部为既有债——
-`tests/test_docs_conformance.py` 与 `tools/run-agent-evals.py` 在 origin/main
-上即已 unformatted）。
+**修复后重跑 fresh run**：diff-cover 100%（101/0）、`ruff format` 13 files（对照
+origin/main 逐文件核实，13 件全部为既有债——`tests/test_docs_conformance.py` 与
+`tools/run-agent-evals.py` 在 origin/main 上即已 unformatted）。此时 diff-cover 层
+仍是「数字对、门不咬」状态——最终数字由 §3.1 的显式门 fresh run 提供。
 
-**结构层教训（给 gauntlet 的后续债）**：lint 层因 2026-09-06 的裁决已是
-显式 report-only，而 diff-cover 层名义上是硬 gate、实际被工具退出码假绿——
-建议给 gauntlet 补 `diff-cover ... --fail-under 100` 的显式校验或对 stderr 做
-`Missing: 0` 断言（Phase 1 已提过同款建议，未落地，本轮是第二次被它漏过）。
+### 3.1 Fix round（控制器裁决，2026-09-08）：diff-cover 显式门 + 负控
+
+**根因定谳（修正 Phase 1 的归因）**：假绿不是「diff-cover 9.x 的 <100% 退 0」这种
+版本行为，而是 `--fail-under` 的**缺省值是 0**（diff-cover 10.5.1
+`diff_cover_tool.py` arg_dict `"fail_under": 0` → `percent_covered >= 0` 恒真 →
+exit 0）。gauntlet 旧注释「exits non-zero below --fail-under (default 100)」里的
+default 100 是错的——**裸调用在任何覆盖率下都退 0**。修复：gauntlet 的 diff-cover
+行改为 `diff-cover coverage.xml --diff-file .diff-cover.diff --fail-under 100`。
+
+**负控（杀假绿必须目睹它失败，两层）**：
+
+| 层 | 场景 | 结果 |
+|---|---|---|
+| 门命令层 | 人造 diff：`src/kgent/cli.py` 第 104 行（coverage.xml 实测 `hits="0"` 的未覆盖语句）被构造成合法 hunk 的新增行；同一份 coverage.xml 跑两次 | **裸调用（旧门）**：打印 `Coverage: 0% / Missing 1` → **EXIT=0**（假绿复现）；**`--fail-under 100`（新门）**：打印 `Failure. Coverage is below 100%.` → **EXIT=1** |
+| 整闸层 | 临时 commit 一个从未被调用的函数（`f37e80d`，真实 `git diff origin/main...HEAD` 含真实未覆盖行，mypy/ruff 全清）→ 跑**未改动的真实 gauntlet** | diff-cover 层打印 `Failure. Coverage is below 100%.`（**103 行 / Missing 1 / 99%**）→ `set -e` 当场中止，**EXIT=1、无 `GAUNTLET PASS`**（log：`task-7-negative-control-gauntlet.log`） |
+
+见败后 `git reset --hard HEAD~1` 还原临时 commit，重跑真 gauntlet → **PASS（EXIT=0，
+101/0）**，即 §2 的最终数字。log 存档：`task-7-gauntlet-final.log`（PASS）与
+`task-7-negative-control-gauntlet.log`（FAIL 侧证）。
+
+**负控过程中发现的残余盲区（如实记录，非门失效）**：diff-cover 只统计
+coverage.xml 里**存在的行**——本仓 coverage 配置为 `source = ["kgent"]`，所以
+`tests/`、`tools/`、`specs/`、`skills/` 的变更行对该门**结构性不可见**（Total 101
+= 仅 `adapters/dingtalk.py` 即为证据；合成行落在被测文件行号范围之外时同样计 0，
+报告打「No lines with coverage information」并退 0）。该门保的是「src/kgent 变更行
+100%」，不保测试/文档行的覆盖叙事。
 
 ## 4. 验收标准 → 测试映射（B6 / B8 / B11 + 接线清单）
 
@@ -157,8 +180,10 @@ platform-via-integration-evals --timeout 600 --force`（transcript 已存在 →
    `workspaceId` 键名——若真机键名不符，判型退化为全 `doc`（不误判成
    `wiki_node`，fail-safe 方向正确）；Task 6 已派发「真机补捕时加一条知识库 hit
    断言」的指针。
-7. **diff-cover 9.x 退出码假绿**：`<100%` 也退 0，GAUNTLET EXIT 0 不单独构成
-   100% 证据——本轮数字为人工核对 log（101/0），并建议 gauntlet 落地显式校验（§3）。
+7. **diff-cover 假绿已闭合（2026-09-08 fix round）**：根因是 `--fail-under` 缺省
+   0（非注释声称的 100），裸调用任何覆盖率都退 0——已加 `--fail-under 100` 并以
+   双层负控证实门会咬人（§3.1）。残余边界：该门只覆盖 `source = ["kgent"]` 的
+   测量范围，tests/tools/specs 变更行结构性不可见（§3.1 末段）。
 
 ## 7. 跳过/受限层（带理由）
 
