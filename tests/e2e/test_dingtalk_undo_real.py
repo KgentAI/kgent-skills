@@ -127,6 +127,8 @@ KGENT_TIMEOUT_SECONDS = 120
 
 #: teardown 删除失败的探针 DOC_ID（供 session 末重试 + 人工清理提示）
 _leftover_probes: list[str] = []
+#: 已成功删除的探针 DOC_ID（``_teardown`` 幂等短路，见其 docstring）
+_cleaned_probes: set[str] = set()
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +287,11 @@ def _extract_data(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _extract_doc_id(payload: dict[str, Any]) -> str:
     """``doc +create`` 响应里的 DOC_ID。文档化形状 ``data.nodeId``
-    （FIXTURES-NOTE：doc-create.md 实例）。"""
+    （FIXTURES-NOTE：doc-create.md 实例）。
+
+    四候选键全落空时探针**已被创建**但 id 解析不出——teardown 无法点名它，失败
+    消息必须带按标题定位的人工清理路径（teardown 保证的唯一漏洞口）。
+    """
     block = _extract_data(payload) or payload
     for key in ("nodeId", "id", "docId", "node_id"):
         value = block.get(key)
@@ -294,7 +300,10 @@ def _extract_doc_id(payload: dict[str, Any]) -> str:
     raise AssertionError(
         "doc +create response has no document id under known keys "
         "(nodeId/id/docId/node_id) — capture the payload and pin this anchor "
-        f"(tests/fixtures/dws/FIXTURES-NOTE.md): {json.dumps(payload, ensure_ascii=False)[:800]}"
+        f"(tests/fixtures/dws/FIXTURES-NOTE.md): {json.dumps(payload, ensure_ascii=False)[:800]}. "
+        "MANUAL CLEANUP: the probe doc WAS created but its id is unknown — locate it "
+        "by title: dws drive +find-file --query kgent-phase2-probe -f json, then "
+        "dws drive +delete --node <dentryUuid> -f json"
     )
 
 
@@ -412,10 +421,21 @@ def _delete_probe(doc_id: str) -> bool:
 
 
 def _teardown(doc_id: str) -> None:
-    """``finally`` 必删；失败把 DOC_ID 点名进输出 + session 末重试。"""
-    if _delete_probe(doc_id):
+    """``finally`` 必删；失败把 DOC_ID 点名进输出 + session 末重试。
+
+    幂等：``_journaled_update`` 在 doc_id 到手后自带一层 except-teardown（覆盖
+    create→journal end 全前缀），调用方的 ``finally`` 会再调一次——已删成功就
+    直接短路，避免把已删探针误报成 leftover。
+    """
+    if doc_id in _cleaned_probes:
         return
-    _leftover_probes.append(doc_id)
+    if _delete_probe(doc_id):
+        _cleaned_probes.add(doc_id)
+        if doc_id in _leftover_probes:
+            _leftover_probes.remove(doc_id)
+        return
+    if doc_id not in _leftover_probes:
+        _leftover_probes.append(doc_id)
     print(
         f"TEARDOWN FAILED: probe doc {doc_id} still exists - delete manually via the "
         "drive domain: dws drive +find-file --query kgent-phase2-probe -f json -> "
@@ -430,6 +450,12 @@ def _journaled_update(tmp_dir: Path) -> tuple[str, str, int, int]:
     ``doc +update --command overwrite --doc-format jsonml --expected-revision``
     ——服务端原子条件写仅此组合生效（PROBE-NOTES §1.1；dingtalk-integration
     skill Write 节同款命令形状），内容经 ``@file`` 临时文件（不走 argv 内联）。
+
+    teardown 保证覆盖 **create 之后的全部前缀**（revision 读取、
+    ``revision_before is None`` 断言、journal begin/end、条件写）：doc_id 一到手
+    就进 except-teardown——这里的任何失败若不删探针，调用方的 ``finally``
+    根本拿不到 doc_id，探针就孤儿化了（FIXTURES-NOTE 冲突点 1 未定谳，「create
+    响应/fetch 均无 revision」是现实分支，不是假想）。
     """
     rel_before = _write_markdown(tmp_dir, "probe-before.md", CONTENT_A)
     created = _dws(
@@ -443,69 +469,76 @@ def _journaled_update(tmp_dir: Path) -> tuple[str, str, int, int]:
         cwd=tmp_dir,
     )
     doc_id = _extract_doc_id(created)
-    revision_before = _extract_revision(created)
-    channel = "create response"
-    if revision_before is None:
-        # create 响应的 revision 字段路径 PENDING（FIXTURES-NOTE 冲突点 1）→
-        # 回退读车道（fetch 的 data.revision 锚点）；取数通道打进 evidence。
-        fetched = _dws(*CMD_FETCH, FLAG_NODE, doc_id)
-        revision_before = _extract_revision(fetched)
-        channel = "doc +fetch"
-    assert revision_before is not None, (
-        "no revision from create response or doc +fetch — 台账开账没有写前版本可记"
-    )
+    try:
+        revision_before = _extract_revision(created)
+        channel = "create response"
+        if revision_before is None:
+            # create 响应的 revision 字段路径 PENDING（FIXTURES-NOTE 冲突点 1）→
+            # 回退读车道（fetch 的 data.revision 锚点）；取数通道打进 evidence。
+            fetched = _dws(*CMD_FETCH, FLAG_NODE, doc_id)
+            revision_before = _extract_revision(fetched)
+            channel = "doc +fetch"
+        assert revision_before is not None, (
+            "no revision from create response or doc +fetch — 台账开账没有写前版本可记"
+        )
 
-    begin = _kgent_json(
-        "journal",
-        "begin",
-        "--operation",
-        "update",
-        "--backend",
-        "dingtalk",
-        "--doc-uri",
-        f"kgent://dingtalk/{doc_id}",
-        "--revision-before",
-        str(revision_before),
-        "--snapshot-content",
-        CONTENT_A,
-    )
-    op_id = begin["entry"]["op_id"]
+        begin = _kgent_json(
+            "journal",
+            "begin",
+            "--operation",
+            "update",
+            "--backend",
+            "dingtalk",
+            "--doc-uri",
+            f"kgent://dingtalk/{doc_id}",
+            "--revision-before",
+            str(revision_before),
+            "--snapshot-content",
+            CONTENT_A,
+        )
+        op_id = begin["entry"]["op_id"]
 
-    rel_after = _write_jsonml(tmp_dir, "probe-after.jsonml", CONTENT_B)
-    updated = _dws(
-        *CMD_UPDATE,
-        FLAG_NODE,
-        doc_id,
-        FLAG_COMMAND,
-        UPDATE_OVERWRITE,
-        FLAG_DOC_FORMAT,
-        DOC_FORMAT_JSONML,
-        FLAG_CONTENT,
-        f"@{rel_after}",
-        FLAG_EXPECTED_REVISION,
-        str(revision_before),
-        cwd=tmp_dir,
-    )
-    revision_after = _extract_revision(updated)
-    if revision_after is None:
-        revision_after = _extract_revision(_dws(*CMD_FETCH, FLAG_NODE, doc_id))
-    assert revision_after is not None, "no revision after dws doc +update — 落账没有写后版本可记"
-    assert revision_after > revision_before, (
-        f"revision did not advance on the journaled write: "
-        f"before={revision_before} after={revision_after}"
-    )
+        rel_after = _write_jsonml(tmp_dir, "probe-after.jsonml", CONTENT_B)
+        updated = _dws(
+            *CMD_UPDATE,
+            FLAG_NODE,
+            doc_id,
+            FLAG_COMMAND,
+            UPDATE_OVERWRITE,
+            FLAG_DOC_FORMAT,
+            DOC_FORMAT_JSONML,
+            FLAG_CONTENT,
+            f"@{rel_after}",
+            FLAG_EXPECTED_REVISION,
+            str(revision_before),
+            cwd=tmp_dir,
+        )
+        revision_after = _extract_revision(updated)
+        if revision_after is None:
+            revision_after = _extract_revision(_dws(*CMD_FETCH, FLAG_NODE, doc_id))
+        assert revision_after is not None, (
+            "no revision after dws doc +update — 落账没有写后版本可记"
+        )
+        assert revision_after > revision_before, (
+            f"revision did not advance on the journaled write: "
+            f"before={revision_before} after={revision_after}"
+        )
 
-    end = _kgent_json(
-        "journal",
-        "end",
-        "--op-id",
-        op_id,
-        "--status",
-        "ok",
-        "--revision-after",
-        str(revision_after),
-    )
-    assert end["entry"]["status"] == "ok"
+        end = _kgent_json(
+            "journal",
+            "end",
+            "--op-id",
+            op_id,
+            "--status",
+            "ok",
+            "--revision-after",
+            str(revision_after),
+        )
+        assert end["entry"]["status"] == "ok"
+    except BaseException:
+        # 断言/KeyboardInterrupt/SystemExit 一视同仁：探针不留给真机租户。
+        _teardown(doc_id)
+        raise
     print(
         f"[kgent-phase2-probe] revision_before={revision_before} (from {channel}) "
         f"revision_after={revision_after}"
@@ -576,17 +609,18 @@ def _poll_content(doc_id: str, needle: str) -> dict[str, Any]:
 def _dws_identity_available() -> bool:
     """dws 已装且已登录（``dws auth status -f json`` → ``authenticated: true``）。
 
-    本地探测，无网络写副作用；未装 dws 时不起子进程（CI → skip）。非零退出、
-    非 JSON、键缺失一律按「凭据不可用」处理（fail-closed）。
+    解析**复用** :func:`_dws_cmd`（含 ``DWS_BIN`` override 与 win32 ``dws.cmd``
+    规则）——门与探针看到的必须是同一个二进制，否则会出现「DWS_BIN 指向已认证
+    二进制、PATH 上却无 dws → 探针能跑、门误 skip」的分裂。``_dws_cmd`` 解析
+    落空时返回兜底裸名（cwd 相对路径必不存在）→ 未装，不起子进程（CI → skip）。
+    非零退出、非 JSON、键缺失一律按「凭据不可用」处理（fail-closed）。
     """
-    resolved = shutil.which("dws.cmd") if sys.platform == "win32" else None
-    if resolved is None:
-        resolved = shutil.which("dws")
-    if resolved is None:
+    cmd = _dws_cmd()
+    if not Path(cmd[0]).exists():
         return False
     try:
         out = subprocess.run(
-            [resolved, "auth", "status", "-f", "json"],
+            [*cmd, "auth", "status", "-f", "json"],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -646,8 +680,11 @@ def test_b8_content_integrity(tmp_path):
         ):
             assert needle in rendered, f"B8 content lost {needle!r}; fetched={rendered[:600]}"
         # 换行保真只在正文上断言（JSON 序列化会把 \n 转义，rendered 上断不到）。
+        # 失败消息同时带 content 与 rendered payload——键位漂移（data.content 落
+        # 空）时也能从消息里读出正文到底去了哪个字段。
         assert "❤️🎉" in content and "与多行\n换行内容" in content, (
-            f"B8 data.content lost emoji/newline fidelity: {content[:400]!r}"
+            f"B8 data.content lost emoji/newline fidelity: content={content[:400]!r} "
+            f"rendered={rendered[:600]}"
         )
         print(
             f"[kgent-phase2-probe] B8 revision={_extract_revision(fetched)} "
