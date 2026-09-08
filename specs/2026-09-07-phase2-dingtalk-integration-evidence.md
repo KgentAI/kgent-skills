@@ -60,7 +60,7 @@ runbook（`DWS_PROBE_CONFIRM=yes` 确认门协议）。
 | 变异 | `mutmut run` / `tools/mutants.py` 兜底 | **report-only no-op**：mutmut 在原生 Windows 拒跑（boxed/mutmut#397），`tools/mutants.py` **本轮无 Phase 2 注册项**——零 mutant 投入，如实记录（非"已做变异"） |
 | Secret scan | gauntlet 内建负控 | pass |
 | 网络捕获（N14） | fixture 强制 | pass |
-| Lint + format | `ruff check src tests` + `ruff format --check` | **report-only（显式降级裁决，Phase 1 起）**：`ruff check` 40 errors / `ruff format` 13 files would be reformatted——**逐文件与 origin/main 对照核实：0 处在本 PR 触碰文件**（本 PR 新增文件 `test_dingtalk_adapter.py`、`test_dingtalk_undo_real.py`、`fake_cli.py`、`adapters/dingtalk.py`、`test_agent_evals_runner.py` 五件全部 clean；对照表见 §3）。恢复方法在 tools/gauntlet.sh 头注释 |
+| Lint + format | `ruff check src tests` + `ruff format --check` | **report-only（显式降级裁决，Phase 1 起）**：`ruff check` 40 errors（逐文件对照 origin/main：**0 处在本 PR 触碰文件**）；`ruff format` 13 files would be reformatted（其中本 PR **新增**文件 **0** 件——`test_dingtalk_adapter.py`、`test_dingtalk_undo_real.py`、`fake_cli.py`、`adapters/dingtalk.py`、`test_agent_evals_runner.py` 五件全部 clean；PR 触碰的 `test_docs_conformance.py` / `run-agent-evals.py` 两件在 origin/main 上即已 unformatted，属既有债，对照见 §3）。恢复方法在 tools/gauntlet.sh 头注释 |
 
 ## 3. Task 7 收尾修复（gauntlet 首轮发现的假绿，两笔 test-only commit）
 
@@ -166,8 +166,9 @@ platform-via-integration-evals --timeout 600 --force`（transcript 已存在 →
   本轮零 mutant 投入（report-only，如实记录）。Phase 1 手工 mutant 轮（10 投 9 杀）
   覆盖的是共享的台账/补偿分流逻辑，本轮未新增同类分支；Phase 2 新代码以变更行
   100%（§2）+ S65 矩阵 + 真机载体代替。
-- **lint 硬 gate**：baseline 债 40 errors / 13 files 清偿属范围外（0 处在本 PR
-  触碰文件，逐文件对照 origin/main 核实），显式降级 report-only。
+- **lint 硬 gate**：baseline 债 40 errors / 13 files 清偿属范围外（ruff errors
+  0 处在本 PR 触碰文件；format 13 件中本 PR 新增 0 件——对照见 §3），显式降级
+  report-only。
 - **B6/B8/B11 真机**：凭据永久阻塞（§0，维护者裁决）；e2e 载体与 fixture 层已就位。
 - **DingTalk agent evals**：同上，四条 skipped（§5）。
 - **CI 跑真机 e2e**：无凭据环境用 `-m "not real"` 屏蔽；lark 探针建点异步实测
