@@ -75,7 +75,7 @@ def heuristic_grade(expectations: list[str], transcript: str) -> tuple[int, list
     for exp in expectations:
         needles = [n for n in re.findall(r"`([^`]+)`", exp) if not re.fullmatch(r"\d+", n)]
         if not needles:
-            needles = re.findall(r"https?://\S+|lark-integration|journal begin|journal end", exp)
+            needles = re.findall(r"https?://\S+|(?:lark|dingtalk|wecom)-integration|journal begin|journal end", exp)
         if not needles:
             manual += 1  # 无词面证据可查的 prose 断言——0 分是评分盲区，交人工复核
             continue
@@ -182,13 +182,19 @@ def main() -> int:
             argv = ["claude", "-p", prompt, "--output-format", "text"]
             if cont:
                 argv.append("--continue")
-            # eval 要真实执行 skill 流：只放行 kgent/lark-cli 与本地文件工具
-            argv += ["--allowedTools", "Bash(kgent:*)", "Bash(lark-cli:*)",
+            # eval 要真实执行 skill 流：只放行 kgent/lark-cli/dws 与本地文件工具
+            argv += ["--allowedTools", "Bash(kgent:*)", "Bash(lark-cli:*)", "Bash(dws:*)",
                      "Bash(dir:*)", "Read", "Write", "Edit"]
-            done = subprocess.run(
-                argv, capture_output=True, text=True, encoding="utf-8",
-                timeout=args.timeout, cwd=str(REPO),
-            )
+            try:
+                done = subprocess.run(
+                    argv, capture_output=True, text=True, encoding="utf-8",
+                    timeout=args.timeout, cwd=str(REPO),
+                )
+            except subprocess.TimeoutExpired as exc:
+                partial = exc.stdout or b""
+                if isinstance(partial, bytes):
+                    partial = partial.decode("utf-8", errors="replace")
+                return f"{partial}\n[turn timed out after {args.timeout}s — output truncated]".lstrip()
             return done.stdout or done.stderr
 
         parts = [claude(entry["prompt"])]

@@ -75,7 +75,7 @@ Important details to include:
 
 - Operation type per leg (CREATE or UPDATE)
 - Target backend per leg
-- Native platform URL (not the `kgent://` URI) — for Lark legs, with the Lark backend enabled, invoke the `lark-integration` skill and convert per its URL construction table; for DingTalk/WeCom legs, show the platform console URL format
+- Native platform URL (not the `kgent://` URI) — for Lark legs, with the Lark backend enabled, invoke the `lark-integration` skill and convert per its URL construction table; for DingTalk legs, with the DingTalk backend enabled, invoke the `dingtalk-integration` skill and convert per its Native URL table; for WeCom legs, show the admin console URL format
 
 ### Lark Wiki (Knowledge Space) Integration
 
@@ -140,7 +140,7 @@ Show per-leg results:
 Wiki setup complete:
 
   ✅ "Team Wiki" → https://mycompany.larksuite.com/docx/abc123
-  ✅ "External Docs" → https://open.dingtalk.com/document/...
+  ✅ "External Docs" → https://alidocs.dingtalk.com/i/nodes/ext987
   ❌ "API Guide" → failed: version conflict (expected v17, found v19)
 
 Op ID: <op_id> per leg
@@ -196,7 +196,7 @@ Skill:
 7. Report:
    "✅ Wiki setup complete:
     - 'Welcome' → https://mycompany.larksuite.com/docx/abc123
-    - 'Partner Guide' → https://open.dingtalk.com/document/xyz789
+    - 'Partner Guide' → https://alidocs.dingtalk.com/i/nodes/xyz789
     Op IDs: one per leg (undo a leg via: kgent undo <op_id>)"
 ```
 
@@ -233,7 +233,7 @@ Skill:
 5. Report:
    "Wiki setup partial:
     ✅ 'Docs' → https://mycompany.larksuite.com/docx/abc123
-    ✅ 'Docs' → https://open.dingtalk.com/document/xyz789
+    ✅ 'Docs' → https://alidocs.dingtalk.com/i/nodes/xyz789
     ❌ wecom: backend timed out
 
     Op IDs: one per leg

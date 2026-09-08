@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "status": "success",
+  "complete": true,
+  "count": 3,
+  "hasMore": false,
+  "failures": [],
+  "items": [
+    {
+      "nodeId": "mXk4Qw7bZnVc2yPq8RtJeH",
+      "title": "kgent-phase2-probe 使用手册",
+      "url": "https://alidocs.dingtalk.com/i/nodes/mXk4Qw7bZnVc2yPq8RtJeH",
+      "type": "adoc",
+      "snippet": "kgent-phase2-probe 读车道验收正文：probe body line for payload capture.",
+      "rank": 1
+    },
+    {
+      "nodeId": "wS6dGv2kJh9nMx4pLq8bTr",
+      "title": "kgent-phase2-probe 知识库副本",
+      "url": "https://alidocs.dingtalk.com/i/nodes/wS6dGv2kJh9nMx4pLq8bTr",
+      "type": "adoc",
+      "workspaceId": "ws7894561230",
+      "snippet": "知识库（workspace）内的同主题文档，probe body line for payload capture.",
+      "rank": 2
+    },
+    {
+      "nodeId": "dE3fUy8sKa5mNo2iGt7cXw",
+      "title": "kgent-phase2-probe 数据表",
+      "url": "https://alidocs.dingtalk.com/spreadsheetv2/dE3fUy8sKa5mNo2iGt7cXw/edit?dentryKey=dE3fUy8sKa5mNo2iGt7cXw&type=s",
+      "type": "axls",
+      "snippet": "非文字文档产品（在线电子表格），probe body line for payload capture.",
+      "rank": 3
+    }
+  ]
+}

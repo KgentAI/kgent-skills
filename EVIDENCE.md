@@ -324,3 +324,15 @@ Implementation is production-ready for kgent packaging.
 
 **Reproduce**: 仓库根 `bash tools/gauntlet.sh`；真机 e2e 需 lark 凭据（CI 用 `-m "not real"` 屏蔽）。
 
+---
+
+# Evidence Addendum — Phase 2: dingtalk-integration 2026-09-08
+
+**Status**: ✅ GAUNTLET PASS（EXIT=0）— 579 passed / 0 failed / 6 skipped（3 POSIX mode-bit + 3 dingtalk e2e 凭据门）；diff-cover 变更行 100%（101/0）——该门已显式化：diff-cover 的 `--fail-under` **缺省是 0**（非旧注释声称的 100），裸调用任何覆盖率都退 0；2026-09-08 fix round 给 gauntlet 加 `--fail-under 100` 并以双层负控证实门会咬人（人造 diff：裸调用 exit 0 vs 显式门 exit 1；临时未覆盖行使真 gauntlet EXIT=1、无 GAUNTLET PASS，还原后重跑 PASS）；mypy strict 0 错（52 files）；真机 lark e2e undo 闭环 PASS（rev 3→5→history-revert→6，0 遗留）。**凭据阻塞如实声明**：B6/B8 真机闭环 blocked（无可用钉钉账号，维护者 2026-09-08 裁决——dws e2e 载体 3 skipped，stub dry-run 全链 PASS 作替代实证）；B11 为 fixture 级验证（payload 形状 documented-not-captured，见 `tests/fixtures/dws/FIXTURES-NOTE.md`）；DingTalk 条目 agent evals 四条全 skipped；skill 层端到端冒烟改跑纯 lark 腿 `platform-via-integration-1`（真实写 lark，链路抽读证实，租户已还原到写前快照逐字节一致）。
+
+**Scope**: handoff spec（`specs/2026-09-07-phase2-phase3-handoff.md` §Phase 2，母 spec v3 approved 的工作项 1–5）——`skills/dingtalk-integration/SKILL.md`（The Gate/Search 判型/Read/Write journal 纪律/Undo `doc +version-revert` 补偿/Native URL/Known Limitations）、`DOC_FILES` 追加（conformance 43 条候选 / 39 条命令示例对真实 `--help` 校验）、adapter 读车道接真 dws（`adapters/dingtalk.py`：`doc +fetch` revision→`metadata.version`、`doc +search` node_type 只消费服务端事实，键位集中在 `_extract_*` 对账锚点）、evals fixture 回装（knowledge-storage id3/id4、wiki-setup id1/id2，dry 24 条）、B6/B8 真机 e2e 载体 + runner 修复 + dws 真值探针 fixtures。
+
+**Full report**: [`specs/2026-09-07-phase2-dingtalk-integration-evidence.md`](specs/2026-09-07-phase2-dingtalk-integration-evidence.md)（fresh-run 逐层数字、B6/B8/B11 → 测试映射、凭据阻塞声明、Task 7 收尾修复（diff-cover 假绿 92%→100% + 新增文件 format 债清零 + `--fail-under 100` 显式门与双层负控）、已知限制（command-index 过期、原生 URL PENDING、dws `.cmd` shim、`DWS_PROBE_CONFIRM` 确认门协议、payload 键位 PENDING 清单）、deferred minors 25 条全清单）
+
+**Reproduce**: 仓库根 `bash tools/gauntlet.sh`；agent evals：`python tools/run-agent-evals.py --execute --file platform-via-integration-evals --timeout 600`；真机 dingtalk e2e 待凭据（`DWS_PROBE_CONFIRM=yes` runbook 在 full report §0/§9）。
+

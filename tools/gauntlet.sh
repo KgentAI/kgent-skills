@@ -28,10 +28,14 @@ coverage xml
 
 echo "== changed lines (diff-cover) =="
 # Gate: 100% of the lines this branch changed (merge-base diff). diff-cover
-# exits non-zero below --fail-under (default 100), which set -e turns into a
-# gauntlet failure.
+# exits non-zero below --fail-under, which set -e turns into a gauntlet failure.
+# 2026-09-08: --fail-under is REQUIRED here — the default is 0, not 100
+# (diff_cover_tool.py `arg_dict` default), so a bare `diff-cover` call is a
+# false green at ANY coverage. Negative control (task-7 fix round): a synthetic
+# diff with uncovered lines made the bare call exit 0 and this flag exit 1
+# (plus a full-gauntlet FAIL via a temporarily committed uncovered function).
 git diff origin/main...HEAD > .diff-cover.diff
-diff-cover coverage.xml --diff-file .diff-cover.diff
+diff-cover coverage.xml --diff-file .diff-cover.diff --fail-under 100
 rm -f .diff-cover.diff
 
 echo "== types =="
@@ -57,7 +61,7 @@ LINT_FAILED=0
 ruff check src tests || LINT_FAILED=1
 ruff format --check src tests || LINT_FAILED=1
 if [ "$LINT_FAILED" -eq 1 ]; then
-  echo "lint layer: report-only (baseline debt 39 errors / 11 files, none touched by this PR — see EVIDENCE)"
+  echo "lint layer: report-only (baseline debt 40 errors / 13 files, none touched by this PR — see EVIDENCE)"
 else
   echo "lint layer: clean"
 fi

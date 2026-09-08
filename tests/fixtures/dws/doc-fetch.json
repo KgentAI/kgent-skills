@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "status": "success",
+  "complete": true,
+  "data": {
+    "nodeId": "mXk4Qw7bZnVc2yPq8RtJeH",
+    "title": "kgent-phase2-probe 使用手册",
+    "url": "https://alidocs.dingtalk.com/i/nodes/mXk4Qw7bZnVc2yPq8RtJeH",
+    "extension": "adoc",
+    "revision": 3,
+    "content": "probe body line for payload capture.\n\n## 验收点\n\n- revision 随编辑递增，kgent undo 补偿计划用它做新鲜度（B6）。\n- 本文档不重复 H1：doc +create 纪律是正文不带同名一级标题。\n"
+  }
+}

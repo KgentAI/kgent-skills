@@ -230,7 +230,7 @@ After execution, **never show `kgent://...` URIs to the user** (N20, S73). Conve
 
 **Lark results:** with the Lark backend enabled — `backends.lark.enabled: true` in `~/.kgent/config.yaml` — invoke the `lark-integration` skill and convert each `kgent://lark/<token>` per its URL construction table. The skill owns the Lark path mapping and the `workspace_domain` fix (`kgent config set-workspace-domain`).
 
-**DingTalk**: `kgent://dingtalk/<id>` → `https://open.dingtalk.com/document/<id>` (or your org's DingTalk console URL)
+**DingTalk**: with the DingTalk backend enabled, invoke the `dingtalk-integration` skill and convert each `kgent://dingtalk/<id>` per its Native URL table (all node types share the `/i/nodes/<nodeId>` shape — confirm the content type before citing; share links `/i/p/` are passed through as-is)
 **WeCom**: `kgent://wecom/<id>` → WeCom admin console URL
 
 **Confirmation format:**
