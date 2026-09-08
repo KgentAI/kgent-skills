@@ -72,6 +72,13 @@ Invoke the skill by name (Skill tool when available) and follow its workflow; it
 
 对 Lark 内容的一切写入经本 skill 委派（docx → lark-doc `docs +create/+update`；wiki 节点 → lark-wiki/lark-doc；bitable/sheet/slides 不变）。**多行/含 CJK 内容优先 `--content @file`**（`@` 仅接受当前目录内的相对路径；其它位置或管道内容用 `--content -` 读 stdin）。
 
+docx 调用形状（2026-09-08 对照 lark-cli 1.0.92 实测；与 `src/kgent/adapters/lark.py` 及 write-path spec 一致）：
+
+- 创建：`docs +create --title <t> --content @file --doc-format markdown --json`
+- 更新：`docs +update` 必须带 `--command` —— 整篇替换 `overwrite`、末尾追加 `append`、定向编辑 `str_replace` / `block_*`（各自参数要求见 `--help`）；缺 `--command` 直接 validation error
+- Markdown 内容必须显式 `--doc-format markdown` —— 两命令默认 xml，会按 DocxXML 解析你的 Markdown
+- `docs +update --revision-id <n>` 指定基准 revision（缺省 -1 = 最新；版本冲突 S6 的挂点）
+
 | Target | Delegate to | Notes |
 |---|---|---|
 | Bitable 多维表格 (records) | **lark-base** skill | `+record-create` / `+record-batch-update`; resolve the table first (`+table-list`, `+field-list`), ask the user which table when the base has several |
@@ -103,3 +110,12 @@ Lark 的 undo 补偿机制是 `docs +history-revert`。流程：
 4. `lark-cli docs +history-revert --doc <token> --history-version-id <id> --json`，
    轮询 `status: done`。
 5. 读回校验：`lark-cli docs +fetch` 内容与 `plan.plan.snapshot`（存在时）一致。
+
+## 回复语言与配置访问
+
+- **语言跟随请求**：请求用什么语言表述，回复就用什么语言——包括 proposal、
+  确认信息、引用说明与所有面向用户的文字。
+- **配置读取必须先征得同意**：读取 `~/.kgent/config.yaml`（或任何 kgent 配置
+  文件）之前，先向用户说明要读什么、为什么，征得同意后再读——配置含后端与
+  信任设置，不静默读取。kgent CLI 自身内部读配置不受此条约束；此条管的是
+  agent 直接 Read 配置文件的行为。

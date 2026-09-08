@@ -270,3 +270,12 @@ Skill:
     - 'Architecture Guide' → https://mycompany.larksuite.com/wiki/wiki_BBB
     - 'Runbook' → https://mycompany.larksuite.com/wiki/wiki_CCC"
 ```
+
+## 回复语言与配置访问
+
+- **语言跟随请求**：请求用什么语言表述，回复就用什么语言——包括 proposal、
+  确认信息、引用说明与所有面向用户的文字。
+- **配置读取必须先征得同意**：读取 `~/.kgent/config.yaml`（或任何 kgent 配置
+  文件）之前，先向用户说明要读什么、为什么，征得同意后再读——配置含后端与
+  信任设置，不静默读取。kgent CLI 自身内部读配置不受此条约束；此条管的是
+  agent 直接 Read 配置文件的行为。

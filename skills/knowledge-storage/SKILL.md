@@ -190,11 +190,11 @@ kgent journal end --op-id <op_id> --status ok \
 # 5. Read back through the same integration skill and verify the content landed
 ```
 
-**Create new document** (when Step 2 found no matches): step 3 is a docx write delegated by `lark-integration` to `lark-cli docs +create --title "<title>" --content @file --json`.
+**Create new document** (when Step 2 found no matches): step 3 is a docx write delegated by `lark-integration` to `lark-cli docs +create --title "<title>" --content @file --doc-format markdown --json` (the invocation contract lives in the lark-integration Write Delegation Matrix).
 
 **Create new wiki node** (when the target is a wiki space): step 3 delegates to the lark-wiki / lark-doc skills for a node create inside `<space_id>` under `<parent_token>`.
 
-**Update existing document or wiki node** (when Step 2 found a match): step 3 delegates to `lark-cli docs +update --doc <token> --content @file --json` per the `lark-integration` Write Delegation Matrix. The token determines the target type — updating a wiki node keeps it in place in the wiki hierarchy.
+**Update existing document or wiki node** (when Step 2 found a match): step 3 delegates to lark-doc `docs +update` per the `lark-integration` Write Delegation Matrix, which carries the invocation contract (`+update` requires `--command` — `overwrite` for whole-doc replacement; Markdown content needs `--doc-format markdown`). The token determines the target type — updating a wiki node keeps it in place in the wiki hierarchy.
 
 A non-docx target (bitable 多维表格, sheet, slides) is a record write: step 3 follows the `lark-integration` Write Delegation Matrix instead of a docx write.
 
@@ -312,7 +312,7 @@ Skill:
     Proceed? (yes/no/edit)"
 5. User: "yes"
 6. Execute: route (dry-run) → journal begin (update, lark, kgent://lark/old123)
-   → lark-integration delegates lark-cli docs +update --doc old123 --content @notes.md
+   → lark-integration delegates lark-cli docs +update --doc old123 --command overwrite --doc-format markdown --content @notes.md
    → journal end → read back via lark-integration
 7. Read workspace_domain: "mycompany.larksuite.com"
 8. Confirm: "✅ Updated: 'Authentication Flow Discussion' → https://mycompany.larksuite.com/docx/old123
@@ -387,3 +387,12 @@ Skill:
    "✅ Created: 'Deploy Runbook' → https://mycompany.larksuite.com/wiki/wiki_BBB
     Op ID: op-xxx (undo: kgent undo op-xxx)"
 ```
+
+## 回复语言与配置访问
+
+- **语言跟随请求**：请求用什么语言表述，回复就用什么语言——包括 proposal、
+  确认信息、引用说明与所有面向用户的文字。
+- **配置读取必须先征得同意**：读取 `~/.kgent/config.yaml`（或任何 kgent 配置
+  文件）之前，先向用户说明要读什么、为什么，征得同意后再读——配置含后端与
+  信任设置，不静默读取。kgent CLI 自身内部读配置不受此条约束；此条管的是
+  agent 直接 Read 配置文件的行为。
