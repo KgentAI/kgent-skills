@@ -38,8 +38,8 @@
     },
     {
       "id": 3,
-      "prompt": "Save this to our knowledge base: partner SSO credentials must rotate every 90 days; contact security@company.com for exception requests.",
-      "expected_output": "The skill should target dingtalk (explicit user input), search for existing content, and propose create or update accordingly. Must show provenance noting 'explicit user input' as the backend source.",
+      "prompt": "Save this to DingTalk please: 'Partner API access tokens should be rotated every 30 days. Contact security@company.com for requests.'",
+      "expected_output": "The skill should target dingtalk (explicit user input), search for existing content via dingtalk-integration, and propose create or update accordingly. Must show provenance noting 'explicit user input' as the backend source.",
       "files": [],
       "expectations": [
         "The skill targets dingtalk backend (explicit user input overrides any defaults)",
@@ -50,27 +50,25 @@
         "The content is formatted as markdown, not raw text",
         "The skill runs 'kgent route --dry-run' before executing any write",
         "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
-        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
+        "For DingTalk targets the skill delegates execution via dingtalk-integration, not 'kgent update'"
       ]
     },
     {
       "id": 4,
-      "prompt": "I wrote a new onboarding checklist. Save it to Lark so the team can see it.",
-      "expected_output": "The skill should create the document on both backends (multi-backend fan-out). Should show a proposal listing both targets, get confirmation, execute both, and report both native URLs.",
+      "prompt": "I wrote a new onboarding checklist. Save it to both Lark and DingTalk so both teams can access it.",
+      "expected_output": "The skill should create the document on both backends (multi-backend fan-out). Should show a proposal listing both targets, get confirmation, execute both through their integration skills, and report both native URLs.",
       "files": [],
       "expectations": [
         "The proposal lists both lark and dingtalk as targets",
         "The skill searches both backends for existing content before proposing",
         "The user is asked to confirm before any write",
-        "Both backends receive the write: Lark targets delegate through lark-integration; non-integration backends (kgent hosted backend) execute 'kgent create'/'kgent store'",
+        "Both backends receive the write: Lark targets delegate through lark-integration; DingTalk targets delegate through dingtalk-integration",
         "The confirmation message includes native URLs for both backends",
         "If one backend fails, the other still succeeds (partial success reporting)",
         "The op_id is reported for undo capability",
         "The skill runs 'kgent route --dry-run' before executing any write",
-        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
-        "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
-      ],
-      "notes": "Lark+DingTalk fan-out variant returns in Phase 2 (dingtalk-integration 未实施)"
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'"
+      ]
     },
     {
       "id": 5,
