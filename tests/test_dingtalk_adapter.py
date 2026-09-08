@@ -76,9 +76,7 @@ def test_read_document_carries_revision_as_version(monkeypatch):
     monkeypatch.setattr(dws_mod, "run_cli", fake)
     doc = DingTalkAdapter(cmd=["fake-dws"]).read_document(f"kgent://dingtalk/{FLAT_NODE_ID}")
 
-    assert fake.calls == [
-        ["fake-dws", "doc", "+fetch", "--node", FLAT_NODE_ID, "-f", "json"]
-    ]
+    assert fake.calls == [["fake-dws", "doc", "+fetch", "--node", FLAT_NODE_ID, "-f", "json"]]
     assert doc.doc_uri == f"kgent://dingtalk/{FLAT_NODE_ID}"
     assert doc.metadata.version == FLAT_REVISION
     assert doc.title == FLAT_TITLE
@@ -97,6 +95,29 @@ def test_read_fetch_failure_surfaces_normalized_adapter_error(monkeypatch):
         DingTalkAdapter(cmd=["fake-dws"]).read_document(f"kgent://dingtalk/{FLAT_NODE_ID}")
 
 
+def test_run_dws_rejects_exit0_non_json_and_non_object_payloads(monkeypatch):
+    """退出 0 但 stdout 非 JSON / 非 JSON 对象 → AdapterError（dws 的 ``-f
+    json`` 契约：退出码不能替代可解析证据——错误不静默吞掉）。"""
+
+    cases = [
+        ("{not-json", "malformed JSON"),
+        ("[1, 2]", "non-object JSON"),
+    ]
+    adapter = DingTalkAdapter(cmd=["fake-dws"])
+    for stdout, needle in cases:
+        monkeypatch.setattr(dws_mod, "run_cli", _FakeDws(fetch_stdout=stdout))
+        with pytest.raises(AdapterError, match=needle):
+            adapter.read_document(f"kgent://dingtalk/{FLAT_NODE_ID}")
+
+
+def test_run_dws_rejects_exit0_ok_false_envelope(monkeypatch):
+    """退出 0 不能替代业务证据——envelope ``ok: false`` 即失败（contracts.md）。"""
+    payload = json.dumps({"ok": False, "status": "permission denied", "data": {}})
+    monkeypatch.setattr(dws_mod, "run_cli", _FakeDws(fetch_stdout=payload))
+    with pytest.raises(AdapterError, match="reported failure on exit 0"):
+        DingTalkAdapter(cmd=["fake-dws"]).read_document(f"kgent://dingtalk/{FLAT_NODE_ID}")
+
+
 # ---------------------------------------------------------------------------
 # search: dws doc +search —— hit node_type 只来自服务端事实（B11 保真）
 # ---------------------------------------------------------------------------
@@ -111,7 +132,17 @@ def test_search_hit_types_follow_server_facts(monkeypatch):
     hits = DingTalkAdapter(cmd=["fake-dws"]).search_by_keywords("kgent-phase2-probe")
 
     assert fake.calls == [
-        ["fake-dws", "doc", "+search", "--query", "kgent-phase2-probe", "--limit", "10", "-f", "json"]
+        [
+            "fake-dws",
+            "doc",
+            "+search",
+            "--query",
+            "kgent-phase2-probe",
+            "--limit",
+            "10",
+            "-f",
+            "json",
+        ]
     ]
     assert len(hits) == 3, "fixture 应三条 hit 全部解析"
     by_uri = {h.doc_uri: h for h in hits}
@@ -132,6 +163,46 @@ def test_search_hit_types_follow_server_facts(monkeypatch):
     assert all(h.mode_used == "keyword" for h in hits)
     assert wiki.metadata.node_type == "wiki_node"
     assert CONTENT_NEEDLE in (flat.snippet or "")
+
+
+def test_search_hit_type_field_non_doc_value_lands_doc(monkeypatch):
+    """类型字段判型（无 URL 的 hit 走第二分支）：``axls`` 出 §7.2 词表 →
+    ``doc``——绝不伪装成词表另一端（lark bitable hit 同款纪律）。类型字段
+    缺失时落容器事实：只有 ``workspaceId`` 的 hit → ``wiki_node``。"""
+    payload = json.dumps(
+        {
+            "ok": True,
+            "complete": True,
+            "items": [
+                {"nodeId": SHEET_NODE_ID, "title": "sheet", "type": "axls"},
+                {"nodeId": WIKI_NODE_ID, "title": "wiki node", "workspaceId": "WS-1"},
+            ],
+        }
+    )
+    monkeypatch.setattr(dws_mod, "run_cli", _FakeDws(search_stdout=payload))
+    hits = DingTalkAdapter(cmd=["fake-dws"]).search_by_keywords("probe")
+
+    assert [h.node_type for h in hits] == ["doc", "wiki_node"]
+    assert [h.metadata.node_type for h in hits] == ["doc", "wiki_node"]
+
+
+def test_search_skips_non_dict_items_and_defaults_non_int_rank(monkeypatch):
+    """非 dict 命中段跳过；rank 非 int 落 0（CLI payload 按未验证输入处理）。"""
+    payload = json.dumps(
+        {
+            "ok": True,
+            "complete": True,
+            "items": [
+                "not-a-dict",
+                {"nodeId": FLAT_NODE_ID, "title": "with id", "type": "adoc", "rank": "high"},
+            ],
+        }
+    )
+    monkeypatch.setattr(dws_mod, "run_cli", _FakeDws(search_stdout=payload))
+    hits = DingTalkAdapter(cmd=["fake-dws"]).search_by_keywords("probe")
+
+    assert [h.doc_uri for h in hits] == [f"kgent://dingtalk/{FLAT_NODE_ID}"]
+    assert [h.rank for h in hits] == [0]
 
 
 def test_search_hit_without_id_is_dropped(monkeypatch):
