@@ -5,9 +5,13 @@
   工作项 1（SKILL.md 契约）、2（DOC_FILES）、3（evals fixture 回装）、
   4（B6/B8/B11）、5（EVIDENCE + agent evals）
 - **Tier:** 3（数据丢失域；失败模型 FM1–FM10 见母 spec）
-- **Source state:** commit `ca6ba40` + `tools/gauntlet.sh` 的 diff-cover 显式门
-  `--fail-under 100`（与 EVIDENCE 同 commit 落盘；分支 `feat/dingtalk-integration`，
-  自 phase2-phase3-handoff @ `2c3bcd7` 切出；Task 7 新增收尾 commit 见 §3）
+- **Source state:** commit `047ce87`（diff-cover 显式门 `--fail-under 100` 与 EVIDENCE
+  同 commit 落盘；分支 `feat/dingtalk-integration`，自 phase2-phase3-handoff @
+  `2c3bcd7` 切出；Task 7 新增收尾 commit 见 §3）。其后的**最终评审修复（2026-09-08，
+  docs-only post-run delta）**——SKILL.md create 腿分支与锚点、EVIDENCE deferred 计数
+  19→25、`tools/gauntlet.sh` lint echo 数字、PROBE-NOTES 裁决指针——零 src/tests
+  变更，不在 coverage 测量集（`pyproject.toml` `source = ["kgent"]`），§2 的
+  fresh-run 数字仍是最后一次代码编辑之后的读数。
 - **Fresh run:** 2026-09-08，`bash tools/gauntlet.sh` → **GAUNTLET PASS（EXIT=0）**，
   本文件全部数字来自该次运行（最后一次代码编辑之后）
 - **Environment:** Windows 11 + Git Bash；`.venv` Python 3.12；dws
@@ -199,7 +203,7 @@ platform-via-integration-evals --timeout 600 --force`（transcript 已存在 →
 - **CI 跑真机 e2e**：无凭据环境用 `-m "not real"` 屏蔽；lark 探针建点异步实测
   可 >60s（history 建点轮询）。
 
-## 8. Deferred minors 全清单（各任务 review 记录，progress.md 汇总，共 19 条）
+## 8. Deferred minors 全清单（各任务 review 记录，progress.md 汇总，共 25 条）
 
 **Task 2（skill 文档，4 条）**
 1. SKILL.md Search 第 3 步「见 Known Limitations」错锚点，应为「见 Native URL」（一行措辞）
@@ -232,6 +236,18 @@ platform-via-integration-evals --timeout 600 --force`（transcript 已存在 →
 17. revert 读回 12s 预算偏紧（异步平台操作）
 18. `drive +info` / `+find-file` 无真值单锚（两域 ID 解析 PENDING 的配套）
 19. 无 consent 模式下 B8 留痕非对称（`DWS_PROBE_CONFIRM` 只审计带 `-y` 的调用）
+
+**Task 7（gauntlet/EVIDENCE 收尾，6 条）**
+
+20. task-7-report 措辞两处：最后代码编辑时点、evidence 文件 220 行行数与实际不符
+21. `tools/gauntlet.sh:64` echo 数字过时——「39 errors / 11 files」实测为 40 / 13
+22. 门命令层负控（人造 diff 裸调用 vs 显式门）原始输出未存档（仅整闸层 log 留档）
+23. 首轮 92% 的 gauntlet log 被后续重跑覆盖，不可回看
+24. EVIDENCE §2 lint 措辞：「新增」实为 M——`test_agent_evals_runner.py` 是 Task 4 已有文件，非本 PR 新增
+25. EVIDENCE §2 lint 措辞：「13 件」叙述含不在测量范围的 `tools/` 件（lint 层只跑 `src tests`）
+
+（2026-09-08 最终评审修复波次：第 1、2 条（SKILL.md 锚点与 create 腿分支）与第 21 条
+（gauntlet echo 数字）已随该波次的 docs-only commit 修掉，其余仍 deferred。）
 
 ## 9. 复现入口
 

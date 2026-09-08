@@ -61,7 +61,7 @@ LINT_FAILED=0
 ruff check src tests || LINT_FAILED=1
 ruff format --check src tests || LINT_FAILED=1
 if [ "$LINT_FAILED" -eq 1 ]; then
-  echo "lint layer: report-only (baseline debt 39 errors / 11 files, none touched by this PR — see EVIDENCE)"
+  echo "lint layer: report-only (baseline debt 40 errors / 13 files, none touched by this PR — see EVIDENCE)"
 else
   echo "lint layer: clean"
 fi

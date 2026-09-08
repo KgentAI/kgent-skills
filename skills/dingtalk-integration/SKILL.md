@@ -26,8 +26,7 @@ Gate open but the DingTalk side unavailable — dws missing, auth expired, no us
    hit 自带的类型/extension 字段兜底；字段缺失且类型影响路由时，按 dingtalk-shared 的
    URL 类型预检用 `dws drive info --node <url> -f json` 看 `extension`（`adoc` → doc、
    `axls` → sheet、`able` → aitable、`xlsx`/`csv`/`nodeType=file` → drive）。
-3. 引用一律转原生 URL（见 Native URL）；`/i/p/` 分享短链不可作为内容入口
-   （见 Known Limitations）。
+3. 引用一律转原生 URL；`/i/p/` 分享短链不可作为内容入口（见 Native URL）。
 4. 命中数缩量（超时/失败）必须显式声明，不静默。
 
 ## Read
@@ -71,8 +70,10 @@ Invoke the skill by name (Skill tool when available) and follow its workflow; it
 ```bash
 # 1. 路由裁决
 kgent route --dry-run --content "<content>" --backends dingtalk --json
-# 2. 台账开账（revision_before = 写前读到的 revision；create 腿用计划 URI 占位）
+# 2. 台账开账（按腿二选一：update 腿 revision_before = 写前读到的 revision；
+#    create 腿用计划 URI 占位 kgent://dingtalk/new、无写前 revision）
 kgent journal begin --operation update --backend dingtalk --doc-uri kgent://dingtalk/<doc_id> --revision-before <rev> --json
+kgent journal begin --operation create --backend dingtalk --doc-uri kgent://dingtalk/new --json
 # 3a. 创建（位置优先级 folder > workspace > 我的文档根目录）
 dws doc +create --name "<标题>" --content @probe.md --doc-format markdown -f json
 # 3b. 更新（条件写：--expected-revision 仅 overwrite + jsonml 时服务端生效）
@@ -97,11 +98,13 @@ kgent journal end --op-id <op_id> --status ok --doc-uri kgent://dingtalk/<real_d
 ## Undo Compensation
 
 DingTalk 的 undo 补偿机制是 `dws doc +version-revert`（ADR 0005）。`kgent undo` 产计划
-（`plan.plan.mechanism == "version-revert"`、`plan.plan.history_hint == "dws doc +version-list"`），
-执行归本 skill。流程：
+（`plan.plan.mechanism == "version-revert"`；update 腿另带
+`plan.plan.history_hint == "dws doc +version-list"`——create 腿不成立：create 没有可回退的
+历史版本，补偿是删除，计划的 `history_hint` 为 `null`），执行归本 skill。流程：
 
 1. `kgent undo <op_id> --json` 取补偿计划；`status == "rejected"` 时停止——文档写后有
-   并发编辑，禁止回滚。
+   并发编辑，禁止回滚。`plan.plan.operation == "create"` → 直接跳到第 6 步（create 的
+   补偿是删除，不走 version-list / version-revert）。
 2. `dws doc +version-list --node <DOC_ID> -f json` 定位 `plan.plan.revision_before`
    对应的 `--version` 号（版本条目 ↔ revision 的字段路径待真机捕获，见 Known Limitations）。
 3. **执行前复核（TOCTOU）**：`dws doc +fetch --node <DOC_ID> -f json` 核对当前

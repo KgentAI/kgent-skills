@@ -144,3 +144,5 @@ dws drive +delete --node <drive 域 dentryUuid> -f json | tee delete.json   # te
 ## 6. fixtures 状态
 
 `tests/fixtures/dws/` 本次只含本文件。三个捕获件（`doc-search.json` / `doc-fetch.json` / `version-list.json`）**未创建**——必须是真实 payload，凭据就绪前不造数。补捕后：结构原样保存，标题中的「临时」换中性词，token/URL 保留（fixtures 是 B11/adapter 的真值来源）。
+
+> **裁决指针（2026-09-08 最终评审修复波次补记）**：上段「凭据就绪前不造数」的原始禁令已被维护者 2026-09-08 无账号裁决取代——`doc-search.json` / `doc-fetch.json` 两份 fixtures 已按该裁决以 **documented-not-captured** 形态落盘（provenance 逐键见 `FIXTURES-NOTE.md`）；`version-list.json` 仍按「未消费的命令不发明形状」未建。真机补捕时以真实捕获件原样覆盖。
