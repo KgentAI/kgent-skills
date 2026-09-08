@@ -21,8 +21,8 @@
     },
     {
       "id": 2,
-      "prompt": "Update the deployment guide — we're now using Docker instead of bare-metal. The rest is the same.",
-      "expected_output": "The skill should find the existing 'deployment guide' via search, propose an UPDATE (not CREATE), and confirm with the native URL after execution.",
+      "prompt": "Update the「部门新人入职」doc in ForDev产品部门 — the 了解业务 section has a leftover test sentence （我改了文档，改了个文档，改了啊呀） — remove that sentence. The rest of the doc stays exactly the same.",
+      "expected_output": "Find the real 部门新人入职 doc via search, propose UPDATE of it, execute through lark-integration with journal begin/end, confirm with native URL.",
       "files": [],
       "expectations": [
         "The skill searches for 'deployment guide' before proposing anything",
@@ -38,7 +38,7 @@
     },
     {
       "id": 3,
-      "prompt": "Save this to DingTalk please: 'Partner API access tokens should be rotated every 30 days. Contact security@company.com for requests.'",
+      "prompt": "Save this to our knowledge base: partner SSO credentials must rotate every 90 days; contact security@company.com for exception requests.",
       "expected_output": "The skill should target dingtalk (explicit user input), search for existing content, and propose create or update accordingly. Must show provenance noting 'explicit user input' as the backend source.",
       "files": [],
       "expectations": [
@@ -55,7 +55,7 @@
     },
     {
       "id": 4,
-      "prompt": "I wrote a new onboarding checklist. Save it to both Lark and DingTalk so both teams can access it.",
+      "prompt": "I wrote a new onboarding checklist. Save it to Lark so the team can see it.",
       "expected_output": "The skill should create the document on both backends (multi-backend fan-out). Should show a proposal listing both targets, get confirmation, execute both, and report both native URLs.",
       "files": [],
       "expectations": [
@@ -69,7 +69,8 @@
         "The skill runs 'kgent route --dry-run' before executing any write",
         "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
         "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
-      ]
+      ],
+      "notes": "Lark+DingTalk fan-out variant returns in Phase 2 (dingtalk-integration 未实施)"
     },
     {
       "id": 5,

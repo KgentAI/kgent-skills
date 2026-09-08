@@ -3,16 +3,14 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "What's our policy on password rotation?",
+      "prompt": "新人入职要做什么？我们知识库里有对应流程吗？",
       "expected_output": "The skill should search the knowledge base, find relevant policy documents, and synthesize an answer with native URL citations for every factual claim.",
       "files": [],
       "expectations": [
-        "The skill runs 'kgent search' with relevant query terms",
-        "The skill reads 2-5 of the most relevant documents using 'kgent read'",
-        "Every factual claim in the answer has a source citation",
-        "Citations use native platform URLs (https://...), not kgent:// URIs",
-        "The answer has a Sources section listing all cited documents",
-        "The skill does not fabricate information not found in the search results"
+        "The skill routes the platform search through lark-integration (search section), not bare kgent search",
+        "The skill reads the most relevant 部门新人入职 docs (2-5) before answering",
+        "Every factual claim carries a native platform URL (https://...) citation, not kgent://",
+        "The answer distinguishes template placeholders (空白占位) from department-specific content"
       ]
     },
     {
