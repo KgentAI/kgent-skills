@@ -30,9 +30,9 @@ Only ``create`` and ``update`` are wired for now; ``delete``/``archive``/
 from __future__ import annotations
 
 import hashlib
+import uuid
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from itertools import count as _count
 from typing import Any, Protocol, cast
 
 from kgent.errors import ApprovalBindingMismatch, ApprovalRequired, PolicyError, VersionConflict
@@ -45,20 +45,23 @@ from kgent.types import Document, DocumentMetadata, WriteProposal
 
 __all__ = ["OpResult", "confirm", "execute_confirmed"]
 
-#: Monotonic per-process op counter: op ids double as idempotency keys, so
-#: they must never be reused within a process (F1 review finding).
-_OP_SEQ = _count(1)
-
-
 def _next_op_id() -> str:
-    """Unique ``op-<yyyymmdd>-<seq>`` id (plan format "op-20260826-01")."""
-    return f"op-{datetime.now(UTC).strftime('%Y%m%d')}-{next(_OP_SEQ):02d}"
+    """Unique ``op-<yyyymmdd>-<8hex>`` id (B1: uuid suffix — 同秒/跨进程均唯一).
+
+    历史格式 ``op-<yyyymmdd>-<seq>`` 按进程计数，跨进程同日必撞号
+    （2026-09-05 事故：全天操作共用 ``op-20260905-01``，undo 必然错乱）。
+    """
+    return f"op-{datetime.now(UTC).strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
 
 
 class WriteTarget(Protocol):
-    """Minimal write surface an adapter must expose (create/update + wiki)."""
+    """Minimal write surface an adapter must expose (create/update + wiki).
 
-    trust_zone: str
+    No ``trust_zone`` here on purpose: real CLI-backed adapters expose no such
+    attribute — the write gate takes the zone from the config-derived
+    ``trust_zones`` map (see :func:`_zone_for_write`), same source as
+    ``kgent route``.
+    """
 
     def create_document(self, title: str, content: str, metadata: DocumentMetadata) -> str: ...
 
@@ -114,6 +117,23 @@ class OpResult:
     status: str = "ok"
     fresh_proposal: WriteProposal | None = None
     error: str | None = None
+
+
+def _zone_for_write(
+    backend: WriteTarget, backend_name: str, trust_zones: dict[str, str] | None
+) -> str:
+    """Zone for the write gate — same source as ``kgent route`` (fail-closed).
+
+    The config-derived ``trust_zones`` map (wired by
+    :meth:`~kgent.router.core.Router.execute` via
+    :func:`~kgent.router.sensitivity.backend_trust_zone`) is the source;
+    direct callers without a map keep the legacy adapter-attribute read, and
+    an adapter that exposes no label at all falls closed to ``external`` —
+    a real adapter must never crash the gate with ``AttributeError``.
+    """
+    if trust_zones is not None:
+        return trust_zones.get(backend_name, "external")
+    return getattr(backend, "trust_zone", "external")
 
 
 def _metadata(proposal: WriteProposal, backend_name: str, *, doc_uri: str) -> DocumentMetadata:
@@ -330,6 +350,7 @@ def execute_confirmed(
     audit: object | None = None,
     approval_tokens: dict[str, str] | None = None,
     op_id: str | None = None,
+    trust_zones: dict[str, str] | None = None,
 ) -> OpResult:
     """Execute the confirmed write and journal one entry per leg (S1–S4, N1).
 
@@ -353,7 +374,12 @@ def execute_confirmed(
     ``content_before`` snapshot before the write (S44). If ``audit`` exposes
     an ``append`` method it is called with a full §8.4 entry (op_id,
     operation, targets, confirmation, sensitivity, outcome); otherwise audit
-    is skipped, duck-typed.
+    is skipped, duck-typed. ``trust_zones`` is the config-derived
+    backend → zone map for the pre-write gate (N4) —
+    :meth:`~kgent.router.core.Router.execute` wires it from
+    :func:`~kgent.router.sensitivity.backend_trust_zone` so the gate reads the
+    same source as ``kgent route``; without it the legacy adapter-attribute
+    read applies (fakes in tests), defaulting fail-closed to ``external``.
     """
     if journal is None:
         journal = Journal()
@@ -361,12 +387,14 @@ def execute_confirmed(
         raise PolicyError("refusing to execute write: confirmation was rejected")
 
     # Phase 1 — enforce every zone before any write (N4): a rejected
-    # confidential write must perform zero writes.
+    # confidential write must perform zero writes. The zone comes from the
+    # config-derived ``trust_zones`` map when wired (Router.execute), never
+    # from the adapter object — real adapters carry no trust_zone attribute.
     for backend_name, _uri in proposal.targets:
         if proposal.sensitivity != "internal":
             enforce_zone(
                 proposal.sensitivity,
-                backends[backend_name].trust_zone,
+                _zone_for_write(backends[backend_name], backend_name, trust_zones),
                 backend_name,
             )
 

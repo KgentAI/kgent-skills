@@ -1,4 +1,6 @@
-"""Lark / Feishu adapter (§1.3): §3.1 capabilities over ``lark-cli`` (§8.5).
+"""Deprecated (skills): 平台操作经 lark-integration（ADR 0004）；CLI 面保留供调试与 kgent hosted backend 车道。
+
+Lark / Feishu adapter (§1.3): §3.1 capabilities over ``lark-cli`` (§8.5).
 
 The router names this backend's adapter ``lark-doc`` (the platform skill)
 when its declared capabilities satisfy the operation, else ``lark-cli``
@@ -193,7 +195,10 @@ class LarkAdapter(CliCapabilityAdapter):
         return self._canonical(str(node_token))
 
     def create_document(self, title: str, content: str, metadata: DocumentMetadata) -> str:
-        """Create a Lark document using ``docs +create``."""
+        """Deprecated (skills): 平台操作经 lark-integration（ADR 0004）；CLI 面保留供调试与 kgent hosted backend 车道。
+
+        Create a Lark document using ``docs +create``.
+        """
         # Use markdown format for simplicity
         payload = self._run(
             [
@@ -275,7 +280,9 @@ class LarkAdapter(CliCapabilityAdapter):
         return positions
 
     def read_document(self, doc_uri: str) -> Document:
-        """Read a Lark document using ``docs +fetch``.
+        """Deprecated (skills): 平台操作经 lark-integration（ADR 0004）；CLI 面保留供调试与 kgent hosted backend 车道。
+
+        Read a Lark document using ``docs +fetch``.
 
         ``docs +fetch`` carries no node-type fact, so the token is probed with
         one ``wiki +node-get`` call: success → ``wiki_node`` with its space
@@ -339,7 +346,10 @@ class LarkAdapter(CliCapabilityAdapter):
         idempotency_key: str,
         expected_version: str | None,
     ) -> None:
-        """Update a Lark document using ``docs +update --command overwrite``."""
+        """Deprecated (skills): 平台操作经 lark-integration（ADR 0004）；CLI 面保留供调试与 kgent hosted backend 车道。
+
+        Update a Lark document using ``docs +update --command overwrite``.
+        """
         native_id = self._native_id(doc_uri)
         args = [
             "docs",
@@ -391,7 +401,9 @@ class LarkAdapter(CliCapabilityAdapter):
         top_k: int = 10,
         fields: list[str] | None = None,
     ) -> list[SearchResult]:
-        """Search Lark docs using ``docs +search``.
+        """Deprecated (skills): 平台操作经 lark-integration（ADR 0004）；CLI 面保留供调试与 kgent hosted backend 车道。
+
+        Search Lark docs using ``docs +search``.
 
         ``node_type`` is read from each hit's server-side facts (see
         :func:`_node_type_from_hit`) at zero extra cost; wiki hits are then

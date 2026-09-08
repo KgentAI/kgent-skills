@@ -311,3 +311,16 @@ real CLI commands (`python -m kgent wiki spaces list`,
 ✅ **Wiki CLI surface (S77–S85, N22–N24) implemented** — `create --wiki-space/--parent-node-token`, `wiki spaces list|create`, search `node_type`, position-invariant updates; verified by `tests/test_wiki_operations.py` (12 tests)
 
 Implementation is production-ready for kgent packaging.
+
+---
+
+# Evidence Addendum — Phase 1: integration skill 中心制（lark）2026-09-06
+
+**Status**: ✅ GAUNTLET PASS（EXIT=0）— 556 passed / 0 failed / 3 skipped；diff-cover 变更行 100%（326/0）；mypy strict 0 错；真机 B3/B4 undo 闭环（rev 3→5→history-revert→6）
+
+**Scope**: spec v3（`specs/2026-09-05-write-path-skill-delegation-design.md`，approved）Phase 1——平台操作下沉 integration skill、台账 begin/end、undo 补偿计划、route --dry-run、lark-integration 升格、三 skills 编排化。
+
+**Full report**: [`specs/2026-09-05-write-path-skill-delegation-evidence.md`](specs/2026-09-05-write-path-skill-delegation-evidence.md)（fresh-run 逐层数字、B1–B12 → 测试映射、手工 mutant 表 10 投 9 杀 + 1 平台限制、checker 负控、跳过层理由、已知限制）
+
+**Reproduce**: 仓库根 `bash tools/gauntlet.sh`；真机 e2e 需 lark 凭据（CI 用 `-m "not real"` 屏蔽）。
+

@@ -50,6 +50,25 @@ def _coreutils_dir() -> str | None:
     return None
 
 
+_KGENT_EXES = ("kgent.exe", "kgent.cmd", "kgent")
+
+
+def _path_without_kgent() -> str:
+    """The module premise is a sandbox PATH; a dev machine may carry a real
+    ``kgent`` on PATH, which masks the S7 health-check FAIL branch this suite
+    asserts on (a healthy ambient kgent turns ``KGENT_CLI_BACKEND=none``'s
+    expected loud failure into ``install OK``). Drop exactly the PATH entries
+    that ship a kgent executable; keep everything else (python, cygpath,
+    coreutils) so the installer still runs.
+    """
+    kept = [
+        entry
+        for entry in os.environ.get("PATH", "").split(os.pathsep)
+        if entry and not any((Path(entry) / exe).exists() for exe in _KGENT_EXES)
+    ]
+    return os.pathsep.join(kept)
+
+
 def _run(
     home: Path,
     *args: str,
@@ -280,7 +299,10 @@ def test_s5b_backend_none_fails_loudly(tmp_path: Path) -> None:
     home.mkdir()
     (home / ".claude").mkdir()
 
-    result = _run(home, extra_env={"KGENT_CLI_BACKEND": "none"})
+    result = _run(
+        home,
+        extra_env={"KGENT_CLI_BACKEND": "none", "PATH": _path_without_kgent()},
+    )
 
     assert result.returncode != 0
     assert "KGENT_CLI_BACKEND=none" in (result.stdout + result.stderr)

@@ -35,6 +35,11 @@ __all__ = ["merge_backends", "write_setup_config"]
 _PLAIN_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
 _RESERVED_SCALARS = frozenset({"true", "false", "null", "~"})
 
+#: Platform backends whose generated entries default to the ``internal`` trust
+#: zone (ADR 0004 maintainer ruling). Unknown backend names keep the fail-safe
+#: ``external``.
+_INTERNAL_BY_NAME = frozenset({"lark", "dingtalk", "wecom"})
+
 
 def write_setup_config(home: Path, backends: dict[str, dict[str, Any]]) -> None:
     """Write ``<home>/config.yaml`` for ``kgent setup`` (merge-on-rerun).
@@ -109,7 +114,8 @@ def merge_backends(
 
     Existing entries win: kept verbatim (shallow, top-level only) and padded
     with report-derived keys they lack. New backends are appended
-    all-disabled.
+    all-disabled, with ``trust_zone: internal`` for lark/dingtalk/wecom and
+    ``external`` otherwise (fail-safe default).
     """
     result: dict[str, Any] = {}
     for name in sorted(set(existing) | set(discovered)):
@@ -118,18 +124,22 @@ def merge_backends(
         if report_entry is None:
             result[name] = current  # configured but not discovered: keep verbatim
         elif current is None:
-            result[name] = _config_entry(report_entry)
+            result[name] = _config_entry(report_entry, name)
         elif not isinstance(current, dict):
             result[name] = current  # non-mapping user entry: keep verbatim
         else:
-            entry = _config_entry(report_entry)
+            entry = _config_entry(report_entry, name)
             entry.update(current)  # user keys win; report fills the gaps
             result[name] = entry
     return result
 
 
-def _config_entry(entry: dict[str, Any]) -> dict[str, Any]:
-    """Convert a discovery entry to its config.yaml shape (all-disabled)."""
+def _config_entry(entry: dict[str, Any], name: str) -> dict[str, Any]:
+    """Convert a discovery entry to its config.yaml shape (all-disabled).
+
+    ``name`` is the resolved backend name; platform backends
+    (:data:`_INTERNAL_BY_NAME`) default to the ``internal`` trust zone.
+    """
     via = entry.get("found_via")
     btype = "mcp" if via == "mcp" else "cli" if via == "cli" else "skill"
     cfg: dict[str, Any] = {"enabled": False, "type": btype}
@@ -138,7 +148,7 @@ def _config_entry(entry: dict[str, Any]) -> dict[str, Any]:
         cfg[key] = str(entry["adapter_name"])
     elif btype == "mcp" and entry.get("mcp_url"):
         cfg["mcp_url"] = str(entry["mcp_url"])
-    cfg["trust_zone"] = "external"
+    cfg["trust_zone"] = "internal" if name in _INTERNAL_BY_NAME else "external"
     return cfg
 
 

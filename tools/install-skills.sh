@@ -169,7 +169,9 @@ install_cli() {
   fi
   if { [ "$backend" = "auto" ] || [ "$backend" = "uv" ]; } && command -v uv >/dev/null 2>&1; then
     echo "installing kgent CLI via uv"
-    (cd "$REPO_ROOT" && uv tool install --force --from . kgent)
+    # cache clean + --reinstall: uv serves a cached wheel by version, so a same-version
+    # rebuild silently ships stale code ("install OK" lies — hit 2026-09-06, missing route)
+    (cd "$REPO_ROOT" && uv cache clean kgent && uv tool install --force --reinstall --from . kgent)
     mkdir -p "$HOME/.kgent"
     printf 'uv\n' >"$state"
     return 0
@@ -289,6 +291,7 @@ verify() {
   fi
   if [ "$ok" -eq 1 ]; then
     echo "install OK"
+echo "verify: bash tools/artifact-smoke.sh  (install OK does not check freshness - see the 2026-09-06 uv cache incident)"
   else
     echo "install FAILED" >&2
   fi

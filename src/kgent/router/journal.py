@@ -25,8 +25,8 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from datetime import UTC, datetime, timedelta
-from itertools import count as _count
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
@@ -37,9 +37,6 @@ if TYPE_CHECKING:
     from kgent.router.policy import OpResult
 
 __all__ = ["Journal", "build_entry", "undo", "write_entry"]
-
-#: Monotonic per-process counter so undo op ids never collide (§6.7).
-_UNDO_SEQ = _count(1)
 
 
 class UndoBackend(Protocol):
@@ -82,12 +79,14 @@ class Journal:
         *,
         encrypt: bool = False,
         retention_days: int = 30,
+        strict_load: bool = False,
     ) -> None:
         if home is None:
             home = os.environ.get("KGENT_HOME", str(Path.home() / ".kgent"))
         self.home = Path(home)
         self.encrypt = encrypt
         self.retention_days = retention_days
+        self.strict_load = strict_load
         self.journal_dir = self.home / "journal"
         self.path = self.journal_dir / "journal.ndjson"
         self.entries: list[dict[str, Any]] = []
@@ -97,7 +96,11 @@ class Journal:
     # -- persistence -----------------------------------------------------
 
     def _load(self) -> None:
-        """Load existing entries (best-effort: malformed lines are skipped)."""
+        """Load existing entries (best-effort: malformed lines are skipped).
+
+        ``strict_load=True`` (FM8) flips this to fail-closed: a malformed line
+        re-raises the :class:`json.JSONDecodeError` instead of being skipped.
+        """
         if not self.path.exists():
             return
         for line in self.path.read_text(encoding="utf-8").splitlines():
@@ -106,6 +109,8 @@ class Journal:
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
+                if self.strict_load:
+                    raise
                 continue
             if isinstance(entry, dict):
                 self.entries.append(entry)
@@ -288,7 +293,12 @@ write_entry = build_entry
 
 
 def _undo_op_id(original: str) -> str:
-    return f"undo-{original}-{next(_UNDO_SEQ):02d}"
+    """``undo-<op_id>-<8hex>`` (B1: uuid suffix — 同秒/跨进程均唯一).
+
+    历史尾缀 ``-{seq:02d}`` 按进程计数，跨进程同日必撞号（同 `_next_op_id`
+    的 2026-09-05 事故根因）；uuid 后缀使 undo id 与原 op id 解耦且全局唯一。
+    """
+    return f"undo-{original}-{uuid.uuid4().hex[:8]}"
 
 
 def _undo_entry(

@@ -8,7 +8,7 @@ metadata:
 
 # Knowledge Storage
 
-Save knowledge from conversations to the knowledge base using the kgent CLI. This skill orchestrates the `kgent create` and `kgent update` primitive commands with update-first semantics, provenance tracking, and native URL presentation.
+Save knowledge from conversations to the knowledge base. This skill orchestrates the write with update-first semantics, provenance tracking, and native URL presentation. Content living on Lark, DingTalk, or WeCom is searched, read, and written only through that platform's integration skill (`<platform>-integration`; Lark: `lark-integration`). The kgent CLI's own `search` / `read` / `create` / `update` / `store` operations stay reserved for the kgent hosted backend, which is not yet implemented (ADR 0004).
 
 ## When to Use
 
@@ -41,11 +41,11 @@ If the user didn't specify and the default isn't obvious, ask — but only if th
 
 Before creating a new document, search for existing similar content on the target backend(s). This is the **update-first bias** (N18, S61) — the system always prefers updating existing knowledge over creating duplicates.
 
-```bash
-kgent search --query "<title keywords>" --backends <backend> --top-k 5 --json
-```
+Run the search through the target backend's integration skill. For Lark, invoke the `lark-integration` skill and follow its Search section — `lark-cli docs +search --query "<title keywords>" --json` (doc + wiki in one pass; add `lark-cli drive +search` when Drive files are in scope). The DingTalk and WeCom integration skills carry the equivalent search steps for their content. `kgent search` stays reserved for the kgent hosted backend, which is not yet implemented.
 
-Search covers **both flat docs and wiki nodes** by default. Results include a `node_type` field (`doc` vs `wiki_node`) — a wiki match is just as valid an update target as a doc match.
+The search covers **both flat docs and wiki nodes**; each hit carries a `node_type` field (`doc` vs `wiki_node`) — a wiki match is just as valid an update target as a doc match.
+
+A match whose content is a bitable 多维表格, sheet, or other non-docx Lark type is a **record-write target**, not a docx update — `kgent update` on it fails. With the Lark backend enabled, invoke the `lark-integration` skill and follow its write delegation matrix for that target.
 
 Analyze results:
 
@@ -84,7 +84,7 @@ Don't ask when the answer is already determined:
 - An update-first match exists → follow the match's type (update a wiki node as a wiki node)
 - A similar sibling topic lives in a wiki space → default to that wiki space and say so in the provenance
 
-If the user picks wiki, resolve the target space: `kgent wiki spaces list --backends lark --json`. Ask which space if there are several; create one with `kgent wiki spaces create` if none fits.
+If the user picks wiki, resolve the target space through the `lark-integration` skill — it delegates wiki-space queries to the lark-wiki skill. Ask which space if there are several; if none fits, propose creating one (it is created through the same route after approval).
 
 ### 3. Present Proposal
 
@@ -164,37 +164,45 @@ Which? (a/b/c/d/no/edit)
 
 ### 4. Execute (After User Approval)
 
-The skill has already performed update-first search in Step 2, so call the **primitive operations** directly — don't use `kgent store` (which would search again).
-
-**Create new document** (when Step 2 found no matches):
+Execution follows one fixed sequence — routing decision, ledger, platform write, ledger close, read-back. The skill has already performed update-first search in Step 2, so don't use `kgent store` (which would search again), and never write platform content with `kgent create` / `kgent update` — those stay reserved for the kgent hosted backend (not yet implemented, ADR 0004).
 
 ```bash
-kgent create --title "<title>" --content "<content>" --backends <backend> --yes --json
+# 1. Routing decision (路由裁决) — read-only; the ruling must come back clean first
+kgent route --dry-run --content "<content>" --backends <backend> --json
+
+# 2. Open the ledger (台账) — one entry per leg; the output carries the op_id.
+#    On create legs the --doc-uri is the planned placeholder URI — the real
+#    token only exists after the write.
+kgent journal begin --operation <create|update> --backend <backend> \
+  --doc-uri <planned kgent:// URI> --json
+
+# 3. Write through the <platform>-integration skill. For Lark this is the
+#    lark-integration skill's Write Delegation Matrix — docx writes delegate to
+#    lark-doc (`docs +create` / `docs +update`, prefer --content @file for
+#    multi-line/CJK content), wiki nodes to lark-wiki / lark-doc.
+
+# 4. Close the ledger. On create legs the write has now produced the real
+#    document — pass it as --doc-uri so the ledger's undo target is the
+#    document that actually exists, not the begin placeholder.
+kgent journal end --op-id <op_id> --status ok \
+  [--doc-uri <real kgent:// URI of what was created>] --json
+
+# 5. Read back through the same integration skill and verify the content landed
 ```
 
-**Create new wiki node** (when the target is a wiki space):
+**Create new document** (when Step 2 found no matches): step 3 is a docx write delegated by `lark-integration` to `lark-cli docs +create --title "<title>" --content @file --doc-format markdown --json` (the invocation contract lives in the lark-integration Write Delegation Matrix).
 
-```bash
-kgent create --title "<title>" --content "<content>" --backends lark --wiki-space <space_id> --parent-node-token <parent_token> --yes --json
-```
+**Create new wiki node** (when the target is a wiki space): step 3 delegates to the lark-wiki / lark-doc skills for a node create inside `<space_id>` under `<parent_token>`.
 
-**Update existing document or wiki node** (when Step 2 found a match):
+**Update existing document or wiki node** (when Step 2 found a match): step 3 delegates to lark-doc `docs +update` per the `lark-integration` Write Delegation Matrix, which carries the invocation contract (`+update` requires `--command` — `overwrite` for whole-doc replacement; Markdown content needs `--doc-format markdown`). The token determines the target type — updating a wiki node keeps it in place in the wiki hierarchy.
 
-```bash
-kgent update <doc_uri> --content "<content>" --yes --json
-```
-
-The URI determines the target type — updating a wiki node keeps it in place in the wiki hierarchy.
+A non-docx target (bitable 多维表格, sheet, slides) is a record write: step 3 follows the `lark-integration` Write Delegation Matrix instead of a docx write.
 
 #### Finding the Right Position in the Wiki Structure
 
 When creating a wiki node, don't dump it at the space root — place it where a human would look for it:
 
-1. **Inspect the space structure** first:
-
-   ```bash
-   kgent wiki spaces list --backends lark --json
-   ```
+1. **Inspect the space structure** first — through the `lark-integration` skill, which delegates wiki-space queries to the lark-wiki skill
 
 2. **Propose a parent** based on topical fit:
    - A "Deploy Runbook" belongs under an "Operations" or "Runbooks" parent node, not at the root
@@ -214,23 +222,16 @@ I'll create this as a wiki node:
 Proceed? (yes/no/edit)
 ```
 
-Parse the JSON output to extract the op_id and target URIs.
+Parse the JSON outputs: the op_id comes from `kgent journal begin` (step 2), the target token / native URL from the integration skill's write result (step 3). On create legs, convert that write result into the real `kgent://` URI and pass it to `journal end --doc-uri` (step 4) — `kgent undo` targets the end entry's URI, so a create left pointing at the planned placeholder can never be compensated.
 
 ### 5. Convert to Native URLs and Confirm
 
 After execution, **never show `kgent://...` URIs to the user** (N20, S73). Convert them to native platform URLs.
 
-**How to convert:**
+**Lark results:** with the Lark backend enabled — `backends.lark.enabled: true` in `~/.kgent/config.yaml` — invoke the `lark-integration` skill and convert each `kgent://lark/<token>` per its URL construction table. The skill owns the Lark path mapping and the `workspace_domain` fix (`kgent config set-workspace-domain`).
 
-1. Read `~/.kgent/config.yaml` and look for `defaults.workspace_domain`
-2. Apply the mapping — match the path to the node type:
-   - **Lark docs**: `kgent://lark/<token>` → `https://<workspace_domain>/docx/<token>`
-   - **Lark wiki nodes**: `kgent://lark/<node_token>` → `https://<workspace_domain>/wiki/<node_token>`
-   - **DingTalk**: `kgent://dingtalk/<id>` → `https://open.dingtalk.com/document/<id>` (or your org's DingTalk console URL)
-   - **WeCom**: `kgent://wecom/<id>` → `https://open.work.weixin.qq.com/...` (WeCom admin console URL)
-
-**If `workspace_domain` is not configured** (S75):
-Fix it before reporting results: run `kgent config set-workspace-domain` — it auto-discovers the tenant domain via a `lark-cli drive +search` probe and surgically writes only that one config key (your other config edits are preserved). If the probe finds nothing (no auth, rate limited, empty tenant), set it explicitly: `kgent config set-workspace-domain --domain mycompany.larksuite.com`. Until it's configured, you may show the `kgent://` URI as a fallback, but mention the config gap.
+**DingTalk**: `kgent://dingtalk/<id>` → `https://open.dingtalk.com/document/<id>` (or your org's DingTalk console URL)
+**WeCom**: `kgent://wecom/<id>` → WeCom admin console URL
 
 **Confirmation format:**
 
@@ -286,7 +287,8 @@ If the user says "edit" or wants to change the title/content at the proposal sta
 - **Update-first bias:** Always search before creating. Propose UPDATE when a match exists, never CREATE (N18, S61). Search covers wiki nodes and flat docs — a wiki match is updated as a wiki node, in place.
 - **Wiki placement matters:** When creating wiki nodes, find the right parent in the wiki structure rather than dumping at the space root. Show the chosen parent in the proposal.
 - **Ask wiki vs doc when ambiguous:** If no factor determines the target type on Lark, ask the user — don't silently pick (see "Wiki vs Doc Preference").
-- **Native URLs only:** Convert `kgent://` URIs to native platform URLs using `workspace_domain` from config. Don't show canonical URIs to the user (N20). Wiki nodes use `/wiki/<token>`, docs use `/docx/<token>`.
+- **Native URLs only:** Convert `kgent://` URIs to native platform URLs (N20). Lark conversion rules live in the `lark-integration` skill — invoke it when the Lark backend is enabled.
+- **Non-docx Lark targets delegate:** A bitable/sheet match or target is a record write — invoke the `lark-integration` skill and follow its write delegation matrix rather than `kgent update`.
 - **Well-structured content:** Format the content as clean markdown, not raw conversation text. Add headings, lists, code blocks as appropriate.
 - **Support iterative refinement:** If the user wants to change the title or content at the proposal stage, revise and re-present.
 - **Show op_id:** Always tell the user the op_id so they can undo if needed.
@@ -303,13 +305,15 @@ Skill:
 1. Extract: title="Authentication Flow Discussion"
    content="## Key Decisions\n- Using OAuth 2.0 with PKCE\n- Token refresh every 15 minutes..."
    backend: config default → lark
-2. Search: kgent search --query "Authentication Flow" --backends lark --json
+2. Search: lark-integration search step — lark-cli docs +search --query "Authentication Flow" --json
 3. Found: "Authentication Flow v1" (kgent://lark/old123)
 4. Propose update:
    "I found an existing doc 'Authentication Flow v1'. I'll update it with the new content.
     Proceed? (yes/no/edit)"
 5. User: "yes"
-6. Execute: kgent update kgent://lark/old123 --content "..." --yes --json
+6. Execute: route (dry-run) → journal begin (update, lark, kgent://lark/old123)
+   → lark-integration delegates lark-cli docs +update --doc old123 --command overwrite --doc-format markdown --content @notes.md
+   → journal end → read back via lark-integration
 7. Read workspace_domain: "mycompany.larksuite.com"
 8. Confirm: "✅ Updated: 'Authentication Flow Discussion' → https://mycompany.larksuite.com/docx/old123
    Op ID: op-xxx (undo: kgent undo op-xxx)"
@@ -322,14 +326,14 @@ User: "Save the new API guidelines to DingTalk."
 
 Skill:
 1. Extract: title="API Guidelines", backend=dingtalk (explicit user input)
-2. Search: kgent search --query "API Guidelines" --backends dingtalk --json
+2. Search: dingtalk-integration search step (same shape as the lark-integration Search section)
 3. No matches found
 4. Propose create:
    "I'll create 'API Guidelines' on DingTalk.
     Provenance: target=dingtalk ← explicit user input
     Proceed? (yes/no/edit)"
 5. User: "yes"
-6. Execute: kgent create --title "API Guidelines" --content "..." --backends dingtalk --yes --json
+6. Execute: route (dry-run) → journal begin (create, dingtalk, planned placeholder URI) → dingtalk-integration performs the write → journal end --doc-uri <real URI> → read back
 7. Confirm with native DingTalk URL
 ```
 
@@ -340,7 +344,7 @@ User: "Save the updated retro notes."
 
 Skill:
 1. Extract: title="Retrospective Notes"
-2. Search across all enabled backends
+2. Search via each enabled platform's integration skill
 3. Found: "Retrospective Notes" on lark AND "Retrospective Notes" on dingtalk
 4. Propose per-copy options:
    "Found 2 matching docs:
@@ -348,7 +352,7 @@ Skill:
     2. 'Retrospective Notes' on dingtalk
     [a] Update both  [b] Update lark only  [c] Update dingtalk only  [d] Create new"
 5. User: "a"
-6. Execute update on both backends with same content
+6. Execute the write sequence per backend — each leg through its own integration skill, each with its own ledger entry (journal begin / journal end)
 7. Confirm both with native URLs
 ```
 
@@ -359,15 +363,14 @@ User: "Save this deploy runbook to the knowledge base."
 
 Skill:
 1. Extract: title="Deploy Runbook"
-2. Search: kgent search --query "deploy runbook" --backends lark --json
+2. Search: lark-integration search step — lark-cli docs +search --query "deploy runbook" --json
    → No matches (results would include wiki nodes if any existed)
 3. Target type ambiguous (no explicit wiki/doc mention, no match) → ask:
    "Where should I put this on Lark?
     [a] Wiki node — inside a knowledge space, organized in the wiki hierarchy
     [b] Flat doc — standalone document in Drive"
 4. User: "a"
-5. Resolve space and structure:
-   kgent wiki spaces list --backends lark --json
+5. Resolve space and structure via lark-integration (it delegates to lark-wiki):
    → "Engineering Wiki" (7123456), top-level nodes include "Operations" (wiki_AAA)
 6. Propose with position:
    "I'll create this as a wiki node:
@@ -376,9 +379,20 @@ Skill:
     Parent: Operations (wiki_AAA)  ← topical fit
     Proceed? (yes/no/edit)"
 7. User: "yes"
-8. Execute:
-   kgent create --title "Deploy Runbook" --content "..." --backends lark --wiki-space 7123456 --parent-node-token wiki_AAA --yes --json
+8. Execute: route (dry-run) → journal begin (create, lark, kgent://lark/new)
+   → lark-integration delegates the wiki-node create to lark-wiki
+     (space 7123456, parent node wiki_AAA) → node_token wiki_BBB
+   → journal end --doc-uri kgent://lark/wiki_BBB → read back via lark-integration
 9. Confirm with wiki URL:
    "✅ Created: 'Deploy Runbook' → https://mycompany.larksuite.com/wiki/wiki_BBB
     Op ID: op-xxx (undo: kgent undo op-xxx)"
 ```
+
+## 回复语言与配置访问
+
+- **语言跟随请求**：请求用什么语言表述，回复就用什么语言——包括 proposal、
+  确认信息、引用说明与所有面向用户的文字。
+- **配置读取必须先征得同意**：读取 `~/.kgent/config.yaml`（或任何 kgent 配置
+  文件）之前，先向用户说明要读什么、为什么，征得同意后再读——配置含后端与
+  信任设置，不静默读取。kgent CLI 自身内部读配置不受此条约束；此条管的是
+  agent 直接 Read 配置文件的行为。

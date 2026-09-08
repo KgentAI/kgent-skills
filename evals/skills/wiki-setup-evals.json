@@ -3,22 +3,23 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "Set up our team wiki — create a welcome page on Lark and a partner guide on DingTalk.",
+      "prompt": "Set up our team wiki — create a welcome page and a partner guide on Lark (two legs).",
       "expected_output": "The skill should parse this as a multi-backend wiki setup, search for collisions, present a unified proposal for both pages, and upon approval create both with native URL confirmations.",
       "files": [],
       "expectations": [
-        "The skill identifies 2 pages: welcome (lark) and partner guide (dingtalk)",
+        "The skill identifies 2 pages: welcome and partner guide (both lark legs)",
         "The skill searches each backend for existing documents with similar titles",
         "A unified proposal is shown listing all legs before any write",
         "The user is asked to confirm before any write executes",
         "Both kgent create calls are executed after approval",
         "The confirmation includes native URLs for both backends",
         "The op_id is reported for undo capability"
-      ]
+      ],
+      "notes": "DingTalk legs return in Phase 2 (dingtalk-integration 未实施); two Lark legs keep the multi-leg orchestration coverage"
     },
     {
       "id": 2,
-      "prompt": "Create home pages for the new project on both Lark and DingTalk.",
+      "prompt": "Create home pages for the new project on Lark (two pages, two legs).",
       "expected_output": "The skill should search for existing project home pages. If found, propose UPDATE instead of CREATE. Show per-leg status in the proposal.",
       "files": [],
       "expectations": [
@@ -28,7 +29,8 @@
         "The user is asked to confirm before any write",
         "Native URLs in the confirmation, not kgent:// URIs",
         "If a collision is found, the existing document title is shown"
-      ]
+      ],
+      "notes": "DingTalk legs return in Phase 2 (dingtalk-integration 未实施); two Lark legs keep the multi-leg orchestration coverage"
     },
     {
       "id": 3,
@@ -43,7 +45,8 @@
         "Successful backends are confirmed with native URLs",
         "Failed legs mention repairability via 'kgent sync --repair <op_id>'",
         "The op_id is reported for the overall operation"
-      ]
+      ],
+      "notes": "DingTalk legs return in Phase 2 (dingtalk-integration 未实施); two Lark legs keep the multi-leg orchestration coverage"
     },
     {
       "id": 4,
@@ -57,7 +60,8 @@
         "The confirmation includes a native Lark URL",
         "The skill mentions that additional backends can be added later",
         "The op_id is reported for undo"
-      ]
+      ],
+      "notes": "DingTalk legs return in Phase 2 (dingtalk-integration 未实施); two Lark legs keep the multi-leg orchestration coverage"
     },
     {
       "id": 5,
@@ -72,7 +76,8 @@
         "The confirmation shows native URLs for all 3 pages",
         "If any page fails, the others still succeed",
         "The op_id is reported"
-      ]
+      ],
+      "notes": "DingTalk legs return in Phase 2 (dingtalk-integration 未实施); two Lark legs keep the multi-leg orchestration coverage"
     },
     {
       "id": 6,
@@ -87,7 +92,8 @@
         "If workspace_domain is NOT configured, the skill tells the user to configure it (S75)",
         "The user confirms before any write",
         "The op_id is reported"
-      ]
+      ],
+      "notes": "DingTalk legs return in Phase 2 (dingtalk-integration 未实施); two Lark legs keep the multi-leg orchestration coverage"
     }
   ]
 }

@@ -42,6 +42,7 @@ from kgent.router.policy import confirm
 from kgent.search.fanout import build_footer, exit_code_for_failures, truncate
 from kgent.search.rank import rrf
 from kgent.types import SearchResult, WriteProposal
+from kgent.uri import parse_uri
 
 __all__ = ["main"]
 
@@ -482,9 +483,62 @@ def _cmd_unarchive(args: argparse.Namespace) -> int:
     return 0
 
 
+def _entry_backend_name(entry: dict[str, Any] | None) -> str | None:
+    """entry 的 backend 名：显式 ``backend`` 优先，否则 ``targets[0]`` 经 parse_uri。
+
+    台账 begin entry 自带 ``backend``；legacy 写 entry 只有 ``targets``——
+    解析方式与 ``journal.undo`` 的既有路径一致。
+    """
+    if not entry:
+        return None
+    backend = entry.get("backend")
+    if isinstance(backend, str) and backend:
+        return backend
+    targets = [t for t in (entry.get("targets") or []) if isinstance(t, str)]
+    if not targets:
+        return None
+    try:
+        backend_name, _ = parse_uri(targets[0])
+    except ConfigError:
+        return None
+    return backend_name
+
+
+def _ledger_begin_entry(journal: Journal, op_id: str) -> dict[str, Any] | None:
+    """台账登记过的 op 的 ``kind == "begin"`` entry（ADR 0005 分流依据）。
+
+    legacy 写 entry（``build_entry`` 形态，无 ``kind``）→ ``None``：它们不走
+    计划分支，仍由既有 best-effort undo 处理（B12 基线不变量）。
+    """
+    for entry in journal.entries:
+        if entry.get("op_id") == op_id and entry.get("kind") == "begin":
+            return entry
+    return None
+
+
 def _cmd_undo(args: argparse.Namespace) -> int:
     router, _config = _build_router()
     op_id = args.op_id
+    # ADR 0005：台账登记过的 op（begin/end）只产补偿计划，执行归 integration
+    # skill；其余（legacy 写 entry、未知 op_id）走既有 best-effort undo 不变。
+    # 台账路径读 fail closed（FM8）：journal.ndjson 损坏 → 在分流这步硬失败；
+    # legacy journal_undo 仍用宽松加载的 router.journal（既有安全网，B12）。
+    ledger_journal = _ledger_journal_strict(_home())
+    backend = _entry_backend_name(_ledger_begin_entry(ledger_journal, op_id))
+    if backend is not None:
+        from kgent.router.ledger import INTEGRATION_SKILL_BACKENDS, compensation_plan
+
+        if backend in INTEGRATION_SKILL_BACKENDS:
+            plan = compensation_plan(op_id, backends=router.backends, journal=ledger_journal)
+            if getattr(args, "json", False):
+                _json_out(plan)
+            else:
+                mechanism = plan["plan"]["mechanism"] or "n/a"
+                text = f"{plan['status']}: {mechanism} via {plan['integration_skill']}"
+                if plan["status"] == "rejected":
+                    text += f"\n  reason: {plan['reason']}"
+                _text_out(text)
+            return 0 if plan["status"] == "ok" else 1
     result = journal_undo(
         op_id, backends=router.backends, journal=router.journal, audit=router.audit
     )
@@ -500,6 +554,139 @@ def _cmd_undo(args: argparse.Namespace) -> int:
     elif result.error:
         _text_out(f"undo: {result.error}")
     return result.exit_code
+
+
+# ---------------------------------------------------------------------------
+# Ledger commands (journal; ADR 0005)
+# ---------------------------------------------------------------------------
+
+
+def _cmd_journal_begin(args: argparse.Namespace) -> int:
+    """B2: register a logical write op in the ledger."""
+    from kgent.router.ledger import begin
+
+    revision = int(args.revision_before) if args.revision_before else None
+    entry = begin(
+        Journal(_home()),  # 台账只依赖 home，不需要已配置的 backends
+        operation=args.operation,
+        backend=args.backend,
+        target_uri=args.doc_uri,
+        revision_before=revision,
+        content=args.snapshot_content,
+    )
+    if getattr(args, "json", False):
+        _json_out({"operation": "journal-begin", "entry": entry})
+    else:
+        _text_out(f"begin {entry['op_id']}")
+    return 0
+
+
+def _cmd_journal_end(args: argparse.Namespace) -> int:
+    """B2: finalize a ledger op; unknown op id → exit 1 (fail closed).
+
+    ``--doc-uri``（可选，create 腿）：begin 的占位 URI 写入成功后回填真实
+    目标——undo 的补偿计划以 end entry 的这个 URI 为准（C1）。
+    """
+    from kgent.router.ledger import LedgerError, end
+
+    revision = int(args.revision_after) if args.revision_after else None
+    doc_uri = getattr(args, "doc_uri", None)
+    try:
+        entry = end(
+            Journal(_home()),
+            args.op_id,
+            status=args.status,
+            revision_after=revision,
+            doc_uri=doc_uri,
+        )
+    except LedgerError as exc:
+        if getattr(args, "json", False):
+            _json_out({"operation": "journal-end", "status": "failed", "error": str(exc)})
+        else:
+            _text_out(f"journal end failed: {exc}")
+        return 1
+    if getattr(args, "json", False):
+        _json_out({"operation": "journal-end", "entry": entry})
+    else:
+        _text_out(f"end {args.op_id} {args.status}")
+    return 0
+
+
+def _cmd_journal(args: argparse.Namespace) -> int:
+    """Dispatch ``kgent journal begin|end`` (subparsers set ``args.func``)."""
+    func: Callable[[argparse.Namespace], int] | None = getattr(args, "func", None)
+    if func is None:
+        _text_out("unknown journal command")
+        return 1
+    return func(args)
+
+
+# ---------------------------------------------------------------------------
+# Route adjudication (read-only dry-run; B7/FM4)
+# ---------------------------------------------------------------------------
+
+
+def _cmd_route(args: argparse.Namespace) -> int:
+    """``kgent route`` — read-only adjudication: where may this content go?
+
+    Classifies ``--content`` (best-effort stub until the skill layer injects a
+    real LLM classifier) and re-runs the router's zone gate per candidate
+    backend — the same :func:`~kgent.router.sensitivity.enforce_zone` check a
+    real write goes through, so the ruling a caller sees is the ruling a write
+    would get. The zone comes from config (see
+    :func:`_backend_trust_zone`), never from the adapter object. Nothing is
+    written, journaled, or audited. Every backend rejected → exit 3 (the
+    router's policy-rejected code).
+    """
+    from kgent.router.sensitivity import analyze_sensitivity, enforce_zone
+
+    router, _config = _build_router()
+    # Confidence is fixed at 0.9 until a real classifier is injected: the
+    # stub's fail-safe raise only fires below 0.5 (sensitivity.py, S14).
+    tier, _confidence, provenance = analyze_sensitivity(args.content, 0.9)
+    names = (
+        [b.strip() for b in args.backends.split(",") if b.strip()]
+        if args.backends
+        else list(router.backends)
+    )
+    allowed: list[str] = []
+    rejected: list[dict[str, str]] = []
+    for name in names:
+        if router.backends.get(name) is None:
+            # Same contract as read/delete: a named-but-unavailable backend is
+            # a failure (exit 1) — never a silent skip, never a policy 3.
+            raise ConfigError(f"backend {name!r} is not available")
+        try:
+            enforce_zone(tier, _backend_trust_zone(router.config, name), name)
+            allowed.append(name)
+        except PolicyError as exc:
+            rejected.append({"backend": name, "reason": str(exc)})
+    payload: dict[str, Any] = {
+        "operation": "route",
+        "dry_run": True,
+        "sensitivity": tier,
+        "provenance": provenance,
+        "allowed_backends": allowed,
+        "rejected": rejected,
+    }
+    if getattr(args, "json", False):
+        _json_out(payload)
+    else:
+        _text_out(f"{tier}: allowed={allowed} rejected={rejected}")
+    return 0 if allowed else 3
+
+
+def _backend_trust_zone(config: Config, backend_name: str) -> str:
+    """Trust zone for ``backend_name``, read from config — the zone's source.
+
+    Thin delegate to :func:`kgent.router.sensitivity.backend_trust_zone`
+    (the one shared helper; the router's write gate reads the same source —
+    adapters never carry the label). Kept for the route command and its
+    contract tests.
+    """
+    from kgent.router.sensitivity import backend_trust_zone
+
+    return backend_trust_zone(config, backend_name)
 
 
 def _cmd_sync(args: argparse.Namespace) -> int:
@@ -540,31 +727,104 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ledger_journal_strict(home: Path) -> Journal:
+    """台账读 fail closed（FM8）：损坏的 NDJSON 行硬失败，绝不静默跳过。
+
+    ``audit``（台账读视图）与 ``undo`` 的台账路径共用；legacy 写 entry 的
+    既有 undo 路径维持宽松加载（历史安全网，B12）。
+    """
+    try:
+        return Journal(home, strict_load=True)
+    except json.JSONDecodeError as exc:
+        raise KgentError(f"ledger journal is corrupt: {exc}") from exc
+
+
+def _ledger_lifecycle(journal: Journal) -> list[dict[str, Any]]:
+    """台账 begin/end 生命周期视图（CONTEXT.md：audit 是台账的读视图）。
+
+    每个 op_id 一条记录：``status`` 是 end 的落账状态（ok/failed），有 begin
+    无 end → ``"open"``（dangling begin，FM1 的执行中断痕迹）；end 无 begin
+    （手改台账才会出现）也照录，``operation``/``target`` 缺席。legacy 写 entry
+    （无 ``kind``）不属于 begin/end 生命周期，不在此视图里。
+    """
+    ops: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for entry in journal.entries:
+        op_id = entry.get("op_id")
+        if not isinstance(op_id, str):
+            continue
+        kind = entry.get("kind")
+        if kind == "begin":
+            ops[op_id] = {
+                "op_id": op_id,
+                "operation": entry.get("operation"),
+                "backend": entry.get("backend"),
+                "target": entry.get("target"),
+                "ts": entry.get("ts"),
+                "status": "open",
+                "end_ts": None,
+            }
+            order.append(op_id)
+        elif kind == "end":
+            record = ops.get(op_id)
+            if record is not None:
+                record["status"] = entry.get("status")
+                record["end_ts"] = entry.get("ts")
+                # C1 回填优先级与 compensation_plan 一致：end.doc_uri（真实
+                # URI）> begin.target（写入前的占位）
+                doc_uri = entry.get("doc_uri")
+                if isinstance(doc_uri, str) and doc_uri:
+                    record["target"] = doc_uri
+            else:
+                ops[op_id] = {
+                    "op_id": op_id,
+                    "operation": None,
+                    "backend": None,
+                    "target": None,
+                    "ts": None,
+                    "status": entry.get("status"),
+                    "end_ts": entry.get("ts"),
+                }
+                order.append(op_id)
+    return [ops[op_id] for op_id in order]
+
+
 def _cmd_audit(args: argparse.Namespace) -> int:
+    """审计 + 台账读视图：audit.ndjson entries 与 begin/end 生命周期（spec 组件表）。
+
+    台账读 fail closed（FM8）：journal.ndjson 损坏 → 硬失败 exit 1，不静默
+    吞掉半本台账。``--op`` 过滤同时作用于两侧（按 ``operation`` 字段）。
+    """
     home = _home()
     audit_path = home / "audit.ndjson"
-    if not audit_path.exists():
-        if getattr(args, "json", False):
-            _json_out({"entries": []})
-        else:
-            _text_out("no audit log")
-        return 0
     entries: list[dict[str, Any]] = []
-    for line in audit_path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            entries.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
+    if audit_path.exists():
+        for line in audit_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
     op_filter = getattr(args, "op", None)
     if op_filter:
         entries = [e for e in entries if e.get("operation") == op_filter]
+    ledger = _ledger_lifecycle(_ledger_journal_strict(home))
+    if op_filter:
+        ledger = [r for r in ledger if r.get("operation") == op_filter]
     if getattr(args, "json", False):
-        _json_out({"entries": entries})
+        _json_out({"entries": entries, "ledger": ledger})
     else:
         for e in entries:
             _text_out(json.dumps(e, ensure_ascii=False))
+        for record in ledger:
+            detail = " (dangling begin — no journal end)" if record["status"] == "open" else ""
+            _text_out(
+                f"ledger {record['op_id']} {record.get('operation')} "
+                f"{record.get('backend')} {record.get('target')} {record['status']}{detail}"
+            )
+        if not entries and not ledger:
+            _text_out("no audit log")
     return 0
 
 
@@ -969,6 +1229,43 @@ def _build_parser() -> argparse.ArgumentParser:
     p_undo = sub.add_parser("undo", help="Undo an operation", parents=[common])
     p_undo.add_argument("op_id")
 
+    # journal（台账，ADR 0005）
+    p_journal = sub.add_parser("journal", help="Ledger (op lifecycle)", parents=[common])
+    journal_sub = p_journal.add_subparsers(dest="journal_cmd", required=True)
+    p_begin = journal_sub.add_parser("begin", help="Register a logical write op", parents=[common])
+    p_begin.add_argument("--operation", required=True, choices=["create", "update", "delete"])
+    p_begin.add_argument("--backend", required=True)
+    p_begin.add_argument("--doc-uri", dest="doc_uri", required=True)
+    p_begin.add_argument("--revision-before", dest="revision_before", default=None)
+    p_begin.add_argument("--snapshot-content", dest="snapshot_content", default=None)
+    p_begin.set_defaults(func=_cmd_journal_begin)
+    p_end = journal_sub.add_parser("end", help="Finalize a ledger op", parents=[common])
+    p_end.add_argument("--op-id", dest="op_id", required=True)
+    p_end.add_argument("--status", required=True, choices=["ok", "failed"])
+    p_end.add_argument("--revision-after", dest="revision_after", default=None)
+    p_end.add_argument(
+        "--doc-uri",
+        dest="doc_uri",
+        default=None,
+        help="Backfill the real target URI (create legs): the begin placeholder "
+        "only becomes a real token after the write; undo targets this URI",
+    )
+    p_end.set_defaults(func=_cmd_journal_end)
+
+    # route（只读裁决：这段内容能落到哪些 backend，B7/FM4）
+    p_route = sub.add_parser(
+        "route", help="Adjudicate content sensitivity per backend (read-only)", parents=[common]
+    )
+    p_route.add_argument("--content", required=True)
+    p_route.add_argument("--backends", default=None)
+    p_route.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        default=False,
+        help="Accepted for spec compatibility; route never writes (always a dry run)",
+    )
+
     # sync
     p_sync = sub.add_parser("sync", help="Sync / repair partial operations", parents=[common])
     p_sync.add_argument("--repair", default=None)
@@ -1028,6 +1325,8 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], int]] = {
     "archive": _cmd_archive,
     "unarchive": _cmd_unarchive,
     "undo": _cmd_undo,
+    "journal": _cmd_journal,
+    "route": _cmd_route,
     "sync": _cmd_sync,
     "audit": _cmd_audit,
     "auth": _cmd_auth,
