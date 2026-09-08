@@ -24,9 +24,10 @@ DOC_FILES = [
     SKILLS_DIR / "question-answering" / "SKILL.md",
     SKILLS_DIR / "wiki-setup" / "SKILL.md",
     SKILLS_DIR / "lark-integration" / "SKILL.md",
+    SKILLS_DIR / "dingtalk-integration" / "SKILL.md",
 ]
 
-_LINE = re.compile(r"^\s*(?:[-*]\s+|>\s*|\$\s+)?((?:kgent|lark-cli)\b.+)")
+_LINE = re.compile(r"^\s*(?:[-*]\s+|>\s*|\$\s+)?((?:kgent|lark-cli|dws)\b.+)")
 
 requires_artifact = pytest.mark.skipif(
     shutil.which("kgent") is None or shutil.which("lark-cli") is None,
@@ -34,7 +35,7 @@ requires_artifact = pytest.mark.skipif(
 )
 
 
-_SPAN = re.compile(r"`((?:kgent|lark-cli)\b[^`]+)`")
+_SPAN = re.compile(r"`((?:kgent|lark-cli|dws)\b[^`]+)`")
 
 
 def _extract_examples(path: Path) -> list[str]:
@@ -90,13 +91,25 @@ def _deepest_help(binary: str, tokens: list[str]) -> tuple[list[str], str]:
 def test_documented_cli_examples_parse(doc: Path) -> None:
     kgent_bin = shutil.which("kgent")
     lark_bin = shutil.which("lark-cli")
+    dws_bin = shutil.which("dws")
     assert kgent_bin is not None and lark_bin is not None
+    # dws 不进 requires_artifact 的 skipif：缺 dws 时 lark/kgent 用例照跑，而
+    # dingtalk-integration 用例在这里显式 fail（Task 1 之后 dws 应常驻），不静默 skip。
+    if doc.parent.name == "dingtalk-integration":
+        assert dws_bin is not None, "Task 1 之后 dws 应常驻"
     checked = 0
     for example in _extract_examples(doc):
         tokens = _tokenize(example)
         if not tokens:
             continue
-        binary = kgent_bin if tokens[0] == "kgent" else lark_bin
+        if tokens[0] == "kgent":
+            binary = kgent_bin
+        elif tokens[0] == "lark-cli":
+            binary = lark_bin
+        elif tokens[0] == "dws":
+            binary = dws_bin
+        else:
+            continue  # 非命令提及（如 ``kgent://`` URI span），非一致性声明
         rest = tokens[1:]
         if not rest:
             continue  # 纯概念提及（binary + 占位符），非一致性声明

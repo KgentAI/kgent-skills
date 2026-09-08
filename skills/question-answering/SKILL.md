@@ -133,7 +133,7 @@ Format the answer with inline citations using **native platform URLs, not `kgent
 
 **Lark results:** with the Lark backend enabled — `backends.lark.enabled: true` in `~/.kgent/config.yaml` — invoke the `lark-integration` skill and convert each `kgent://lark/<token>` per its URL construction table. The skill owns the Lark path mapping, the `workspace_domain` fix, and the non-docx delegation matrices.
 
-**DingTalk**: `kgent://dingtalk/<id>` → `https://open.dingtalk.com/document/<id>`
+**DingTalk**: with the DingTalk backend enabled, invoke the `dingtalk-integration` skill and convert each `kgent://dingtalk/<id>` per its Native URL table (all node types share the `/i/nodes/<nodeId>` shape — confirm the content type before citing)
 **WeCom**: `kgent://wecom/<id>` → WeCom admin console URL
 
 **Answer format:**
