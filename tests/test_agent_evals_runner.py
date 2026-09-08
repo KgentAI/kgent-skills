@@ -1,5 +1,6 @@
 # tests/test_agent_evals_runner.py
 """run-agent-evals.py 纯函数层：grader 兜底词 + fixture 一致性（T10 回归）。"""
+
 import importlib.util
 import json
 from pathlib import Path
@@ -21,7 +22,9 @@ runner = _load_runner()
 
 def test_grader_accepts_dingtalk_integration_wording():
     passed, misses, manual = runner.heuristic_grade(
-        ["For DingTalk targets the skill delegates execution via dingtalk-integration, not 'kgent update'"],
+        [
+            "For DingTalk targets the skill delegates execution via dingtalk-integration, not 'kgent update'"
+        ],
         "transcript ... dingtalk-integration ... 遵循了委派",
     )
     assert passed == 1 and not misses and not manual
