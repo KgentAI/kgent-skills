@@ -28,6 +28,19 @@ Two behaviors, selected by the invocation:
        search --query <q> --keyword --top-k <n>         → {"results":[{id,title,snippet,rank}]}
        version                                          → {"ok": true, "version": "1.0.0"}
 
+   dws wire protocol (the real DingTalkAdapter's read-lane command shape) —
+   same per-backend state bucket as ``documents``, so S65 conformance holds
+   across backends regardless of CLI dialect (same rationale as the lark
+   dialect below). Read lanes only: real DingTalk writes go through the
+   dingtalk-integration skill (ADR 0004), so the fake has no ``doc +create``
+   / ``+update``.
+
+       doc +fetch --node <native-id> -f json            → {"ok","status","complete",
+                                                           "data":{nodeId,title,revision,content}}
+       doc +search --query <q> --limit <n> -f json      → {"ok","status","complete","count",
+                                                           "hasMore","failures",
+                                                           "items":[{nodeId,title,snippet,rank}]}
+
    Failures print ``{"error": "<message>"}`` to **stderr** and exit nonzero
    (the adapter's ``normalize_error`` turns that into :class:`AdapterError`).
    Updating with a stale ``--version`` exits 3 with ``version conflict:
@@ -126,6 +139,10 @@ def _dispatch(bucket: dict[str, Any], rest: list[str]) -> int:
         # per-backend state bucket as ``documents``, so S65 conformance holds
         # across backends regardless of CLI dialect.
         return _docs_lark(bucket, rest[1], rest[2:])
+    if rest[0] == "doc" and len(rest) >= 2:
+        # dws wire protocol (the real DingTalkAdapter read-lane shape; ``doc``
+        # is dws' product prefix — distinct from lark's ``docs``).
+        return _doc_dws(bucket, rest[1], rest[2:])
     if rest[0] == "drive" and len(rest) >= 2 and rest[1] == "+delete":
         return _drive_delete(bucket, rest[2:])
     if rest[0] == "search":
@@ -235,6 +252,84 @@ def _docs_lark(bucket: dict[str, Any], op: str, args: list[str]) -> int:
         return 0
 
     return _fail(f"unknown docs op: {op}", 2)
+
+
+def _doc_dws(bucket: dict[str, Any], op: str, args: list[str]) -> int:
+    """dws wire protocol: ``doc +fetch|+search`` (the DingTalkAdapter read lanes).
+
+    Payload shapes mirror the documented dws envelopes the adapter parses
+    (doc.operation.v1 outer keys; ``data.nodeId/revision/content`` for fetch;
+    ``items[]`` hits with 1-based ``rank`` for search). ``revision`` serves the
+    document's ``version`` value so the shared state bucket's create/update
+    version bumps stay observable through the dws-shaped read lane. Shapes are
+    documented-not-captured (see tests/fixtures/dws/FIXTURES-NOTE.md).
+    """
+    docs: dict[str, Any] = bucket["docs"]
+
+    if op == "+search":
+        query = _opt(args, "--query")
+        if query is None:
+            return _fail("doc +search requires --query", 2)
+        try:
+            limit = int(_opt(args, "--limit") or "10")
+        except ValueError:
+            return _fail("doc +search --limit must be an integer", 2)
+        matches = [
+            doc
+            for doc in docs.values()
+            if not doc["archived"] and (query in doc["title"] or query in doc["content"])
+        ]
+        items = [
+            {
+                "nodeId": doc["id"],
+                "title": doc["title"],
+                "snippet": doc["content"][:120],
+                "rank": i,
+            }
+            for i, doc in enumerate(matches[:limit], start=1)
+        ]
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "status": "success",
+                    "complete": True,
+                    "count": len(items),
+                    "hasMore": False,
+                    "failures": [],
+                    "items": items,
+                }
+            )
+        )
+        return 0
+
+    if op == "+fetch":
+        native = _opt(args, "--node")
+        if native is None:
+            return _fail("doc +fetch requires --node <DOC_ID>", 2)
+        doc = docs.get(native)
+        if doc is None:
+            return _fail(f"document not found: {native}")
+        if doc["archived"]:
+            return _fail(f"document archived: {native}")
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "status": "success",
+                    "complete": True,
+                    "data": {
+                        "nodeId": native,
+                        "title": doc["title"],
+                        "revision": doc["version"],
+                        "content": doc["content"],
+                    },
+                }
+            )
+        )
+        return 0
+
+    return _fail(f"unknown doc op: {op}", 2)
 
 
 def _drive_delete(bucket: dict[str, Any], args: list[str]) -> int:
