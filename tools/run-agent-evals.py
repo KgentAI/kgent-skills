@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -33,12 +34,19 @@ REPO = Path(__file__).resolve().parents[1]
 EVALS = REPO / "evals" / "skills"
 TRANSCRIPTS = REPO / "evals" / "transcripts"
 
+# Windows 控制台常为 cp1252——中文 dry 输出直接炸（2026-09-07 实测）
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 APPROVALS = ("Approved — proceed.", "Yes — proceed with your default choice.")
 
 
-def load_evals(skill: str | None, ids: set[int] | None) -> list[tuple[str, dict]]:
+def load_evals(skill: str | None, ids: set[int] | None, file_stem: str | None = None) -> list[tuple[str, dict]]:
     picked: list[tuple[str, dict]] = []
     for path in sorted(EVALS.glob("*-evals.json")):
+        if file_stem and path.stem != file_stem:
+            continue
         data = json.loads(path.read_text(encoding="utf-8"))
         name = data.get("skill_name", path.stem.replace("-evals", ""))
         if skill and name != skill:
@@ -49,6 +57,11 @@ def load_evals(skill: str | None, ids: set[int] | None) -> list[tuple[str, dict]
             key = f"{path.stem.replace('-evals', '')}-{entry['id']}"  # 文件级唯一——skill_name 会撞车（2026-09-07 实测）
             picked.append((key, entry))
     return picked
+
+
+def eval_file_stems() -> list[str]:
+    """所有 eval 文件的 stem——并行编排的分区单位（每文件一个 worker 组）。"""
+    return sorted(p.stem for p in EVALS.glob("*-evals.json"))
 
 
 def heuristic_grade(expectations: list[str], transcript: str) -> tuple[int, list[str]]:
@@ -73,9 +86,54 @@ def heuristic_grade(expectations: list[str], transcript: str) -> tuple[int, list
     return passed, misses, manual
 
 
+def run_parallel(args: argparse.Namespace) -> int:
+    """按 eval 文件分组并行派 worker（每文件一组，写域天然不相交的概率最高）。
+
+    并发安全前提（2026-09-07 实测确立）：
+    - ``~/.kgent/journal/journal.ndjson`` 是逐 worker 追加的共享文件——不同
+      worker 组应避免同时写同一 target；只读组（QA）与创建组（wiki-setup）
+      可安全并行。
+    - 报告按 pid 分文件（``report-<pid>.md``），跑完由本函数合并。
+    - 子 worker 带 resume：transcript 已存在即跳过，重复派发幂等。
+    """
+    stems = eval_file_stems()
+    if args.file:
+        stems = [s for s in stems if s == args.file]
+    children: list[tuple[str, subprocess.Popen[bytes]]] = []
+    for stem in stems:
+        log = (TRANSCRIPTS / f"worker-{stem}.log").open("w", encoding="utf-8")
+        argv = [sys.executable, __file__, "--execute", "--file", stem,
+                "--timeout", str(args.timeout)]
+        if not args.followup:
+            argv.append("--no-followup")
+        children.append((stem, subprocess.Popen(argv, stdout=log, stderr=log)))  # noqa: S603
+        log.close()
+        print(f"worker {stem} -> {log.name}")
+    failed: list[str] = []
+    for stem, proc in children:
+        rc = proc.wait()
+        if rc != 0:
+            failed.append(f"{stem} (exit {rc})")
+        print(f"worker {stem} finished rc={rc}")
+
+    merged = ["# Agent evals report (merged)\n"]
+    for rp in sorted(TRANSCRIPTS.glob("report-*.md")):
+        merged.append(rp.read_text(encoding="utf-8"))
+        merged.append("\n")
+    (TRANSCRIPTS / "report.md").write_text("\n".join(merged), encoding="utf-8")
+    print(f"merged report: {TRANSCRIPTS / 'report.md'}")
+    if failed:
+        print(f"FAILED workers: {', '.join(failed)}")
+        return 1
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--skill", help="只跑某个 skill 的 evals")
+    ap.add_argument("--skill", help="只跑某个 skill 的 evals（按 skill_name 匹配）")
+    ap.add_argument("--file", help="只跑某个 eval 文件（按文件 stem 匹配；并行 worker 用）")
+    ap.add_argument("--parallel", type=int, default=0,
+                    help="按 eval 文件分组并行跑 N 个 worker（--execute 专用；报告自动合并）")
     ap.add_argument("--ids", help="逗号分隔的 eval id，如 1,2")
     ap.add_argument("--execute", action="store_true", help="真跑（headless claude，写真实平台）")
     ap.add_argument("--limit", type=int, default=0, help="本次最多跑 N 条（0=不限）；配 resume 分块跑")
@@ -85,8 +143,11 @@ def main() -> int:
     ap.add_argument("--timeout", type=int, default=900, help="单条 eval/单轮 超时秒数")
     args = ap.parse_args()
 
+    if args.parallel and args.execute:
+        return run_parallel(args)
+
     ids = {int(x) for x in args.ids.split(",")} if args.ids else None
-    picked = load_evals(args.skill, ids)
+    picked = load_evals(args.skill, ids, args.file)
     if not picked:
         print("no evals matched")
         return 1
