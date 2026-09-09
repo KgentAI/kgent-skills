@@ -586,11 +586,17 @@ def _cmd_journal_end(args: argparse.Namespace) -> int:
 
     ``--doc-uri``（可选，create 腿）：begin 的占位 URI 写入成功后回填真实
     目标——undo 的补偿计划以 end entry 的这个 URI 为准（C1）。
+
+    ``--snapshot-after``（可选，Phase 3 Task 2）：写后全文快照，原样透传字符串
+    （不做 int 化——它是内容全文，不是 revision），ledger.end 落
+    ``snapshots/<op_id>.after.txt``，undo 拿它当无平台 revision 后端（wecom）
+    的新鲜度证据。
     """
     from kgent.router.ledger import LedgerError, end
 
     revision = int(args.revision_after) if args.revision_after else None
     doc_uri = getattr(args, "doc_uri", None)
+    snapshot_after = getattr(args, "snapshot_after", None)
     try:
         entry = end(
             Journal(_home()),
@@ -598,6 +604,7 @@ def _cmd_journal_end(args: argparse.Namespace) -> int:
             status=args.status,
             revision_after=revision,
             doc_uri=doc_uri,
+            snapshot_after=snapshot_after,
         )
     except LedgerError as exc:
         if getattr(args, "json", False):
@@ -1249,6 +1256,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Backfill the real target URI (create legs): the begin placeholder "
         "only becomes a real token after the write; undo targets this URI",
+    )
+    p_end.add_argument(
+        "--snapshot-after",
+        dest="snapshot_after",
+        default=None,
+        help="Post-write full content snapshot (version-less backends such as wecom): "
+        "stored as snapshots/<op_id>.after.txt and used as undo freshness evidence",
     )
     p_end.set_defaults(func=_cmd_journal_end)
 
