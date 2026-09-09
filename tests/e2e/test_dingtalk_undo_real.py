@@ -137,6 +137,11 @@ _VERSION_POLL_INTERVAL_SECONDS = 5
 _READBACK_POLL_ROUNDS = 6
 _READBACK_POLL_INTERVAL_SECONDS = 2
 
+#: with-ids 读的瞬态服务端超时重试（live-captured 2026-09-09 复跑现场：
+#: create 后立刻读 JSONML 档撞 HSFTimeOutException/3000ms——读幂等，重试安全）
+_TRANSIENT_READ_RETRIES = 2
+_TRANSIENT_READ_BACKOFF_SECONDS = 2
+
 DWS_TIMEOUT_SECONDS = 120
 KGENT_TIMEOUT_SECONDS = 120
 
@@ -205,6 +210,7 @@ def _dws(
     cwd: Path | None = None,
     check: bool = True,
     timeout: int = DWS_TIMEOUT_SECONDS,
+    error_payload: bool = False,
 ) -> dict[str, Any] | None:
     """跑一条 dws 命令并解析 JSON envelope（``-f json`` 收尾，PROBE-NOTES §1.4）。
 
@@ -215,6 +221,10 @@ def _dws(
     ``check=True``（默认）：非零退出、非 JSON 或 envelope ``ok=False`` →
     AssertionError（带 stdout/stderr 尾部，真机排障用）。``check=False``
     （teardown/探测）：失败打印并返回 ``None``，由调用方点名。
+    ``error_payload=True``（配合 ``check=False``）：失败时进一步解析错误
+    envelope（rc=1 的错误 JSON 实测整份在 **stderr**——``doc +update`` 的
+    ``doc_write_verification_failed`` 现场 live-captured 2026-09-09）返回给
+    调用方分类；解析不出仍返回 ``None``。
     ``cwd`` 锚定 ``@file`` 的工作目录相对语义（PROBE-NOTES §4）。
     """
     confirm = _confirmation_flags() if args[:2] in _CONFIRM_REQUIRED_COMMANDS else ()
@@ -259,12 +269,26 @@ def _dws(
             f"dws {' '.join(args)} failed (rc={proc.returncode}): "
             f"stdout={proc.stdout[-400:]!r} stderr={proc.stderr[-400:]!r}"
         )
+        if error_payload:
+            for text in (proc.stderr, proc.stdout):
+                try:
+                    decoded = json.loads(text)
+                except ValueError:
+                    continue
+                if isinstance(decoded, dict):
+                    return decoded
         return None
     return payload
 
 
-def _kgent_json(command: str, *rest: str) -> dict[str, Any]:
-    """``--json`` 放在整条子命令路径的**末尾**（模块 docstring 修正 2）。"""
+def _kgent_json(command: str, *rest: str, ok_rc: tuple[int, ...] = (0,)) -> dict[str, Any]:
+    """``--json`` 放在整条子命令路径的**末尾**（模块 docstring 修正 2）。
+
+    ``ok_rc``：命令的退出码契约。``kgent undo`` 对 **rejected 计划按设计退 1**
+    （``src/kgent/cli.py``：「return 0 if plan["status"] == "ok" else 1」；
+    live-captured 2026-09-09 FM2 现场证实：rc=1 + stdout 全量 JSON 证据）——
+    证据在 stdout，调用方用 ``ok_rc=(0, 1)`` 放行后按 JSON 断言 status。
+    """
     out = subprocess.run(
         [*_kgent(), command, *rest, "--json"],
         capture_output=True,
@@ -274,7 +298,7 @@ def _kgent_json(command: str, *rest: str) -> dict[str, Any]:
         check=False,
         stdin=subprocess.DEVNULL,
     )
-    if out.returncode != 0:
+    if out.returncode not in ok_rc:
         raise AssertionError(
             f"kgent {command} {' '.join(rest)} failed:\n"
             f"  rc={out.returncode}\n"
@@ -326,10 +350,34 @@ def _fetch_detail(doc_id: str, *extra: str) -> dict[str, Any]:
     live-captured（2026-09-09）：默认 markdown 档无 revision；with-ids 档在
     ``content.revision``（字符串）。该档正文键是 ``jsonml`` 非 ``markdown``——
     **取正文不要走这里**（:func:`_extract_markdown` 只认默认档的 ``markdown``）。
+
+    瞬态读超时有界重试（live-captured 2026-09-09 复跑现场）：with-ids 档要
+    服务端现拼 JSONML，create 后立刻读可能撞**服务端 HSF 读超时**（rc=1
+    ``business_error`` / ``server_error_code: internalError``，message 带
+    ``HSFTimeOutException``、timeout 3000ms）——读车道幂等，重试安全；
+    其余错误原样响亮失败。
     """
-    return _dws(
-        *CMD_FETCH, FLAG_NODE, doc_id, FLAG_DETAIL, DETAIL_WITH_IDS, *extra
+    args = [*CMD_FETCH, FLAG_NODE, doc_id, FLAG_DETAIL, DETAIL_WITH_IDS, *extra]
+    payload: dict[str, Any] | None = None
+    for attempt in range(_TRANSIENT_READ_RETRIES + 1):
+        payload = _dws(*args, check=False, error_payload=True)
+        error = (payload or {}).get("error") or {}
+        transient = (
+            str(error.get("reason", "")) == "business_error"
+            and str(error.get("server_error_code", "")) == "internalError"
+        )
+        if not transient:
+            break
+        print(
+            f"[kgent-phase2-probe] transient server timeout on with-ids fetch "
+            f"(attempt {attempt + 1}/{_TRANSIENT_READ_RETRIES + 1}): "
+            f"{str(error.get('message', ''))[:200]}"
+        )
+        time.sleep(_TRANSIENT_READ_BACKOFF_SECONDS)
+    assert payload is not None and not payload.get("error"), (
+        f"dws {' '.join(args)} failed:\n  payload={json.dumps(payload, ensure_ascii=False)[:800]}"
     )
+    return payload
 
 
 def _extract_doc_id(payload: dict[str, Any]) -> str:
@@ -519,6 +567,62 @@ def _teardown(doc_id: str) -> None:
     )
 
 
+def _conditional_overwrite(tmp_dir: Path, doc_id: str, revision_before: int, content: str) -> None:
+    """B6 写腿：``doc +update --command overwrite --doc-format jsonml
+    --expected-revision <rev>``——服务端原子条件写仅此组合生效（PROBE-NOTES
+    §1.1；dingtalk-integration skill Write 节同款命令形状），内容经 ``@file``
+    临时文件（不走 argv 内联）。
+
+    **dws 已知行为（live-captured 2026-09-09，两个探针 + 两轮独立复现同一现场）**：
+    该组合的 CLI 回读验证**结构性假阴性**——rc=1
+    ``doc_write_verification_failed``（cause「回读结果未包含预期内容」、
+    ``execution_started: true``、steps=``[update_document: success, verify:
+    failed]``、``retryable: false``），而写实际已落（读回 markdown/revision/
+    version 全部到位）；markdown 通道同场验证通过 → 是 jsonml 源文与 markdown
+    读数的比对形状问题，不是写入或时序问题。
+
+    处置按 dws 错误契约自证（原文「请先检查当前内容，不要直接重试写入」）：
+    ``error_payload`` 分类 → 仅对 ``doc_write_verification_failed`` 放行 →
+    有界轮询读回，写后内容出现即视为写成功；不出现才按真失败断言。CLI 侧
+    修复后本助手自动走 rc=0 快路径，恢复逻辑保持为死代码。
+    """
+    rel_after = _write_jsonml(tmp_dir, "probe-after.jsonml", content)
+    updated = _dws(
+        *CMD_UPDATE,
+        FLAG_NODE,
+        doc_id,
+        FLAG_COMMAND,
+        UPDATE_OVERWRITE,
+        FLAG_DOC_FORMAT,
+        DOC_FORMAT_JSONML,
+        FLAG_CONTENT,
+        f"@{rel_after}",
+        FLAG_EXPECTED_REVISION,
+        str(revision_before),
+        cwd=tmp_dir,
+        check=False,
+        error_payload=True,
+    )
+    if updated is not None and not updated.get("error"):
+        return  # rc=0：CLI 自身 verify 通过（写 + 读回都证实）
+    reason = str((updated or {}).get("error", {}).get("reason", ""))
+    assert reason == "doc_write_verification_failed", (
+        f"conditional write failed beyond the known verify false-negative "
+        f"(reason={reason!r}): {json.dumps(updated, ensure_ascii=False)[:600]}"
+    )
+    landed = _poll_content(doc_id, content)
+    rendered = json.dumps(landed, ensure_ascii=False)
+    assert content in rendered, (
+        f"conditional write reported doc_write_verification_failed and did NOT land "
+        f"either (no {content!r} on readback within "
+        f"{_READBACK_POLL_ROUNDS * _READBACK_POLL_INTERVAL_SECONDS}s): {rendered[:600]}"
+    )
+    print(
+        "[kgent-phase2-probe] dws overwrite+jsonml verify false-negative "
+        "(doc_write_verification_failed, write landed) - recovered via own readback"
+    )
+
+
 def _journaled_update(tmp_dir: Path) -> tuple[str, str, int, int]:
     """B6 公共前缀：建探针（A）→ journal begin → dws 条件写（B）→ journal end。
 
@@ -578,24 +682,10 @@ def _journaled_update(tmp_dir: Path) -> tuple[str, str, int, int]:
         )
         op_id = begin["entry"]["op_id"]
 
-        rel_after = _write_jsonml(tmp_dir, "probe-after.jsonml", CONTENT_B)
-        updated = _dws(
-            *CMD_UPDATE,
-            FLAG_NODE,
-            doc_id,
-            FLAG_COMMAND,
-            UPDATE_OVERWRITE,
-            FLAG_DOC_FORMAT,
-            DOC_FORMAT_JSONML,
-            FLAG_CONTENT,
-            f"@{rel_after}",
-            FLAG_EXPECTED_REVISION,
-            str(revision_before),
-            cwd=tmp_dir,
-        )
-        revision_after = _extract_revision(updated)
-        if revision_after is None:
-            revision_after = _extract_revision(_fetch_detail(doc_id))
+        _conditional_overwrite(tmp_dir, doc_id, revision_before, CONTENT_B)
+        # update 响应（doc.operation.v1）真机不携带 revision（live-captured
+        # 2026-09-09，data 块只有 nodeId/verified）→ 写后版本从 with-ids 档读。
+        revision_after = _extract_revision(_fetch_detail(doc_id))
         assert revision_after is not None, (
             "no revision after dws doc +update — 落账没有写后版本可记"
         )
@@ -897,7 +987,7 @@ def test_b6_fm2_rejects_after_concurrent_edit(tmp_path):
             f"concurrent={revision_concurrent}"
         )
 
-        plan_json = _kgent_json("undo", op_id)
+        plan_json = _kgent_json("undo", op_id, ok_rc=(0, 1))
         print("undo plan (FM2):", json.dumps(plan_json, ensure_ascii=False, indent=2))
         assert plan_json["status"] == "rejected"
         assert plan_json["mode"] == "plan"
