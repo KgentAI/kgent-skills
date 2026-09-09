@@ -42,7 +42,7 @@
 | handoff/README 写法 | 实测真值 | 方式 |
 | --- | --- | --- |
 | ⚠「正常输出是否 JSON 默认待定谳」 | **JSON 默认**，pretty-print（2 空格缩进）；错误档同为 JSON，exit 1 | [live 实测] |
-| ⚠「错误 envelope 键：`errcode` vs `code`」 | **CLI 层错误统一 `{"error":{"type","code","message"}}`**（type=UnknownError、code=893999 兜底、message 内嵌 `[code=893201]` 原始码）；**类型化响应体内**另带 `errcode`(int32)/`errmsg` 字段族（schema 定义，正常档是否出现 PENDING-凭据） | [live 实测]+[schema 实测] |
+| ⚠「错误 envelope 键：`errcode` vs `code`」 | **CLI 层错误统一 `{"error":{"type","code","message"}}`**（type=UnknownError、code=893999 兜底、message 内嵌 `[code=893201]` 原始码）；**类型化响应体内**另带 `errcode`(int32)/`errmsg` 字段族（schema 定义；正常档已定谳带该字段族——contents get 带 `errcode: 0`、append/overwrite/names update 带 `errcode:0, errmsg:"ok"`，见 §1.4） | [live 实测]+[schema 实测] |
 | 「delete 动词存在性」 | **`doc` 域没有任何删除命令**：`doc --help` 全树只有 create/import/search/contents/members/names/rules；`schema list` 全量 90 个 method 里 delete 只有 `sheet.subsheets.delete`、`smartsheet.{charts,fields,records,sheets,views}.delete`、`todo.delete` → **rename 隔离 teardown 定案** | [help 实测]+[schema 实测] |
 | （handoff 未提） | `smartpage pages update --delete-page <json>` 存在，但只删智能文档**内部子页**，不是顶层文档删除——不能当 doc 探针的 teardown | [help 实测] |
 | 「identity whoami 仅 bot 身份」 | help 原文「获取当前会话身份, **涵盖机器人和真人双重身份**」——与「仅 bot」说法冲突，以 help 为准待真机复核 → **Task 2 SKILL.md 显式重新定谳**（重裁归 Task 2） | [help 实测] |

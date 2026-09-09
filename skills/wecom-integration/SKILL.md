@@ -78,6 +78,7 @@ kgent journal end --op-id <op_id> --status ok --snapshot-after "<写后全文>" 
 
 - **仅写入成功后传取回全文**：`--snapshot-after` 只在第 3 步成功、第 4 步读回之后传。`kgent journal end` 不校验 `--status` 与 `--snapshot-after` 的组合——失败写入传了快照，等于把失败伪装成可补偿；这条纪律由本 skill 执行，不靠 CLI 兜底。
 - **空串是合法快照，不是未传**：文档被清空是真实状态——台账按「传没传」判定（`is not None` 语义）。不传 = 无证据 → undo fail closed；传空串 = 有证据 → 与当前内容真实比对。`--snapshot-content` 同理。快照内容原样传递（含尾部空白——那是 CLI 回读的真实形态），不修剪、不「规范化」。
+- **快照内联有 argv 天花板（Windows ~32K）**：`--snapshot-content` / `--snapshot-after` 把全文内联进命令行——超长文档会让 `journal end` 在写入已落盘之后响亮失败 → 写后快照证据缺失 → undo 落 FM3 fail-closed 拒绝。遇之把症状与后果如实告知用户（「undo 证据缺失」），**不截断、不修剪快照**；大文档场景报告并等待文件/stdin 通道（post-merge follow-up），不在 argv 上硬塞。
 - **创建**（两步流）：本地生成 .docx → `wecom-cli doc import --json '{"doc_type":"doc","file_name":"<名>.docx","file_path":"<相对路径>"}'` → 响应带 `docid` / `url` / `task_status`（`succ` / `fail` / `processing`；succ 首响可能无 `task_id`，查任务状态用同命令传 `taskid` 轮询）→ `kgent journal begin --operation create --backend wecom --doc-uri kgent://wecom/<planned占位> --snapshot-content "" --json`（create 腿补偿是隔离不是写回——`--snapshot-content` 省略或传空串皆可，空串也是合法快照；不要把「可空」两字当占位符照传）→ 成功后 `kgent journal end --op-id <op_id> --status ok --doc-uri kgent://wecom/<real_docid> --snapshot-after "<首读全文>" --json`（`--doc-uri` 回填真实 URI 是 undo 能定位目标的关键；首读 = 创建后第一次 `wecom-cli doc contents get`）。
 - **免文件创建**：`wecom-cli doc create --json '{"doc_name":"<名>","doc_type":"doc","content":"<短内容>","content_type":"text"}'`——`content` 上限 1MB 但走 argv 内联，多行/CJK 别用它（走 import 两步流）。`doc_type` 枚举 `doc` / `sheet` / `smartsheet`（schema 定谳，**不含 smartpage**——md 转智能文档走独立的 `smartpage.import`）。响应带 `docid` / `doc_name` / `url`；`doc_requests[]` 支持块级编辑（含 `delete_content`——内容级删除，不是文档删除）。
 - **内容通道**：`overwrite` 的 `content` 与 `file_path` 二选一——多行/含 CJK **必须** `file_path`（当前目录相对路径，Fs 沙箱）；`append` 无文件通道（schema 无 `file_path` / `content_path`，仅 `content` 内联纯文本、上限 10000 字符）→ 只用于短单行；清空文档不能传空值——须传一个空格（官方文档明言，真机待复核）。
@@ -111,7 +112,9 @@ Cite native WeCom URLs, never `kgent://` URIs。URL 形状（真机实测）：`
 
 - **仅 bot 凭据，auth 是一次性人工步骤**：`wecom-cli auth init` 交互式扫码（5 分钟窗口，仅需一次；终端不回显二维码时用 `--no-browser` 加 `--output-qrcode <文件>` 落盘再扫）或 `--manual` 手输 Bot ID/Secret。凭据落 `~/.config/wecom/credentials.enc`（AES-256-GCM，0600；`WECOM_CLI_CONFIG_DIR` 可迁移），token 只来自该文件。扫码必须维护者本人完成——auth 未就绪时本 skill 各节的降级路径就是常态路径，必须可靠。身份语义见 Read（bot + 授权真人双身份，操作主体是 bot）。
 - **消息只达「bot 最近对话过」的会话**：发消息先 `wecom-cli message aibot sessions list` 查最近会话、用列表返回的会话 ID 发送；不在列表里的收件人不可达——如实报告，不猜会话 ID。
-- **速率限制未文档化**：集成层自设退避——可重试错误（限流/超时）按 1s/2s/4s 指数退避、最多 3 次；超限显式声明部分失败，不静默缩量。
+- **限流两级（真机定谳，真值单 `tests/fixtures/wecom-cli/PROBE-NOTES.md` §1.4；平台速率限制未文档化，以下防线为集成层自设）**：
+  - **分钟级 `850005`（机器人 MCP 调用频率限制）——可重试**：调用间 2s 匀速节流 + 1s/2s/4s 指数退避、最多 3 次；短梯骑不穿时延伸 15s/30s/60s 深退避梯可穿（限流窗是整租户 MCP 配额窗，e2e 真机已验证）。超限显式声明部分失败，不静默缩量。
+  - **当日级 `640459`（当日「通过机器人获取文档内容」配额）——不可重试**：等待/退避无效、仅日切恢复；只压**当日新建文档**的内容读（旧文档内联读不受影响）。遇之 fail-fast 并如实上报「当日内容读不可用，待配额日切」，不得用重试硬穿。
 - **Fs 沙箱（文件 IO 限当前目录相对路径）**：`file_path` / `--output` / `--output-qrcode` 都只吃 cwd 内相对路径——subprocess 的 cwd 必须锚定；台账快照（`~/.kgent/journal/snapshots/`）写回前必须先拷进 cwd。长内容读回的 `file_path` 落盘语义（相对还是绝对）**仍未定谳**——真值样本到手前不得消费该键。
 - **无文档删除命令**：`wecom-cli doc` 域全树只有 create / import / search / contents / members / names / rules；`wecom-cli schema list` 全量 90 个 method 里 delete 只在 sheet / smartsheet / todo 族（`smartpage pages update` 的 `--delete-page` 只删智能文档内部子页，不是顶层文档删除）——create 腿补偿与探针清理都降级为 rename 隔离 + 人工删除 runbook。
 - **邮件冲突定谳（README vs 官方 docs vs CLI）**：README 功能表称可发送，官方 skills 文档称 wecomcli-email 仅浏览与查询，CLI 顶层 help 列「发送、回复、转发」且 `wecom-cli schema list` 有 `mail.send`——**发送通道存在但未验收**：本 skill 只承载只读（浏览/查询/详情）；确需发信时委派原生 wecomcli-email skill 并向用户明示「未经验证」，失败如实报告，不静默换道。
