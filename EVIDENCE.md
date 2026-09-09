@@ -334,7 +334,9 @@ Implementation is production-ready for kgent packaging.
 
 **Full report**: [`specs/2026-09-07-phase2-dingtalk-integration-evidence.md`](specs/2026-09-07-phase2-dingtalk-integration-evidence.md)（fresh-run 逐层数字、B6/B8/B11 → 测试映射、凭据阻塞声明、Task 7 收尾修复（diff-cover 假绿 92%→100% + 新增文件 format 债清零 + `--fail-under 100` 显式门与双层负控）、已知限制（command-index 过期、原生 URL PENDING、dws `.cmd` shim、`DWS_PROBE_CONFIRM` 确认门协议、payload 键位 PENDING 清单）、deferred minors 25 条全清单）
 
-**Reproduce**: 仓库根 `bash tools/gauntlet.sh`；agent evals：`python tools/run-agent-evals.py --execute --file platform-via-integration-evals --timeout 600`；真机 dingtalk e2e 待凭据（`DWS_PROBE_CONFIRM=yes` runbook 在 full report §0/§9）。
+**兑现更新（2026-09-09）**：凭据就绪（dws 登录 corp `MergeGameStudio`）后上列凭据阻塞已兑现——B6/FM2/B8 真机 3 PASS（首跑 + 独立复跑 ×2；B6 `revision_before=1` → `revision_after=2` → `version-revert --version 1` 读回还原、FM2 rejected `expected revision 2, current 3`、B8 全量保真 `content_bytes=136`），租户残留 0、ledger/undo 产品码零改动、B11 fixtures 转 live-captured——兑现读数与复现命令见 full report **§0.1 兑现注记**。
+
+**Reproduce**: 仓库根 `bash tools/gauntlet.sh`；agent evals：`python tools/run-agent-evals.py --execute --file platform-via-integration-evals --timeout 600`；真机 dingtalk e2e 凭据已就绪（兑现读数见上——`DWS_PROBE_CONFIRM=yes` runbook 在 full report §0.1/§9）。
 
 ---
 

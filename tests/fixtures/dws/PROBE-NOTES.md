@@ -88,6 +88,7 @@ kgent adapter 建议固定用 `+` 组合入口（自带验证/读回/投影，sc
 | fetch | 目标块是**顶层 `content`**（`doc.content.v1`，外层无 `data`）；正文键默认档 **`markdown`**、with-ids/full 档 **`jsonml`**；`revision` **只在 with-ids/full 档**（字符串 `"1"`）——**没有任何单档同时携带 markdown 与 revision** | `doc-fetch.json`（with-ids）、`doc-fetch-simple.json`（默认档） |
 | version-list | 外层 `hasMore/success/versions`；条目只有 `version`（int）+`createTime/updateTime/type/userId`，**无 revision 字段**——revision→version 映射走替代通道（§7.2） | `version-list.json` |
 | create 响应 | `doc.operation.v1` 外层 `ok/compensation/complete/data/steps/warnings`；DOC_ID 在 **`data.nodeId`**（URL 在 `data.result.docUrl`）；**全块无 revision**；`data.verification.verified/readbackSha256` 自带读回校验 | （e2e 消费，未落 fixture） |
+| `doc +update` 响应 | `data` 块只有 `nodeId/verified`，**全块无 revision**（revision_after 由写后 with-ids 档读回取）；overwrite+jsonml 通道 rc=1 `doc_write_verification_failed` 为**结构性假阴性**（写已落，写后验证以读回为准）→ §7.4 | （e2e 消费，未落 fixture） |
 | drive +delete 响应 | `ok/outcome/data.nodeId/data.result.{message,success}/data.success`（回收站 30 天可恢复）；**删除句柄 = DOC_ID 本体**（§7.3） | `drive-delete.json` |
 | drive +info / +find-file | `data.fileId` = **32 位 DOC_ID 本体**、`data.dentryId` = **12 位内部号**（拒收）；`files[].dentryId` = **DOC_ID 本体**——两域 ID 对应定谳 | `drive-info.json`、`drive-find-file.json` |
 
