@@ -261,6 +261,23 @@ def test_search_skips_non_dict_items_and_defaults_non_int_rank(monkeypatch):
     assert [h.rank for h in hits] == [0]
 
 
+def test_search_hit_without_title_or_name_lands_empty_title(monkeypatch):
+    """``title``/``name`` 两候选全缺席的 hit 落空串标题（`_extract_title` 兜底
+    分支，键缺席即降级）——hit 本身不因此丢出结果，也不发明标题字段。"""
+    payload = json.dumps(
+        {
+            "ok": True,
+            "complete": True,
+            "documents": [{"nodeId": FLAT_NODE_ID, "docType": "adoc"}],
+        }
+    )
+    monkeypatch.setattr(dws_mod, "run_cli", _FakeDws(search_stdout=payload))
+    hits = DingTalkAdapter(cmd=["fake-dws"]).search_by_keywords("probe")
+
+    assert [h.doc_uri for h in hits] == [f"kgent://dingtalk/{FLAT_NODE_ID}"]
+    assert hits[0].metadata.title == ""
+
+
 def test_search_hit_without_id_is_dropped(monkeypatch):
     """缺稳定 ID 的 hit 不进结果（contracts.md：目标至少保留 nodeId）。"""
     payload = json.dumps(
