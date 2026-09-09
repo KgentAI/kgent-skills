@@ -78,7 +78,7 @@ kgent journal end --op-id <op_id> --status ok --snapshot-after "<写后全文>" 
 
 - **仅写入成功后传取回全文**：`--snapshot-after` 只在第 3 步成功、第 4 步读回之后传。`kgent journal end` 不校验 `--status` 与 `--snapshot-after` 的组合——失败写入传了快照，等于把失败伪装成可补偿；这条纪律由本 skill 执行，不靠 CLI 兜底。
 - **空串是合法快照，不是未传**：文档被清空是真实状态——台账按「传没传」判定（`is not None` 语义）。不传 = 无证据 → undo fail closed；传空串 = 有证据 → 与当前内容真实比对。`--snapshot-content` 同理。快照内容原样传递（含尾部空白——那是 CLI 回读的真实形态），不修剪、不「规范化」。
-- **创建**（两步流）：本地生成 .docx → `wecom-cli doc import --json '{"doc_type":"doc","file_name":"<名>.docx","file_path":"<相对路径>"}'` → 响应带 `docid` / `url` / `task_status`（`succ` / `fail` / `processing`；succ 首响可能无 `task_id`，查任务状态用同命令传 `taskid` 轮询）→ `kgent journal begin --operation create --backend wecom --doc-uri kgent://wecom/<planned占位> --snapshot-content "<可空>" --json`（create 腿补偿是隔离不是写回，A 可为空串——空串也是合法快照）→ 成功后 `kgent journal end --op-id <op_id> --status ok --doc-uri kgent://wecom/<real_docid> --snapshot-after "<首读全文>" --json`（`--doc-uri` 回填真实 URI 是 undo 能定位目标的关键；首读 = 创建后第一次 `wecom-cli doc contents get`）。
+- **创建**（两步流）：本地生成 .docx → `wecom-cli doc import --json '{"doc_type":"doc","file_name":"<名>.docx","file_path":"<相对路径>"}'` → 响应带 `docid` / `url` / `task_status`（`succ` / `fail` / `processing`；succ 首响可能无 `task_id`，查任务状态用同命令传 `taskid` 轮询）→ `kgent journal begin --operation create --backend wecom --doc-uri kgent://wecom/<planned占位> --snapshot-content "" --json`（create 腿补偿是隔离不是写回——`--snapshot-content` 省略或传空串皆可，空串也是合法快照；不要把「可空」两字当占位符照传）→ 成功后 `kgent journal end --op-id <op_id> --status ok --doc-uri kgent://wecom/<real_docid> --snapshot-after "<首读全文>" --json`（`--doc-uri` 回填真实 URI 是 undo 能定位目标的关键；首读 = 创建后第一次 `wecom-cli doc contents get`）。
 - **免文件创建**：`wecom-cli doc create --json '{"doc_name":"<名>","doc_type":"doc","content":"<短内容>","content_type":"text"}'`——`content` 上限 1MB 但走 argv 内联，多行/CJK 别用它（走 import 两步流）。`doc_type` 枚举 `doc` / `sheet` / `smartsheet`（schema 定谳，**不含 smartpage**——md 转智能文档走独立的 `smartpage.import`）。响应带 `docid` / `doc_name` / `url`；`doc_requests[]` 支持块级编辑（含 `delete_content`——内容级删除，不是文档删除）。
 - **内容通道**：`overwrite` 的 `content` 与 `file_path` 二选一——多行/含 CJK **必须** `file_path`（当前目录相对路径，Fs 沙箱）；`append` 无文件通道（schema 无 `file_path` / `content_path`，仅 `content` 内联纯文本、上限 10000 字符）→ 只用于短单行；清空文档不能传空值——须传一个空格（官方文档明言，真机待复核）。
 - **写前批准**：proposal → 用户批准 → journal begin → 执行（母 spec 操作流；`--dry-run` 旗标可做事前演练：本地校验不发送，输出 method/URL/headers/payload，exit 0）。
@@ -90,7 +90,7 @@ WeCom 无平台 history、无 version 轴 → 补偿机制是**台账快照写�
 1. `kgent undo <op_id> --json` 取补偿计划；`status == "rejected"` 时**停止**——写后内容已偏离证据（FM2-wecom：写后快照比对不符；或历史 op 的 FM3：内容偏离写前快照），`reason` 里带两侧证据。绝不带着过期计划落写回。
 2. `plan.plan.operation == "create"` → **跳过内容写回**，直接走第 7 步（create 的补偿不是恢复旧内容）。
 3. 读 `plan.plan.snapshot`（begin `--snapshot-content` 落盘的写前全文 A，文件在 `~/.kgent/journal/snapshots/<op_id>.txt`）——**先拷贝到当前目录临时文件**（Fs 沙箱只吃 cwd 相对路径，见 Known Limitations）。
-4. **执行前复核（TOCTOU/FM2-wecom）**：`wecom-cli doc contents get` 重读当前全文，与 `plan.plan.snapshot_after`（end `--snapshot-after` 落盘的写后全文 B，`<op_id>.after.txt`）比对——不符 → 停止并报告（取计划之后文档又被第三方编辑过）。
+4. **执行前复核（TOCTOU/FM2-wecom）**：`wecom-cli doc contents get` 重读当前全文，与 `plan.plan.snapshot_after`（end `--snapshot-after` 落盘的写后全文 B，`<op_id>.after.txt`）比对——不符 → 停止并报告（取计划之后文档又被第三方编辑过）。`plan.plan.snapshot_after` 为 null（历史 ok 计划：end 未带写后快照，取计划时 FM3 已按「当前内容 == A」判过一次 ok）→ 以 `plan.plan.snapshot`（A）为新鲜度参照重比对，不符同样停止——取计划到执行之间文档仍可能被第三方编辑，null 分支不豁免复核。
 5. `wecom-cli doc contents overwrite --json '{"docid":"<DOCID>","content_type":"text","file_path":"<快照临时文件>"}'` 写回 A。`<DOCID>` 取自 `plan.plan.target`（`kgent://wecom/<docid>`）——存的是 API docid，不是 URL token。
 6. 读回校验：`wecom-cli doc contents get` 重读，内容与 A 逐字一致（A 本身就是同一命令的写前读回，形态可比）才向用户确认；平台写入可见性可能滞后，比对用有界轮询，不无限等。
 7. **create 腿的补偿是隔离**（B4 同构）：平台无文档删除命令（见 Known Limitations）→ 降级 = `wecom-cli doc names update --json '{"docid":"<DOCID>","new_name":"DELETE-ME-<原名>"}'` 改名隔离 + 向用户报告 docid 与原生 URL 供人工删除——不静默、不假装已删。
@@ -101,7 +101,7 @@ WeCom 无平台 history、无 version 轴 → 补偿机制是**台账快照写�
 
 Cite native WeCom URLs, never `kgent://` URIs。URL 形状（真机实测）：`https://doc.weixin.qq.com/doc/<url-token>?scode=<分享签名>`——`<type>` 路径段实测值是产品名 `doc`；`?scode=` 是分享签名，**不可自行构造**：
 
-- 命令响应里带 `url`（search hit / contents get / import / create 都带）→ **原样引用**，不重拼、不剥参数。
+- 命令响应里带 `url`（`contents get` / `import` 的 `url` 为 live-captured；`create` 与 search hit 的 `url` 仍是 schema 契约——真机样本未捕获，键缺席即降级）→ **原样引用**，不重拼、不剥参数。
 - 响应没带 URL → 如实说明无法提供原生链接，不猜路径（CLI 无文档列表/枚举命令，没有「反查 URL」通道）。
 - URL token ≠ API docid——`kgent://wecom/<docid>` 里的 `<docid>` 是 API docid；两者不互相翻译，台账与引用各存各的（Search 第 4 步）。
 - `a1` / `b1` 起头的 docid 或 URL 含 `/smartpage/` 按 smartpage 引用与路由；`sheet` / `smartsheet` / `smartpage` 的 `<type>` 段实测值待真值样本，到手前不臆造形状。
