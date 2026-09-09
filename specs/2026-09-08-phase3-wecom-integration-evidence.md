@@ -7,10 +7,14 @@
   修订（commit `9cd3f0d`）：version 轴真机证伪 → 维护者签核方案 A（台账
   写后快照通道），新增 Task 2、后续任务重编号
 - **Tier:** 3（数据丢失域；失败模型 FM1–FM10 见母 spec）
-- **Source state:** commit `8dba55c`（fresh run 与最后一次代码编辑同点；分支
-  `feat/wecom-integration`，自 main @ `f77b0ed` 切出）。其后的 **EVIDENCE 两文件
-  commit 为 docs-only delta**，不在 coverage 测量集（`pyproject.toml`
-  `source = ["kgent"]`），§2 的 fresh-run 数字仍是最后一次代码编辑之后的读数
+- **Source state:** 分支 `feat/wecom-integration`，自 main @ `f77b0ed` 切出；
+  §2 各行读数取于 `8dba55c`（Task 7 fresh run 时点）。**`9fec24e` 后经历兑现轮
+  代码变更（`dcdec9c` dingtalk adapter 锚点 live-captured 回填、`499e94c`/
+  `2af5d43` dingtalk e2e 修复）——初版「`8dba55c` 后均为 docs-only」的表述
+  失真，已修正**：非 e2e 各层（全套回归 / diff-cover / mypy / artifact-smoke /
+  properties / adversarial）已于 `23e2c5f` 刷新复测，刷新读数见 §2.2；e2e 真机
+  证据见 §4（Task 6 wecom 5/5 × 2）与 Phase 2 EVIDENCE §0.1（兑现轮 dingtalk
+  3 PASS）
 - **Fresh run:** 2026-09-09，分层执行（§2）——**全量含两平台真机 e2e 的单命令
   `bash tools/gauntlet.sh` 在本环境当日不可达绿灯**，阻塞与逐层读数见 §0/§2/§7；
   随机序复核与固定序总数一致
@@ -47,6 +51,7 @@
 | Task 5 交付（evals wecom 腿接线 + runner 放行） | `605 passed, 7 skipped, 0 failed` | task-5-report |
 | Task 6 交付（B5/B8 真机 e2e 5 测 + ledger newline 透明修复 + CR 装甲） | 排除 wecom e2e：`606 passed, 7 skipped, 0 failed`；e2e 真机 **5/5 × 2**；全量含 e2e 需配额日切（当日 640459 耗尽） | task-6-report §5/§8 |
 | **Task 7 fresh run（本轮，最后一次代码编辑 `8dba55c` 之后）** | 排除两平台 e2e 文件：**`608 passed, 4 skipped, 0 failed`**（固定序 305.75s；随机序 289.43s，总数一致）＝ Task 6 的 606 + 本轮 2 条覆盖补口；两平台 e2e 的环境门见 §0/§7 | §2 |
+| **兑现轮代码变更后刷新（最终评审修复轮，`23e2c5f`）** | 排除两平台 e2e 文件：**`611 passed, 4 skipped, 0 failed`**（固定序 191.92s；随机序 191.07s，总数一致）＝ Task 7 的 608 + 兑现轮 dingtalk adapter 单测 2 条（`dcdec9c`）+ 修复轮补口 1 条（`23e2c5f`）；逐层刷新读数见 §2.2 | §2.2 |
 
 ## 2. Gauntlet 各层（命令 + 实际数字）
 
@@ -60,7 +65,7 @@
 | 工件冒烟 | `bash tools/artifact-smoke.sh` | **18/18 surface probes passed**（+1 功能探针行，见下）；探针在一次性 `KGENT_HOME` 下运行，**零真机台账写入** |
 | 全套测试 | `coverage run -m pytest -p no:randomly -q --ignore=tests/e2e/test_wecom_snapshot_real.py --ignore=tests/e2e/test_dingtalk_undo_real.py` | **608 passed, 4 skipped, 0 failed**（305.75s；4 skip = 4 × POSIX mode-bit） |
 | 随机序复核 | `python -m pytest tests -q`（同排除项，不关 randomly） | **608 passed, 4 skipped, 0 failed**（289.43s，与固定序总数一致） |
-| 变更行覆盖 | `diff-cover coverage.xml --diff-file .diff-cover.diff --fail-under 100` | **Total 134 lines / Missing 0（100%），EXIT=0**——src 变更文件 `adapters/wecom.py`（+ `router/ledger.py`/`cli.py`）。**首轮真实读数是 98.1%（133/233 两行未覆盖）**——diff-cover 层在本分支首次真正咬合，暴露两处无单测分支，补口 commit `8dba55c` 后复测 100%（§2.1） |
+| 变更行覆盖 | `diff-cover coverage.xml --diff-file .diff-cover.diff --fail-under 100` | **Total 134 lines / Missing 0（100%），EXIT=0**——src 变更文件 `adapters/wecom.py`（+ `router/ledger.py`/`cli.py`）。**首轮真实读数 ≈98.5%（变更行集两处分支未覆盖；本行初版转抄的「98.1% / 133-of-233」为不可解读笔误，本轮修正为定性表述）**——diff-cover 层在本分支首次真正咬合，暴露两处无单测分支，补口 commit `8dba55c` 后复测 100%（§2.1）。兑现轮后的刷新读数见 §2.2（155/0） |
 | 静态类型 | `mypy src`（strict） | **Success: no issues found in 52 source files** |
 | 属性测试 | `pytest tests/properties -q` | **16 passed** |
 | 对抗通过 | `pytest tests/adversarial -q` | **39 passed** |
@@ -83,10 +88,31 @@
   **负控**：以「拒认 `--snapshot-after` 的 stub kgent」模拟 Phase 3 之前旧
   artifact → 该行 `FAIL` → `artifact-smoke FAILURE: 1/18 probes failed` →
   EXIT=1；现行 artifact → 18/18 → EXIT=0。
-- **diff-cover 首轮 98.1% → 100%**（commit `8dba55c`，test-only）： uncovered
+- **diff-cover 首轮 ≈98.5%（两分支未覆盖）→ 100%**（commit `8dba55c`，test-only；
+  初版转抄的「98.1%」数值形式不可解读，本轮修正为定性表述）： uncovered
   两行是 `_extract_snippet` 的 string 形态容差分支（schema 契约 `string[]`，
   string 输入按未验证负载采纳）与 `_run` 的 exit-0 非对象 JSON 负控分支——
   各补一条单测（后者与 `test_dingtalk_adapter.py` 的 `[1, 2]` 负控同款）。
+
+### 2.2 兑现轮后的刷新复测（Source state 修正，读数于 `23e2c5f`）
+
+`9fec24e` 之后分支经历兑现轮代码变更（`dcdec9c` dingtalk adapter 锚点
+live-captured 回填、`499e94c`/`2af5d43` dingtalk e2e 修复）——§2 各行读数
+（`8dba55c` 时点）不再是 head 真值。非 e2e 各层已于 `23e2c5f`（最终评审修复
+commit）刷新复测：
+
+| 层 | 刷新读数（`23e2c5f`，2026-09-09） |
+|---|---|
+| 全套测试（固定序，同 §2 排除项） | **611 passed, 4 skipped, 0 failed**（191.92s） |
+| 随机序复核 | **611 passed, 4 skipped, 0 failed**（191.07s，总数一致） |
+| 变更行覆盖（对 merge-base `f77b0ed`） | **Total 155 lines / Missing 0（100%），EXIT=0**——src 变更文件 `adapters/wecom.py` + `adapters/dingtalk.py`（+ `router/ledger.py`/`cli.py`）。**刷新复跑首轮真读 99%**：兑现轮 adapter 锚点回填带入 `_extract_title` 的 `title`/`name` 两候选全缺席兜底分支无单测（`dingtalk.py:111`）→ 补口 `23e2c5f`（test-only，`8dba55c` 同款）后复测 100% |
+| 静态类型 | `mypy src`（strict）：**Success: no issues found in 52 source files** |
+| 工件冒烟 | `bash tools/artifact-smoke.sh`：**18/18** |
+| 属性 / 对抗 | `pytest tests/properties tests/adversarial -q`：**55 passed**（16 + 39） |
+
+真机 e2e 层不随本次刷新重跑：wecom e2e 真机读数见 §0/§2（Task 6 配额窗内
+5/5 × 2）；dingtalk e2e 兑现读数见 Phase 2 EVIDENCE §0.1（3 PASS，首跑 +
+独立复跑 ×2）。
 
 ## 3. 设计裁决的实证状态（修订史，全带 commit）
 
@@ -243,7 +269,7 @@ lark 侧同样咬人。
 4. 报告 RED 行转抄错（scratch 文件不修，本 ledger 为准）
 5. 同上 scratch 文件不修
 6. ~~SKILL.md「仅写入成功后传取回全文」+「空串=合法快照」两句纪律~~ ✅ Task 3 fix round 落地（SKILL.md Write 节现行文）
-7. Windows argv ~32K 上限——大文档 `--snapshot-after` 内联会撞限（stdin/临时文件通道待做）
+7. Windows argv ~32K 上限——大文档 `--snapshot-after` 内联会撞限（stdin/临时文件通道待做；症状/后果纪律句已随最终评审修复轮回流 SKILL.md Write 节——`33dbeea`，通道本身仍 open）
 8. POSIX mode 断言待 Linux CI（与 begin 侧同款 skip）
 
 **Task 3（skill 文档，6 条）**
