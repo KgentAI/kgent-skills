@@ -59,8 +59,30 @@ language:
 - "What does X mean?" → invokes `question-answering` skill
 - "Set up a wiki" → invokes `wiki-setup` skill
 
-**Note**: The skills require the `kgent` CLI (installed by the script) and a
-configured backend (see Configuration section).
+**Note**: The skills require the `kgent` CLI (installed by the script), an
+initial `kgent setup` (see below), and a configured backend (see Configuration
+section).
+
+### Initial Setup
+
+The installer does not create `~/.kgent/config.yaml`. Run once, after
+installing:
+
+```bash
+kgent setup
+```
+
+This runs read-only backend discovery (never authenticates, never prompts)
+and writes `~/.kgent/config.yaml`. Every discovered backend starts
+`enabled: false` — edit the config to set `enabled: true` for the backends
+you want to use. Use `kgent doctor` to validate the result.
+
+Re-running `kgent setup` is safe: it merges into the existing config (your
+settings, notably `enabled`, win verbatim) and backs up the original to
+`config.yaml.bak-<ts>`.
+
+You can also skip this step: the skills self-heal — on first use, each checks
+whether the config exists and runs `kgent setup` itself if it's missing.
 
 ### Dependencies
 
