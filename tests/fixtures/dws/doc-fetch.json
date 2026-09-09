@@ -1,13 +1,18 @@
 {
-  "ok": true,
-  "status": "success",
   "complete": true,
-  "data": {
-    "nodeId": "mXk4Qw7bZnVc2yPq8RtJeH",
-    "title": "kgent-phase2-probe 使用手册",
-    "url": "https://alidocs.dingtalk.com/i/nodes/mXk4Qw7bZnVc2yPq8RtJeH",
-    "extension": "adoc",
-    "revision": 3,
-    "content": "probe body line for payload capture.\n\n## 验收点\n\n- revision 随编辑递增，kgent undo 补偿计划用它做新鲜度（B6）。\n- 本文档不重复 H1：doc +create 纪律是正文不带同名一级标题。\n"
+  "content": {
+    "docUrl": "https://alidocs.dingtalk.com/i/nodes/1R7q3QmWeeZZ1qwDS6dQPyDdWxkXOEP2?utm_scene=person_space",
+    "jsonml": "[\"root\",{\"sectPr\":{\"pgSz\":{\"w\":892,\"h\":1127},\"pgMar\":{\"top\":48,\"bottom\":48,\"left\":72,\"right\":72,\"header\":56.73,\"footer\":66.13,\"gutter\":0}}},[\"h1\",{\"uuid\":\"mtubelpz8wamwzjj5ie\"},[\"span\",{\"data-type\":\"text\"},[\"span\",{\"data-type\":\"leaf\"},\"Phase 2 完整性探针\"]]],[\"p\",{\"uuid\":\"mtubelpzffmwmm0ru7s\"},[\"span\",{\"data-type\":\"text\"},[\"span\",{\"data-type\":\"leaf\"},\"第一段中文内容，包含「中文标点」。\"]]],[\"p\",{\"uuid\":\"mtubelpzeqa6z46av\"},[\"span\",{\"data-type\":\"text\"},[\"span\",{\"data-type\":\"leaf\"},\"第二段含 emoji ❤️🎉 与多行\\n换行内容。\"]]]]",
+    "logId": "21030ead17889726213026632e0af9",
+    "nodeId": "1R7q3QmWeeZZ1qwDS6dQPyDdWxkXOEP2",
+    "revision": "1",
+    "success": true,
+    "title": "kgent-phase2-probe-完整性"
+  },
+  "contractVersion": "doc.content.v1",
+  "status": "success",
+  "target": {
+    "canonicalId": "1R7q3QmWeeZZ1qwDS6dQPyDdWxkXOEP2",
+    "product": "doc"
   }
 }

@@ -1,0 +1,20 @@
+{
+  "hasMore": false,
+  "success": true,
+  "versions": [
+    {
+      "createTime": "2026-09-10T00:54:13+08:00",
+      "type": "OVERWRITE",
+      "updateTime": "2026-09-10T00:54:13+08:00",
+      "userId": "[user-id-stripped]",
+      "version": 1
+    },
+    {
+      "createTime": "2026-09-10T00:54:13+08:00",
+      "type": "AUTO_SAVE",
+      "updateTime": "2026-09-10T00:54:13+08:00",
+      "userId": "[user-id-stripped]",
+      "version": 0
+    }
+  ]
+}

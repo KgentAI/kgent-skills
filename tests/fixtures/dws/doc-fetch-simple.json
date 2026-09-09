@@ -1,0 +1,17 @@
+{
+  "complete": true,
+  "content": {
+    "docUrl": "https://alidocs.dingtalk.com/i/nodes/1R7q3QmWeeZZ1qwDS6dQPyDdWxkXOEP2?utm_scene=person_space",
+    "logId": "2101eeef17889726260667268e0ad4",
+    "markdown": "# Phase 2 完整性探针\n\n第一段中文内容，包含「中文标点」。\n\n第二段含 emoji ❤️🎉 与多行\n换行内容。\n",
+    "nodeId": "1R7q3QmWeeZZ1qwDS6dQPyDdWxkXOEP2",
+    "success": true,
+    "title": "kgent-phase2-probe-完整性"
+  },
+  "contractVersion": "doc.content.v1",
+  "status": "success",
+  "target": {
+    "canonicalId": "1R7q3QmWeeZZ1qwDS6dQPyDdWxkXOEP2",
+    "product": "doc"
+  }
+}

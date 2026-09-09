@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "outcome": "success",
+  "data": {
+    "nodeId": "0eMKjyp813XXZ20efrnNgvOBVxAZB1Gv",
+    "result": {
+      "message": "节点已成功移入回收站，30 天内可从回收站恢复。nodeId: 0eMKjyp813XXZ20efrnNgvOBVxAZB1Gv",
+      "success": true
+    },
+    "success": true
+  }
+}
