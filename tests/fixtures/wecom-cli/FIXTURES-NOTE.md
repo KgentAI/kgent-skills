@@ -1,62 +1,61 @@
-# FIXTURES-NOTE — tests/fixtures/wecom-cli/（Phase 3 Task 1）
+# FIXTURES-NOTE — tests/fixtures/wecom-cli/（Phase 3 Task 1，fix round 1 后）
 
-**Provenance: schema-shaped from `wecom-cli schema get` 机器契约 + `--help` 实测；NOT
-live-captured（两个扫码窗口超时，auth 未建立，2026-09-08）。**
+**Provenance: live-captured（2026-09-08 16:56 真机捕获，auth 于第三个扫码窗口建立）。**
 
-- 本目录两份 payload fixture 按**机器契约形状**构造，**不是真机输出**；version
-  轴（V1<V2<V3 是否递增）未定谳，fixture 里 `"version": 3` 是占位整数（类型
-  int32/uint32 已由 schema 钉死，**递增性没有证据**）。fixture 绿 ≠ 真机验收。
-- 形状来源（按优先级）：
-  1. `wecom-cli schema get doc.search / doc.contents.get / doc.import`——
-     CLI 自带的机器契约（JSON Schema，含字段名/类型/enum/maxLength），**本任务
-     的最强证据**（wecom-cli 与 dws 不同：`schema get` 直接给返回 payload 字段契约）；
-  2. `wecom-cli <path> --help` 实测（`PROBE-NOTES.md` §1 命令真值表）；
-  3. 任务书（task-1-brief）内嵌的 WebFetch 文档真值——凡与 1/2 冲突处以 schema
-     为准（冲突清单见下）。
+- 两份 payload fixture 均为**真实响应**（PROBE-NOTES §4 脚本原样跑完，SCRIPT_EXIT=0），
+  仅做两处处理：`extra_identity_context` 键剥除（内含机器人/授权真人身份，CLI 明示
+  禁止外泄）；其余字节原样。**fixture 绿 = 真机验收**（对本机该账号该时点而言）。
+- **门控事实定谳：version 轴不成立**——`doc contents get` 三次读数（编辑已生效，
+  content 串 V1≠V2≠V3）响应里**均无 `version` 键**（text/markdown/ooxml 三档一致，
+  `name` 同缺席）。wecom undo 新鲜度**必走 FM3 快照内容比对**；Task 2/3/4 不得引用
+  `version` 键，Task 3 常量按内容比对语义钉。
 - 文件清单：
-  - `doc-search.json` — `wecom-cli doc search --json '{"keywords":[...],
-    "search_scope":"title_content","limit":10}'` 的期望形状。三条 hit 覆盖
-    `doc_type` 三档：`doc`（有 text_highlight）、`smartpage`、`sheet`。
-  - `doc-contents-get.json` — `wecom-cli doc contents get --json
-    '{"docid":"..."}'` 的期望形状（`content_type` 缺省 = markdown 档，短内容
-    内联返回，无 `file_path`/`document`/`errcode`/`errmsg`）。
-- 值的可信度分级：**外层/容器键与叶子键名、类型**（`docs/docs_count/has_more/
-  next_cursor`；hit 的 `docid/doc_name/doc_type/url/creator_userid/create_time/
-  modify_time/open_time/ai_notice/title_highlight/sub_title_highlight/
-  text_highlight`；get 的 `url/name/content/file_path/version`）**全部有
-  schema 实证**（这比 dws 的 documented-not-captured 强一档——键位不用等补捕
-  定谳，等的是**取值**）。**构造值**：docid/url/scode/creator_userid/时间串/
-  高亮文本/version 数值。**解析代码不散落读这些键**：集中在
-  `src/kgent/adapters/wecom.py` 模块级 `_extract_*`（键位对账锚点），补捕后
-  只改锚点 + 用真实捕获件原样覆盖本目录 fixture。
+  - `doc-contents-get.json` — live-captured **V2 读数**（append 后、overwrite 前），
+    键族 `errcode/content/url`。`content` 尾部 `\r` + 空格是 CLI 真实输出形态，原样保留。
+  - `doc-search.json` — live-captured **零命中 envelope** `{"errcode":0,"errmsg":"ok"}`。
+    探针词/kgent/probe/DELETE-ME/AAA-CONTENT/通用词「文档」六连发一致：**零命中时
+    `docs/docs_count/has_more/next_cursor` 整族缺席**。这是 adapter 必须消化的真值
+    （空结果 ≠ `docs: []`）。**hit 形状（`OaDocSearchDocInfo`）仍 documented-not-
+    captured**：本次观测窗（~4 分钟）内 search 从未返回过 hit（导入索引延迟或机器人
+    可读范围所限，未分辨）；hit 键位表以 PROBE-NOTES §2.2 的 schema 契约为准，命中档
+    真实样本补捕后再落 fixture。
+- 键位 provenance 分级（逐键）：
+  - **live-captured**：contents get 的 `errcode/content/url`；import 响应
+    `task_status/docid/url`（`task_id` 未在 succ 首响出现）；写操作响应
+    `errcode/errmsg:"ok"`；search 零命中 envelope 的 `errcode/errmsg`。
+  - **schema-only（纸面契约，真机未验/已证缺席）**：`OaDocSearchDocInfo` 全部 hit 键
+    （`docid/doc_name/doc_type/url/creator_userid/creator_name/create_time/
+    modify_time/open_time/ai_notice/title_highlight/sub_title_highlight/
+    text_highlight`）；contents get 的 `name/version/file_path/document`——后两者在
+    本探针（短内容、text/markdown/ooxml 档）**实测缺席**，长内容档是否落盘
+    `file_path` 仍待真值。
+- 解析代码不散落读这些键：集中在 `src/kgent/adapters/wecom.py` 模块级 `_extract_*`
+  （键位对账锚点），并按 PROBE-NOTES §1.5「键缺席即降级」写。
 
-## 与任务书草案构造值的冲突点（均已按 schema 实测裁决）
+## 任务书点名的四点冲突模式（对账结果，live 定谳）
 
-1. **搜索时间字段类型**：任务书草案 `create_time: 1757300000`（epoch int）；
-   schema 实测 `create_time/modify_time/open_time` 是 **string，
-   `YYYY-MM-DD HH:mm:ss` 格式**。fixture 取字符串（epoch 值按 UTC+8 转成同源
-   时间串，相对间隔保持 0/100/200 秒）。Task 3 常量不要钉 epoch int。
-2. **高亮字段类型**：任务书草案 `title_highlight: ""`（string）；
-   schema 实测 `title_highlight/sub_title_highlight/text_highlight` 都是
-   **string 数组**。fixture 取数组。
-3. **搜索容器键**：任务书草案只有 `has_more/next_cursor/docs[]`；schema 实测
-   另有 **`docs_count`**（框架自动生成的数组长度）。fixture 补上（缺省它会让
-   严格比较类测试在真实输出上翻车）。
-4. **hit 字段族**：schema 还有任务书未提的 `creator_name`（cpp 层注入）、
-   `open_time`、`ai_notice`（智能助理来源提示语）。fixture 一并收录（`""` /
-   `[]` 占位），adapter `_extract_*` 不消费的键不解析。
-5. **import 的 doc_type 枚举**：schema 实测 `doc|sheet|smartsheet`，**不含
-   `smartpage`**（md → 智能文档走 `smartpage.import`）；`doc.search` 的
-   `doc_type` 描述则是四值。fixture 里 `smartpage` hit 保留——搜索结果会出现
-   smartpage，但 import 建不出它。
-6. **`version` 递增性（门控事实，未定谳）**：类型 integer 已由 schema 钉死；
-   **每次编辑是否递增没有证据**（§0 两个扫码窗口超时，探针未跑）。fixture 的
-   `3` 是任务书占位值；补捕 V1/V2/V3 不递增 → 立即停手上报，wecom undo 的
-   新鲜度判据退到 FM3 快照内容比对，Task 3 相关常量随裁决重钉。
+1. **正常档 envelope**：定谳为**顶层字段、无 `data` 包裹**——`extra_identity_context`
+   （已剥除）+ `errcode`(+`errmsg`) + 数据键直接在顶层；写操作档实测为
+   `{"errcode":0,"errmsg":"ok"}`（schema 的「空对象」TypedRsp 运行时被填）。
+2. **`version` 类型与递增性**：类型 int32/uint32 是纸面契约；**递增性问题作废——
+   真机响应不下发 `version` 键**（PROBE-NOTES 顶部定谳）。undo 新鲜度走 FM3 内容比对。
+3. **错误档键（`errcode` vs `code` 族）**：两层结构定谳——CLI 层
+   `{"error":{"type","code","message"}}`（exit 1，兜底 893999，message 内嵌原始
+   `[code=893xxx]`），类型化响应体内 `errcode/errmsg`（正常档带 `errcode:0`），见
+   `PROBE-NOTES.md` §1.4。
+4. **长内容 `file_path` 的相对/绝对语义与 Fs 沙箱边界**：本探针为短内容未触发落盘，
+   **仍未定谳**（schema 只说「内容超长时框架自动落盘为文件」）——adapter 锚点在拿到
+   长内容真值样本前不得消费该键，见 `PROBE-NOTES.md` §2.1/§1.5。
 
-## 补捕回填顺序（auth 就绪后）
+**构造取舍理据**：live-captured 键 → fixture 原样；schema 证明必然出现但本次未出现
+的确定性字段（如命中档的 `docs_count`）→ 留在 PROBE-NOTES §2 契约表，不臆造进
+fixture；出现与否未定谳的字段（`file_path`/`document`/hit 族）→ **不臆造**，等真值
+样本。原 documented-not-captured 版两份构造 fixture 已被真实捕获件覆盖，不再保留
+（历史形状见 git 历史 `2bf6a58`）。
 
-`PROBE-NOTES.md` §4 补捕脚本原样执行 → V1/V2/V3 读数写回 §0（裁决第 4 条
-定谳）→ 真实 payload 原样覆盖本目录两份 fixture（标题敏感词换中性词，
-docid/scode 保留）→ 本 NOTE 首行 provenance 改 live-captured + 回填 §3 URL
-形状实测值。
+## 补捕回填顺序（剩余缺口）
+
+1. search 命中档真实样本（等索引生效或换机器人可读文档试捕）→ 覆盖
+   `doc-search.json` 或新增命中档 fixture，回填 §2.2 键位表 provenance
+2. `sheet`/`smartsheet`/`smartpage` 型探针的 URL `<type>` 段实测值（PROBE-NOTES §3）
+3. 长内容（>阈值）contents get 的 `file_path` 落盘语义（§1.5 第 3 行）

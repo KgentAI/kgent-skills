@@ -1,6 +1,5 @@
 {
-  "url": "https://doc.weixin.qq.com/docx/agA0AAAAwecomProbeDoc01?scode=AAA-probe",
-  "name": "kgent-phase3-probe 使用手册",
-  "content": "probe body line for payload capture.\n\n## 验收点\n\n- version 随编辑递增，wecom undo 新鲜度用它（B5）；无 version 证据时 FM3 快照内容比对兜底。\n",
-  "version": 3
+  "errcode": 0,
+  "content": "AAA-CONTENTBBB-APPEND\r\r        ",
+  "url": "https://doc.weixin.qq.com/doc/w3_ABoAF3hLAPsCN1iJVRLGxRXGQ502e_a?scode=AJoAggckACE0bENQUyABoAF3hLAPs"
 }
