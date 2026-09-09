@@ -167,6 +167,33 @@ def test_search_hit_maps_api_docid_and_doc_type_server_fact(monkeypatch):
     assert hit.rank == 0  # 真机 hit 无 rank 字段 → 缺席降级 0
 
 
+def test_search_snippet_tolerates_string_highlight_form(monkeypatch):
+    """``text_highlight`` 容差档（Task 7 diff-cover 补口）：schema 契约是
+    **string[]**（PROBE-NOTES §2.2），但 payload 按未验证输入处理——string
+    形态原样采纳、空串降级 ``None``，不炸也不静默丢 hit。"""
+    cases = [("单串高亮形态", "单串高亮形态"), ("", None)]
+    for raw, expected in cases:
+        payload = json.dumps(
+            {
+                "errcode": 0,
+                "errmsg": "ok",
+                "docs": [
+                    {
+                        "docid": DOC_ID,
+                        "doc_name": HIT_TITLE,
+                        "doc_type": "doc",
+                        "text_highlight": raw,
+                    }
+                ],
+            },
+            ensure_ascii=True,
+        )
+        monkeypatch.setattr(wecom_mod, "run_cli", _FakeWecom(search_stdout=payload))
+        hits = WeComAdapter(cmd=["fake-wecom"]).search_by_keywords("probe")
+        assert len(hits) == 1
+        assert hits[0].snippet == expected
+
+
 def test_search_non_doc_products_land_doc(monkeypatch):
     """``doc_type`` 出 §7.2 词表（sheet/smartsheet/smartpage）→ 落 ``doc``，
     绝不虚构词表另一端 ``wiki_node``（wecom 无 wiki 域；lark bitable /
@@ -277,6 +304,18 @@ def test_exit0_malformed_json_raises(monkeypatch):
         lambda argv, timeout, **kw: SubprocessResult(0, "not json", ""),
     )
     with pytest.raises(AdapterError, match="malformed JSON"):
+        WeComAdapter(cmd=["fake-wecom"]).read_document("kgent://wecom/X")
+
+
+def test_exit0_non_object_json_raises(monkeypatch):
+    """退出 0 但 stdout 是合法 JSON 的**非对象**（数组/标量）→ AdapterError，
+    不静默成功——与 dingtalk adapter 同款负控；错误档永远走对象 envelope。"""
+    monkeypatch.setattr(
+        wecom_mod,
+        "run_cli",
+        lambda argv, timeout, **kw: SubprocessResult(0, "[1, 2]", ""),
+    )
+    with pytest.raises(AdapterError, match="non-object JSON"):
         WeComAdapter(cmd=["fake-wecom"]).read_document("kgent://wecom/X")
 
 
