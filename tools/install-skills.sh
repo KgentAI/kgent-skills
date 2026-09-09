@@ -35,6 +35,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SKILLS_SRC="$REPO_ROOT/skills"
 HUB="${KGENT_SKILLS_HUB:-$HOME/.agents/skills}"
 CLAUDE_DIR="$HOME/.claude/skills"
+CODEBUDDY_DIR="$HOME/.codebuddy/skills"
 
 is_windows=0
 case "$(uname -s)" in
@@ -222,6 +223,9 @@ uninstall_all() {
     if [ -e "$CLAUDE_DIR/$name" ] || [ -L "$CLAUDE_DIR/$name" ]; then
       remove_entry "$CLAUDE_DIR/$name"
     fi
+    if [ -e "$CODEBUDDY_DIR/$name" ] || [ -L "$CODEBUDDY_DIR/$name" ]; then
+      remove_entry "$CODEBUDDY_DIR/$name"
+    fi
   done
   local state="$HOME/.kgent/install-backend.txt"
   if [ ! -f "$state" ]; then
@@ -280,6 +284,14 @@ verify() {
         ok=0
       fi
     fi
+    if [ -d "$HOME/.codebuddy" ]; then
+      if [ -f "$CODEBUDDY_DIR/$name/SKILL.md" ]; then
+        echo "OK   $name (codebuddy)"
+      else
+        echo "FAIL $name: codebuddy entry broken" >&2
+        ok=0
+      fi
+    fi
   done
   if [ "$NO_CLI" -eq 1 ]; then
     echo "SKIP kgent CLI (--no-cli)"
@@ -310,6 +322,10 @@ for skill_dir in "$SKILLS_SRC"/*/; do
   if [ -d "$HOME/.claude" ]; then
     mkdir -p "$CLAUDE_DIR"
     install_entry "$HUB/$name" "$CLAUDE_DIR/$name" "$name" link
+  fi
+  if [ -d "$HOME/.codebuddy" ]; then
+    mkdir -p "$CODEBUDDY_DIR"
+    install_entry "$HUB/$name" "$CODEBUDDY_DIR/$name" "$name" link
   fi
 done
 

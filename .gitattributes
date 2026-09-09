@@ -1,1 +1,2 @@
 *.sh text eol=lf
+tools/surface-manifest.txt text eol=lf

@@ -64,6 +64,7 @@ fi
 FAILED=0
 TOTAL=0
 while IFS= read -r line || [ -n "$line" ]; do
+  line="${line%$'\r'}" # tolerate CRLF checkouts (Windows autocrlf) - a CR would poison the last argv token
   case "$line" in ''|'#'*) continue ;; esac
   if [ -n "$SEEDED_OP_ID" ]; then
     line="${line//\{op_id\}/$SEEDED_OP_ID}"
