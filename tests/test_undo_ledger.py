@@ -1034,6 +1034,40 @@ def test_compensation_plan_post_write_snapshot_ok(wecom_backend, tmp_home):
     assert plan["plan"]["snapshot_after"].endswith(".after.txt")
 
 
+def test_compensation_plan_snapshot_round_trip_cr_transparent(wecom_backend, tmp_home):
+    """快照文件往返必须 byte 透明（Phase 3 Task 6 真机定谳的装甲用例）。
+
+    wecom-cli 读回 content 恒带尾部 ``\\r`` + padding（2026-09-09 真机 repr：
+    ``'BBB-CONTENT\\r        '``，连续读稳定；Task 1 fixture 同形）。台账把
+    ``--snapshot-content`` / ``--snapshot-after`` 落盘再读回时若经文本模式
+    newline 翻译（写缺省把 ``\\n`` 翻成 os.linesep、读 universal newlines 把
+    ``\\r`` 折成 ``\\n``），``current.content``（带 CR）与快照读回（CR 变 LF）
+    恒不等 → FM2-wecom/FM3 比对对一切真机 wecom 内容恒拒（B5 happy path
+    不可达）。本用例在未修复代码上 RED（``status == "rejected"``、reason 落
+    ``post-write snapshot no longer matches``），修复后 GREEN——POSIX 与
+    Windows 同判（universal newlines 两侧行为一致）。
+    """
+    before = "AAA-CONTENT\r        "  # 写前读回（真机形态，Task 1 fixture 同形）
+    after = "BBB-CONTENT\r        "  # 写后读回（真机形态）
+    _set_content(wecom_backend, "kgent://wecom/W1", after)  # 本次写本身
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=None,  # wecom 无 version 轴——真机 begin 不带 revision
+        content=before,
+    )
+    done = end(journal, entry["op_id"], status="ok", snapshot_after=after)
+    plan = compensation_plan(entry["op_id"], backends={"wecom": wecom_backend}, journal=journal)
+    assert plan["status"] == "ok", f"CR round trip broke freshness verdict: {plan.get('reason')}"
+    assert "reason" not in plan
+    # 落盘字节与传入快照逐字节一致（byte 透明，不经 newline 翻译）
+    assert Path(done["snapshot_after"]).read_bytes() == after.encode("utf-8")
+    assert Path(entry["snapshot"]).read_bytes() == before.encode("utf-8")
+
+
 def test_compensation_plan_post_write_snapshot_third_party_edit_rejected(wecom_backend, tmp_home):
     """写后被第三方改过（current != 写后快照）→ rejected，reason 指写后快照（FM2-wecom）。"""
     journal = Journal(tmp_home)

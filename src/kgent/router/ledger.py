@@ -8,6 +8,7 @@ kgent 只产计划（ADR 0004）。
 新鲜度检查——文档在写后被并发编辑（revision 不符，FM2）或内容偏离快照
 （FM3）→ 计划为 rejected，绝不规划一次盲回滚。
 """
+
 from __future__ import annotations
 
 import os
@@ -76,12 +77,17 @@ def _write_snapshot_file(journal: Journal, op_id: str, content: str, suffix: str
     begin（写前快照 ``.txt``）与 end（写后快照 ``.after.txt``，Phase 3 Task 2
     维护者签核方案 A）共用一条落盘纪律：mkdir 的默认 mode 不够紧，已存在时
     顺带把既有目录一并收紧，与 Journal._ensure_permissions 同哲学。
+
+    ``newline=""``（byte 透明落盘，Phase 3 Task 6 真机定谳）：wecom-cli 读回
+    content 恒带尾部 ``\\r`` + padding，文本模式缺省会把 ``\\n`` 翻成
+    ``os.linesep``——快照字节一旦被翻译，读回就不再是调用方传入的那串，
+    FM2-wecom/FM3 的逐字比对会误拒（配对读见 :func:`_snapshot_file_content`）。
     """
     path = _snapshot_path(journal, op_id).with_suffix(suffix)
     path.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+    with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
         fh.write(content)
     os.chmod(path, 0o600)
     return str(path)
@@ -99,8 +105,12 @@ def begin(
     """登记一个逻辑写操作；content 非空时写 0600 快照文件（FM3/ADR 0005）。"""
     op_id = _new_op_id()
     entry: dict[str, Any] = {
-        "op_id": op_id, "kind": "begin", "ts": _now(),
-        "operation": operation, "backend": backend, "target": target_uri,
+        "op_id": op_id,
+        "kind": "begin",
+        "ts": _now(),
+        "operation": operation,
+        "backend": backend,
+        "target": target_uri,
         "revision_before": revision_before,
     }
     if content is not None:
@@ -141,7 +151,10 @@ def end(
     if latest.get("kind") == "end":
         raise LedgerError(f"ledger op already ended: {op_id!r}")
     entry: dict[str, Any] = {
-        "op_id": op_id, "kind": "end", "ts": _now(), "status": status,
+        "op_id": op_id,
+        "kind": "end",
+        "ts": _now(),
+        "status": status,
     }
     if revision_after is not None:
         entry["revision_after"] = revision_after
@@ -167,7 +180,9 @@ def _same_revision(a: Any, b: Any) -> bool:
     return str(a) == str(b)
 
 
-def _ledger_record(journal: Journal, op_id: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+def _ledger_record(
+    journal: Journal, op_id: str
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """``(begin, end | None)``：同一 op_id 的两条台账 entry 合并成一个 op 视图。"""
     begin_entry: dict[str, Any] | None = None
     end_entry: dict[str, Any] | None = None
@@ -221,9 +236,7 @@ def _version_after_from_snapshot(snapshot: dict[str, Any], target: str | None) -
     return None
 
 
-def _content_before_from_snapshot(
-    snapshot: dict[str, Any], target: str | None
-) -> str | None:
+def _content_before_from_snapshot(snapshot: dict[str, Any], target: str | None) -> str | None:
     """legacy 写 entry 的 ``content_before``（journal._content_before_by_uri 语义）。"""
     inner = snapshot.get("targets")
     if isinstance(inner, dict):
@@ -237,11 +250,19 @@ def _content_before_from_snapshot(
 
 
 def _snapshot_file_content(path_str: Any) -> str | None:
-    """台账 begin 的内容快照文件（FM3/ADR 0005），缺失/不可读 → ``None``。"""
+    """台账 begin 的内容快照文件（FM3/ADR 0005），缺失/不可读 → ``None``。
+
+    ``newline=""``（byte 透明读回，Phase 3 Task 6 真机定谳）：universal
+    newlines 会把 ``\\r`` 折成 ``\\n``——wecom-cli 读回 content 恒带尾部
+    ``\\r``，翻译过的读回与 ``current.content`` 恒不等，FM2-wecom/FM3 逐字
+    比对会对一切真机内容误拒（配对写见 :func:`_write_snapshot_file`；
+    装甲用例 ``test_compensation_plan_snapshot_round_trip_cr_transparent``）。
+    """
     if not (isinstance(path_str, str) and path_str):
         return None
     try:
-        return Path(path_str).read_text(encoding="utf-8")
+        with open(path_str, "r", encoding="utf-8", newline="") as fh:
+            return fh.read()
     except OSError:
         return None
 
@@ -322,8 +343,7 @@ def compensation_plan(
             if operation != "create":
                 reason = (
                     f"document {target} is gone; cannot verify freshness against "
-                    f"revision {revision_after}"
-                    + (f" ({read_error})" if read_error else "")
+                    f"revision {revision_after}" + (f" ({read_error})" if read_error else "")
                 )
             # create + 已删除 → B4 幂等成功，不拒绝
         elif not _same_revision(revision_current, revision_after):
@@ -362,9 +382,8 @@ def compensation_plan(
                 "snapshot content available; refusing to plan a blind revert"
             )
         elif current is None:
-            reason = (
-                f"document {target} is gone; snapshot freshness cannot be verified"
-                + (f" ({read_error})" if read_error else "")
+            reason = f"document {target} is gone; snapshot freshness cannot be verified" + (
+                f" ({read_error})" if read_error else ""
             )
         elif str(current.content) != before:
             reason = (
