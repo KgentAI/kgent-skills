@@ -22,6 +22,29 @@ Activate this skill when the user:
 
 ## Workflow
 
+### 0. Ensure kgent Is Set Up
+
+Before anything else, check the kgent config exists. This goes through the CLI
+(which reads its own config internally), so the config-consent guardrail in
+Guardrails is not triggered:
+
+```bash
+kgent config validate
+```
+
+If it prints `no config file`, say so and run setup — it never prompts; it
+discovers installed backends and generates `~/.kgent/config.yaml`:
+
+```bash
+kgent setup
+```
+
+A fresh config has every backend `enabled: false`. If nothing is enabled for
+this task, tell the user to set `enabled: true` for their backend in
+`~/.kgent/config.yaml` and stop there. Re-running `kgent setup` later is safe
+— it merges into the existing config (user settings win) and backs up the
+original.
+
 ### 1. Gather Pages and Targets
 
 From the user's request, extract:
@@ -34,7 +57,7 @@ If the user doesn't specify backends for a page, ask — or use `defaults.defaul
 Read the config to see which backends are enabled:
 
 ```bash
-kgent config show --json
+kgent config show-effective --json
 ```
 
 ### 2. Check for Collisions (Update-First)

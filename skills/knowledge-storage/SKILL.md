@@ -24,6 +24,29 @@ When in doubt between this skill and question-answering: if the user's goal is t
 
 ## Workflow
 
+### 0. Ensure kgent Is Set Up
+
+Before anything else, check the kgent config exists. This goes through the CLI
+(which reads its own config internally), so the config-consent guardrail in
+Guardrails is not triggered:
+
+```bash
+kgent config validate
+```
+
+If it prints `no config file`, say so and run setup — it never prompts; it
+discovers installed backends and generates `~/.kgent/config.yaml`:
+
+```bash
+kgent setup
+```
+
+A fresh config has every backend `enabled: false`. If nothing is enabled for
+this task, tell the user to set `enabled: true` for their backend in
+`~/.kgent/config.yaml` and stop there. Re-running `kgent setup` later is safe
+— it merges into the existing config (user settings win) and backs up the
+original.
+
 ### 1. Extract Knowledge
 
 From the conversation context, identify:
