@@ -38,6 +38,31 @@
 凭据就绪后的解阻入口：`PROBE-NOTES.md` §5 补捕命令 + `task-6-report.md` §5
 runbook（`DWS_PROBE_CONFIRM=yes` 确认门协议）。
 
+### 0.1 兑现注记（2026-09-09）：上表两项 blocked 真机项已兑现
+
+**2026-09-09 凭据就绪**——dws 已登录（corp `MergeGameStudio`），CLI 版本不变
+（`v1.0.61`，无升级漂移），Phase 2 遗留的 B6/B8 blocked 在分支
+`feat/wecom-integration` 兑现闭环。路径：兑现轮真机首跑暴露 documented-not-captured
+锚点与真 payload 的漂移（3/3 failed，全部命令形状类——零环境事故、零产品码事故）→
+修复轮按 live-captured 真值回填锚点后**真机首跑 + 独立复跑 ×2 各 3 PASS**
+（中途一轮 2 passed / 1 failed 为瞬态服务端读超时，环境类，已披露并加幂等读重试
+装甲）。两轮全报告：`.superpowers/sdd/2026-09-08-phase3-wecom-integration/dingtalk-closure-report.md`
+（兑现轮）与同目录 `dingtalk-closure-fix-report.md`（修复轮；该目录按仓库惯例
+不入库）。**上表 blocked 状态是 2026-09-08 时点的诚实记录，以下为兑现读数，
+不改写原叙事**：
+
+| 项 | 兑现读数（2026-09-09 真机，dws v1.0.61） |
+|---|---|
+| **B6 undo 闭环**（§4 行为 1 的真机腿） | `revision_before=1`（create 后 `--detail with-ids` 档读数）→ 条件写后 `revision_after=2`；`kgent undo` 计划 `status: ok`、`mode: plan`、`mechanism: version-revert`、`history_hint: dws doc +version-list`、TOCTOU 执行前复核 `revision_current: "2"` 与 fetch 读数一致 → `dws doc +version-revert --version 1` 成功 → 读回 AAA-CONTENT 还原、写后内容消失 |
+| **FM2 计划期拒绝**（B6 载体第二测） | 第三方 append（revision 3）后 undo → `status: rejected`、reason `document edited since the journaled write: expected revision 2, current 3`（两侧 revision 都在）、`plan.revision_current: "3"`——不规划盲回滚 |
+| **B8 内容完整性**（§4 行为 2 的 dingtalk 腿） | 多段中文 +「中文标点」+ emoji ❤️🎉（VS16）+ 块内换行经 `@file` 写入 → 默认档读回 `content.markdown` 全量保真（`revision=1`、`content_bytes=136`）——first-block 事故回归装甲真机证实 |
+| **B11 payload 真值** | **live-captured 定谳，documented-not-captured 状态终止**——`tests/fixtures/dws/` 全部按真机捕获件原样回填/新增（`PROBE-NOTES.md` §2 键位表 2026-09-09 回填 + §7 真机定谳补记）；伴生真机纪法两条（fetch 双档两枪 / overwrite+jsonml 回读验证假阴性）已回流 `skills/dingtalk-integration/SKILL.md` |
+| **产品码与改动面** | ledger/undo 产品码**零改动**——`kgent` 台账 begin/end、undo 计划、FM2 拒绝语义真机一次通过；改动全在锚点/fixtures 层（`dcdec9c` adapter 读车道锚点 + fixtures、`499e94c`/`2af5d43` e2e 锚点、`210b3eb` PROBE-NOTES §2/§7） |
+| **复现** | `dws auth status` 确认登录 → `DWS_PROBE_CONFIRM=yes .venv/Scripts/python.exe -m pytest tests/e2e/test_dingtalk_undo_real.py -v -s -p no:randomly`（§9 同一入口；`DWS_PROBE_CONFIRM=yes` 即操作者对回滚/删除的确认记录，§6 第 4 条门协议）——租户残留 0（探针全部 teardown，`doc +search --query "kgent-phase2-probe"` → count 0）、台账悬空 0 |
+
+修复轮验收线全套回归（排除两平台真机 e2e 文件）：**610 passed / 4 skipped /
+0 failed**（读数见修复轮报告 §5）。
+
 ## 1. Baseline 演进（诚实记录）
 
 | 时点 | 结果 | 来源 |

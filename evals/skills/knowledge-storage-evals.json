@@ -152,6 +152,23 @@
         "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
         "For Lark targets the skill delegates execution via lark-integration, not 'kgent update'"
       ]
+    },
+    {
+      "id": 10,
+      "prompt": "Save this to WeCom please: 'Customer escalation hotline is +86-400-123-4567, staffed 9:00-18:00 CST. Escalate SEV1 incidents within 15 minutes.'",
+      "expected_output": "The skill should target wecom (explicit user input), search for existing content via wecom-integration, and propose create or update accordingly. Must show provenance noting 'explicit user input' as the backend source.",
+      "files": [],
+      "expectations": [
+        "The skill targets wecom backend (explicit user input overrides any defaults)",
+        "The provenance records target source as 'explicit user input'",
+        "The skill searches wecom for existing content before proposing",
+        "A proposal is shown before any write",
+        "The confirmation includes the native WeCom doc URL from the platform response, not kgent://wecom/...",
+        "The content is formatted as markdown, not raw text",
+        "The skill runs 'kgent route --dry-run' before executing any write",
+        "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
+        "For WeCom targets the skill delegates execution via wecom-integration, not 'kgent update'"
+      ]
     }
   ]
 }

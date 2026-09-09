@@ -31,17 +31,26 @@ undo 计划期的新鲜度读（FM2）经 :class:`kgent.adapters.dingtalk.DingTa
    CLI 直接阻断、不落交互提示——真机验收因此必须是有人的运行：操作者对回滚/删除
    明示同意后设 ``DWS_PROBE_CONFIRM=yes`` 再跑（该设置即本探针的用户确认记录，
    每次带 -y 的调用都会打印审计说明）。
-5. payload 键位待真机捕获：create 响应、fetch 的 ``revision``、version-list 条目、
-   drive 域 dentryUuid 的字段路径全是 PENDING——解析集中在 ``_extract_*`` 候选键
-   锚点，取不到就打印原 payload 供补捕定谳（不按占位假设硬编码）。
+5. payload 键位**live-captured 2026-09-09**（兑现轮首跑 3/3 failed 定谳 + 修复轮
+   回填；closure report §3 全文、``tests/fixtures/dws/FIXTURES-NOTE.md`` 锚点表）：
+   fetch 目标块是顶层 ``content``（``doc.content.v1``，外层无 ``data``），
+   ``revision`` 只在 ``--detail with-ids`` 档（**字符串**，``"1"``）且该档正文键是
+   ``jsonml`` 非 ``markdown``；version-list 条目**无 revision 字段**；create 响应
+   （``doc.operation.v1``）全块无 revision。解析集中在 ``_extract_*`` 锚点，
+   取不到就打印原 payload 供再定谳（不按占位假设硬编码）。
 6. 双轴纪律：``revision`` = 编辑号（台账 begin/end、``--expected-revision`` 条件写）；
-   ``version`` = 历史快照号（``+version-list``/``+version-revert``）——不混用。
+   ``version`` = 历史快照号（``+version-list``/``+version-revert``）——不混用；
+   两轴的映射走 ``+fetch --version N --detail with-ids`` 读 ``content.revision``
+   （真机实测 1:1：``--version 0 → "0"``、``1 → "1"``）。
 7. undo 补偿与 revert 读回都是异步平台操作 → 有界轮询（lark 版 ``_poll_content``
    同款；version 建点也可能异步稀疏 → ``_wait_version_point``）。
 8. teardown：doc 域**无删除命令**——探针删除走 drive 域
-   ``drive +delete --node <dentryUuid>``（进回收站，可恢复）；两域 ID 对应关系
-   PENDING → 用 ``drive +info --node <DOC_ID>`` 做解析探针（其 help 自述对钉钉
-   文档目标会自动跟进文档接口合并输出），失败点名 DOC_ID + session 末重试
+   ``drive +delete --node <DOC_ID>``（进回收站，可恢复）。删除句柄 live-captured
+   定谳：**就是 DOC_ID 本体**（``drive +info`` 的 ``data.fileId``、
+   ``drive +find-file`` 的 ``files[].dentryId`` 均等于 DOC_ID）；``drive +info``
+   的 ``data.dentryId`` 是 12 位内部号，``drive +delete`` 拒收——兑现轮 teardown
+   三连败的根因。``drive +info`` 只作句柄可用性早验（report §7.3 的 fail-fast），
+   解析失败不阻塞删除（句柄兜底直用 DOC_ID）；仍失败 session 末重试 + 点名
    （lark 版 ``_leftover_tokens``/``_retry_leftovers`` 同构）。
 """
 
@@ -108,6 +117,12 @@ UPDATE_APPEND = "append"
 FLAG_EXPECTED_REVISION = "--expected-revision"
 FLAG_VERSION = "--version"  # 版本轴（≠ revision 轴，修正 6）
 FLAG_QUERY = "--query"
+#: fetch 保真度档位（PROBE-NOTES §1.2：``simple|with-ids|full``）。live-captured
+#: （2026-09-09，closure report §3.1/§3.2）：默认档（simple）正文键 ``markdown``
+#: 但**无 revision**；``with-ids`` 档带 ``content.revision``（字符串）但正文键是
+#: ``jsonml``——没有任何单档同时携带两者，所以取 revision 的 fetch 一律带本档。
+FLAG_DETAIL = "--detail"
+DETAIL_WITH_IDS = "with-ids"
 
 #: dws 格式旗标（PROBE-NOTES §1.4：``-f/--format json``，默认即 json，显式传为契约自明）
 DWS_FORMAT_FLAGS = ("-f", "json")
@@ -121,6 +136,11 @@ _VERSION_POLL_ROUNDS = 12
 _VERSION_POLL_INTERVAL_SECONDS = 5
 _READBACK_POLL_ROUNDS = 6
 _READBACK_POLL_INTERVAL_SECONDS = 2
+
+#: with-ids 读的瞬态服务端超时重试（live-captured 2026-09-09 复跑现场：
+#: create 后立刻读 JSONML 档撞 HSFTimeOutException/3000ms——读幂等，重试安全）
+_TRANSIENT_READ_RETRIES = 2
+_TRANSIENT_READ_BACKOFF_SECONDS = 2
 
 DWS_TIMEOUT_SECONDS = 120
 KGENT_TIMEOUT_SECONDS = 120
@@ -190,6 +210,7 @@ def _dws(
     cwd: Path | None = None,
     check: bool = True,
     timeout: int = DWS_TIMEOUT_SECONDS,
+    error_payload: bool = False,
 ) -> dict[str, Any] | None:
     """跑一条 dws 命令并解析 JSON envelope（``-f json`` 收尾，PROBE-NOTES §1.4）。
 
@@ -200,6 +221,10 @@ def _dws(
     ``check=True``（默认）：非零退出、非 JSON 或 envelope ``ok=False`` →
     AssertionError（带 stdout/stderr 尾部，真机排障用）。``check=False``
     （teardown/探测）：失败打印并返回 ``None``，由调用方点名。
+    ``error_payload=True``（配合 ``check=False``）：失败时进一步解析错误
+    envelope（rc=1 的错误 JSON 实测整份在 **stderr**——``doc +update`` 的
+    ``doc_write_verification_failed`` 现场 live-captured 2026-09-09）返回给
+    调用方分类；解析不出仍返回 ``None``。
     ``cwd`` 锚定 ``@file`` 的工作目录相对语义（PROBE-NOTES §4）。
     """
     confirm = _confirmation_flags() if args[:2] in _CONFIRM_REQUIRED_COMMANDS else ()
@@ -244,12 +269,26 @@ def _dws(
             f"dws {' '.join(args)} failed (rc={proc.returncode}): "
             f"stdout={proc.stdout[-400:]!r} stderr={proc.stderr[-400:]!r}"
         )
+        if error_payload:
+            for text in (proc.stderr, proc.stdout):
+                try:
+                    decoded = json.loads(text)
+                except ValueError:
+                    continue
+                if isinstance(decoded, dict):
+                    return decoded
         return None
     return payload
 
 
-def _kgent_json(command: str, *rest: str) -> dict[str, Any]:
-    """``--json`` 放在整条子命令路径的**末尾**（模块 docstring 修正 2）。"""
+def _kgent_json(command: str, *rest: str, ok_rc: tuple[int, ...] = (0,)) -> dict[str, Any]:
+    """``--json`` 放在整条子命令路径的**末尾**（模块 docstring 修正 2）。
+
+    ``ok_rc``：命令的退出码契约。``kgent undo`` 对 **rejected 计划按设计退 1**
+    （``src/kgent/cli.py``：「return 0 if plan["status"] == "ok" else 1」；
+    live-captured 2026-09-09 FM2 现场证实：rc=1 + stdout 全量 JSON 证据）——
+    证据在 stdout，调用方用 ``ok_rc=(0, 1)`` 放行后按 JSON 断言 status。
+    """
     out = subprocess.run(
         [*_kgent(), command, *rest, "--json"],
         capture_output=True,
@@ -259,7 +298,7 @@ def _kgent_json(command: str, *rest: str) -> dict[str, Any]:
         check=False,
         stdin=subprocess.DEVNULL,
     )
-    if out.returncode != 0:
+    if out.returncode not in ok_rc:
         raise AssertionError(
             f"kgent {command} {' '.join(rest)} failed:\n"
             f"  rc={out.returncode}\n"
@@ -280,14 +319,70 @@ def _kgent_json(command: str, *rest: str) -> dict[str, Any]:
 
 
 def _extract_data(payload: dict[str, Any]) -> dict[str, Any]:
-    """doc.operation.v1 envelope 的目标块（``data``；FIXTURES-NOTE contracts.md）。"""
+    """doc.operation.v1 envelope 的目标块（``data``）。
+
+    live-captured（2026-09-09，closure report §3 / fixtures ``drive-delete.json``
+    同款）：create/update/delete 系命令走该 envelope，``data.nodeId`` 真机证实；
+    **fetch 不走它**（``doc.content.v1`` 的目标是顶层 ``content``，见
+    :func:`_extract_content_block`）。
+    """
     data = payload.get("data")
     return data if isinstance(data, dict) else {}
 
 
+def _extract_content_block(payload: dict[str, Any]) -> dict[str, Any]:
+    """``doc +fetch``（``doc.content.v1`` envelope）的目标块。
+
+    live-captured（2026-09-09，closure report §3.1）：fetch 外层是
+    ``complete/content/contractVersion/status/target``——目标是**顶层 ``content``**，
+    外层没有 ``data``（兑现轮 B8 断言死在 ``data.content`` 空串上的根因）。
+    ``data`` 保留为 documented-not-captured 旧锚点兜底。
+    """
+    block = payload.get("content")
+    if isinstance(block, dict):
+        return block
+    return _extract_data(payload)
+
+
+def _fetch_detail(doc_id: str, *extra: str) -> dict[str, Any]:
+    """``doc +fetch --node <id> --detail with-ids``——revision 唯一携带档。
+
+    live-captured（2026-09-09）：默认 markdown 档无 revision；with-ids 档在
+    ``content.revision``（字符串）。该档正文键是 ``jsonml`` 非 ``markdown``——
+    **取正文不要走这里**（:func:`_extract_markdown` 只认默认档的 ``markdown``）。
+
+    瞬态读超时有界重试（live-captured 2026-09-09 复跑现场）：with-ids 档要
+    服务端现拼 JSONML，create 后立刻读可能撞**服务端 HSF 读超时**（rc=1
+    ``business_error`` / ``server_error_code: internalError``，message 带
+    ``HSFTimeOutException``、timeout 3000ms）——读车道幂等，重试安全；
+    其余错误原样响亮失败。
+    """
+    args = [*CMD_FETCH, FLAG_NODE, doc_id, FLAG_DETAIL, DETAIL_WITH_IDS, *extra]
+    payload: dict[str, Any] | None = None
+    for attempt in range(_TRANSIENT_READ_RETRIES + 1):
+        payload = _dws(*args, check=False, error_payload=True)
+        error = (payload or {}).get("error") or {}
+        transient = (
+            str(error.get("reason", "")) == "business_error"
+            and str(error.get("server_error_code", "")) == "internalError"
+        )
+        if not transient:
+            break
+        print(
+            f"[kgent-phase2-probe] transient server timeout on with-ids fetch "
+            f"(attempt {attempt + 1}/{_TRANSIENT_READ_RETRIES + 1}): "
+            f"{str(error.get('message', ''))[:200]}"
+        )
+        time.sleep(_TRANSIENT_READ_BACKOFF_SECONDS)
+    assert payload is not None and not payload.get("error"), (
+        f"dws {' '.join(args)} failed:\n  payload={json.dumps(payload, ensure_ascii=False)[:800]}"
+    )
+    return payload
+
+
 def _extract_doc_id(payload: dict[str, Any]) -> str:
-    """``doc +create`` 响应里的 DOC_ID。文档化形状 ``data.nodeId``
-    （FIXTURES-NOTE：doc-create.md 实例）。
+    """``doc +create`` 响应里的 DOC_ID。live-captured 证实：``data.nodeId``
+    （``doc.operation.v1``，2026-09-09 create 原文；响应全块无 revision）。
 
     四候选键全落空时探针**已被创建**但 id 解析不出——teardown 无法点名它，失败
     消息必须带按标题定位的人工清理路径（teardown 保证的唯一漏洞口）。
@@ -302,25 +397,39 @@ def _extract_doc_id(payload: dict[str, Any]) -> str:
         "(nodeId/id/docId/node_id) — capture the payload and pin this anchor "
         f"(tests/fixtures/dws/FIXTURES-NOTE.md): {json.dumps(payload, ensure_ascii=False)[:800]}. "
         "MANUAL CLEANUP: the probe doc WAS created but its id is unknown — locate it "
-        "by title: dws drive +find-file --query kgent-phase2-probe -f json, then "
-        "dws drive +delete --node <dentryUuid> -f json"
+        "by title: dws drive +find-file --query kgent-phase2-probe -f json (files[].dentryId "
+        "= the 32-char DOC_ID), then dws drive +delete --node <DOC_ID> -f json"
     )
 
 
 def _extract_revision(payload: dict[str, Any]) -> int | None:
-    """revision（编辑号）读数。文档化形状 ``data.revision``（FIXTURES-NOTE 冲突
-    点 1：markdown 档是否携带 revision 待真机定谳）。取不到返回 ``None``——调用方
-    决定回退通道。"""
-    block = _extract_data(payload) or payload
-    for key in ("revision", "revisionId", "rev"):
-        value = block.get(key)
-        if isinstance(value, (int, str)) and str(value).strip().lstrip("-").isdigit():
-            return int(value)
+    """revision（编辑号）读数。live-captured（2026-09-09，closure report §3.2）：
+    只在 with-ids 档的 ``content.revision``（**字符串** ``"1"``）；create/update 的
+    ``doc.operation.v1`` 响应真机全块无 revision（2026-09-09 create 原文）——
+    两个块都扫（fetch 先），取不到返回 ``None`` 由调用方决定回退通道。"""
+    for block in (_extract_content_block(payload), _extract_data(payload)):
+        for key in ("revision", "revisionId", "rev"):
+            value = block.get(key)
+            if isinstance(value, (int, str)) and str(value).strip().lstrip("-").isdigit():
+                return int(value)
     return None
 
 
+def _extract_markdown(payload: dict[str, Any]) -> str:
+    """正文读数：默认档的 ``content.markdown``（live-captured 2026-09-09，
+    closure report §3.1——B8 键位漂移死点的正解锚点）。
+
+    with-ids 档的正文键是 ``jsonml``（JSONML 字符串，非 markdown）——本锚点
+    **不取它**，正文保真断言只认 ``markdown``。
+    """
+    block = _extract_content_block(payload)
+    value = block.get("markdown")
+    return str(value) if value is not None else ""
+
+
 def _extract_version_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """``doc +version-list`` 的版本条目列表（容器键 PENDING：PROBE-NOTES §2）。"""
+    """``doc +version-list`` 的版本条目列表（live-captured 2026-09-09，closure
+    report §3.3：外层 ``hasMore/success/versions``，容器键 ``versions`` 顶层）。"""
     block = _extract_data(payload) or payload
     for key in ("versions", "items", "list", "entries", "versionList"):
         value = block.get(key)
@@ -329,17 +438,14 @@ def _extract_version_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
-def _entry_revision(entry: dict[str, Any]) -> int | None:
-    """条目的 revision（编辑号轴）读数。"""
-    for key in ("revision", "revisionId", "rev", "editRevision"):
-        value = entry.get(key)
-        if isinstance(value, (int, str)) and str(value).strip().lstrip("-").isdigit():
-            return int(value)
-    return None
-
-
 def _entry_version(entry: dict[str, Any]) -> int | None:
-    """条目的 version（历史快照号轴，``--version`` 消费）读数。"""
+    """条目的 version（历史快照号轴，``--version`` 消费）读数。
+
+    live-captured（2026-09-09）：条目只有 ``version``（int）+ ``createTime/``
+    ``updateTime/type/userId``——**没有 revision 字段**（原 ``_entry_revision``
+    候选键锚点在真 payload 上恒 None，结构性死锚，已删）；条目级 revision 匹配
+    走 :func:`_version_revision` 的替代通道。
+    """
     for key in ("version", "versionId", "versionNo", "id"):
         value = entry.get(key)
         if isinstance(value, (int, str)) and str(value).strip().lstrip("-").isdigit():
@@ -385,39 +491,57 @@ def _write_jsonml(tmp_dir: Path, name: str, text: str) -> str:
     return name
 
 
-def _probe_dentry_id(doc_id: str) -> str | None:
-    """doc 域 DOC_ID → drive 域 dentryUuid（两域对应 PROBE-NOTES §1.2 PENDING）。
+def _probe_delete_handle(doc_id: str) -> str:
+    """teardown 删除句柄（live-captured 2026-09-09，closure report §3.5/§4.1）。
 
-    ``drive +info`` 自述对钉钉文档目标会「自动跟进调用钉钉文档接口获取更准确的
-    文档信息，并合并输出」（dws drive info --help 实测）→ 用它做解析探针；
-    dentryUuid 叶子键名 PENDING → 候选键锚点，取不到打印原 payload 供补捕。
+    真机定谳：删除句柄就是 **DOC_ID 本体**（32 位字母数字）——``drive +info``
+    的 ``data.fileId``、``drive +find-file`` 的 ``files[].dentryId`` 都等于
+    DOC_ID；``data.dentryId`` 是 **12 位内部号**，``drive +delete`` 拒收
+    （「nodeId 格式不合法，非 URL 格式时 nodeId 须为 dentryUuid：32 位字母数字
+    字符串」——兑现轮 teardown 三连败根因，候选键序选中它导致误删失败）。
+
+    ``drive +info`` 在这里只作**句柄可用性早验**（report §7.3 的 fail-fast
+    纪律）：打得通且 ``fileId`` 对得上就确认通道健康；打不通/键位漂移**不阻塞
+    删除**——句柄兜底直用 DOC_ID（两域对应已定谳，无需再解析）。
     """
     payload = _dws(*CMD_DRIVE_INFO, FLAG_NODE, doc_id, check=False)
     if payload is None:
-        return None
+        print(
+            f"[teardown] drive +info unreachable for {doc_id} - delete handle "
+            "falls back to DOC_ID itself (live-verified handle)"
+        )
+        return doc_id
     block = _extract_data(payload) or payload
-    for key in ("dentryUuid", "dentryId", "fileId", "nodeId", "id"):
+    for key in ("fileId", "dentryUuid"):
         value = block.get(key)
         if isinstance(value, str) and value:
-            print(f"[teardown] resolved dentry id {value} from key {key!r} (probe doc {doc_id})")
+            if value != doc_id:
+                print(
+                    f"[teardown] drive +info {key} {value} != DOC_ID {doc_id} - "
+                    "using the resolved id as delete handle"
+                )
+            else:
+                print(
+                    f"[teardown] delete handle verified = DOC_ID itself "
+                    f"(drive +info {key} matches, probe {doc_id})"
+                )
             return value
     print(
-        "drive +info payload had no dentry id under known keys (dentryUuid/dentryId/"
-        "fileId/nodeId/id) - capture and pin the anchor (PROBE-NOTES 1.2, "
-        "PENDING credentials): " + json.dumps(payload, ensure_ascii=False)[:800]
+        "drive +info payload had no delete handle under known keys (fileId/"
+        "dentryUuid) - falling back to DOC_ID itself; capture and pin the anchor "
+        "(tests/fixtures/dws/FIXTURES-NOTE.md): " + json.dumps(payload, ensure_ascii=False)[:800]
     )
-    return None
+    return doc_id
 
 
 def _delete_probe(doc_id: str) -> bool:
     """teardown：探针文档进回收站（doc 域无删除命令——PROBE-NOTES §1.2 注）。
 
-    删除对象是 drive 域 dentryUuid；两域解析失败也按失败处理（调用方点名）。
+    删除句柄 = DOC_ID 本体（live-captured 2026-09-09，
+    :func:`_probe_delete_handle` 早验）；12 位 ``dentryId`` 会被拒收。
     """
-    dentry = _probe_dentry_id(doc_id)
-    if dentry is None:
-        return False
-    return _dws(*CMD_DRIVE_DELETE, FLAG_NODE, dentry, check=False) is not None
+    handle = _probe_delete_handle(doc_id)
+    return _dws(*CMD_DRIVE_DELETE, FLAG_NODE, handle, check=False) is not None
 
 
 def _teardown(doc_id: str) -> None:
@@ -438,8 +562,64 @@ def _teardown(doc_id: str) -> None:
         _leftover_probes.append(doc_id)
     print(
         f"TEARDOWN FAILED: probe doc {doc_id} still exists - delete manually via the "
-        "drive domain: dws drive +find-file --query kgent-phase2-probe -f json -> "
-        "dentryId, then dws drive +delete --node <dentryUuid> -f json"
+        "drive domain (delete handle = the DOC_ID itself, live-verified): "
+        "dws drive +delete --node <DOC_ID> -y -f json"
+    )
+
+
+def _conditional_overwrite(tmp_dir: Path, doc_id: str, revision_before: int, content: str) -> None:
+    """B6 写腿：``doc +update --command overwrite --doc-format jsonml
+    --expected-revision <rev>``——服务端原子条件写仅此组合生效（PROBE-NOTES
+    §1.1；dingtalk-integration skill Write 节同款命令形状），内容经 ``@file``
+    临时文件（不走 argv 内联）。
+
+    **dws 已知行为（live-captured 2026-09-09，两个探针 + 两轮独立复现同一现场）**：
+    该组合的 CLI 回读验证**结构性假阴性**——rc=1
+    ``doc_write_verification_failed``（cause「回读结果未包含预期内容」、
+    ``execution_started: true``、steps=``[update_document: success, verify:
+    failed]``、``retryable: false``），而写实际已落（读回 markdown/revision/
+    version 全部到位）；markdown 通道同场验证通过 → 是 jsonml 源文与 markdown
+    读数的比对形状问题，不是写入或时序问题。
+
+    处置按 dws 错误契约自证（原文「请先检查当前内容，不要直接重试写入」）：
+    ``error_payload`` 分类 → 仅对 ``doc_write_verification_failed`` 放行 →
+    有界轮询读回，写后内容出现即视为写成功；不出现才按真失败断言。CLI 侧
+    修复后本助手自动走 rc=0 快路径，恢复逻辑保持为死代码。
+    """
+    rel_after = _write_jsonml(tmp_dir, "probe-after.jsonml", content)
+    updated = _dws(
+        *CMD_UPDATE,
+        FLAG_NODE,
+        doc_id,
+        FLAG_COMMAND,
+        UPDATE_OVERWRITE,
+        FLAG_DOC_FORMAT,
+        DOC_FORMAT_JSONML,
+        FLAG_CONTENT,
+        f"@{rel_after}",
+        FLAG_EXPECTED_REVISION,
+        str(revision_before),
+        cwd=tmp_dir,
+        check=False,
+        error_payload=True,
+    )
+    if updated is not None and not updated.get("error"):
+        return  # rc=0：CLI 自身 verify 通过（写 + 读回都证实）
+    reason = str((updated or {}).get("error", {}).get("reason", ""))
+    assert reason == "doc_write_verification_failed", (
+        f"conditional write failed beyond the known verify false-negative "
+        f"(reason={reason!r}): {json.dumps(updated, ensure_ascii=False)[:600]}"
+    )
+    landed = _poll_content(doc_id, content)
+    rendered = json.dumps(landed, ensure_ascii=False)
+    assert content in rendered, (
+        f"conditional write reported doc_write_verification_failed and did NOT land "
+        f"either (no {content!r} on readback within "
+        f"{_READBACK_POLL_ROUNDS * _READBACK_POLL_INTERVAL_SECONDS}s): {rendered[:600]}"
+    )
+    print(
+        "[kgent-phase2-probe] dws overwrite+jsonml verify false-negative "
+        "(doc_write_verification_failed, write landed) - recovered via own readback"
     )
 
 
@@ -454,8 +634,8 @@ def _journaled_update(tmp_dir: Path) -> tuple[str, str, int, int]:
     teardown 保证覆盖 **create 之后的全部前缀**（revision 读取、
     ``revision_before is None`` 断言、journal begin/end、条件写）：doc_id 一到手
     就进 except-teardown——这里的任何失败若不删探针，调用方的 ``finally``
-    根本拿不到 doc_id，探针就孤儿化了（FIXTURES-NOTE 冲突点 1 未定谳，「create
-    响应/fetch 均无 revision」是现实分支，不是假想）。
+    根本拿不到 doc_id，探针就孤儿化了（live-captured 定谳：create 响应真机
+    **全块无 revision**，fetch 回退必走）。
     """
     rel_before = _write_markdown(tmp_dir, "probe-before.md", CONTENT_A)
     created = _dws(
@@ -470,14 +650,18 @@ def _journaled_update(tmp_dir: Path) -> tuple[str, str, int, int]:
     )
     doc_id = _extract_doc_id(created)
     try:
+        # 删除句柄早验（report §7.3 fail-fast）：teardown 通道不健康当场点名，
+        # 不等 finally 才发现（print-only，不阻塞测试）。
+        _probe_delete_handle(doc_id)
         revision_before = _extract_revision(created)
         channel = "create response"
         if revision_before is None:
-            # create 响应的 revision 字段路径 PENDING（FIXTURES-NOTE 冲突点 1）→
-            # 回退读车道（fetch 的 data.revision 锚点）；取数通道打进 evidence。
-            fetched = _dws(*CMD_FETCH, FLAG_NODE, doc_id)
+            # create 响应真机全块无 revision（live-captured 2026-09-09）→ 回退
+            # 读车道；revision 只在 with-ids 档（默认 markdown 档不带），取数
+            # 通道打进 evidence。
+            fetched = _fetch_detail(doc_id)
             revision_before = _extract_revision(fetched)
-            channel = "doc +fetch"
+            channel = "doc +fetch --detail with-ids"
         assert revision_before is not None, (
             "no revision from create response or doc +fetch — 台账开账没有写前版本可记"
         )
@@ -498,24 +682,10 @@ def _journaled_update(tmp_dir: Path) -> tuple[str, str, int, int]:
         )
         op_id = begin["entry"]["op_id"]
 
-        rel_after = _write_jsonml(tmp_dir, "probe-after.jsonml", CONTENT_B)
-        updated = _dws(
-            *CMD_UPDATE,
-            FLAG_NODE,
-            doc_id,
-            FLAG_COMMAND,
-            UPDATE_OVERWRITE,
-            FLAG_DOC_FORMAT,
-            DOC_FORMAT_JSONML,
-            FLAG_CONTENT,
-            f"@{rel_after}",
-            FLAG_EXPECTED_REVISION,
-            str(revision_before),
-            cwd=tmp_dir,
-        )
-        revision_after = _extract_revision(updated)
-        if revision_after is None:
-            revision_after = _extract_revision(_dws(*CMD_FETCH, FLAG_NODE, doc_id))
+        _conditional_overwrite(tmp_dir, doc_id, revision_before, CONTENT_B)
+        # update 响应（doc.operation.v1）真机不携带 revision（live-captured
+        # 2026-09-09，data 块只有 nodeId/verified）→ 写后版本从 with-ids 档读。
+        revision_after = _extract_revision(_fetch_detail(doc_id))
         assert revision_after is not None, (
             "no revision after dws doc +update — 落账没有写后版本可记"
         )
@@ -551,30 +721,65 @@ def _journaled_update(tmp_dir: Path) -> tuple[str, str, int, int]:
 # ---------------------------------------------------------------------------
 
 
+def _version_revision(doc_id: str, version: int) -> int | None:
+    """历史版本的 revision 读数（revision→version 映射的替代通道）。
+
+    live-captured（2026-09-09，closure report §3.2/§3.3）：version-list 条目
+    **无 revision 字段**，条目级匹配在真机上结构性无法命中；替代通道是
+    ``doc +fetch --version N --detail with-ids`` 读 ``content.revision``（真机
+    验证可行、读车道、双轴 1:1：``--version 0 → "0"``、``1 → "1"``）。单版本
+    读失败按 ``None`` 处理（轮询层重试，不中断整体等待）。
+    """
+    payload = _dws(
+        *CMD_FETCH,
+        FLAG_NODE,
+        doc_id,
+        FLAG_DETAIL,
+        DETAIL_WITH_IDS,
+        FLAG_VERSION,
+        str(version),
+        check=False,
+    )
+    if payload is None:
+        return None
+    return _extract_revision(payload)
+
+
 def _wait_version_point(doc_id: str, revision_before: int) -> int:
     """写前 revision 对应的 version 号（integration 侧 ``history_hint`` 的实现）。
 
-    版本建点可能异步且稀疏（lark history 修正 5 同款）→ 有界轮询：精确命中
+    live-captured 纪法（2026-09-09）：version-list 条目无 revision 字段 →
+    revision 匹配经 :func:`_version_revision` 逐版本读；``(version → revision)``
+    映射按版本缓存（快照不可变，重复读是浪费调用）。版本建点仍可能异步稀疏
+    （lark history 修正 5 同款）→ 有界轮询，但只对**尚未映射**的新条目继续：
+    当前快照集全部映射过后，新轮询只可能等到写后新版本（revision >
+    revision_before），精确点不会再生——省掉剩余空轮。精确命中
     ``revision == revision_before`` 优先；耗尽后退到 ``revision <= revision_before``
-    的最新点（是否真还原由读回断言把关）。条目键位 PENDING（修正 5）→ 候选键
-    锚点，轮询耗尽打印原 payload 供补捕定谳。
+    的最新点（是否真还原由读回断言把关）。
     """
+    revision_cache: dict[int, int] = {}
     fallback: tuple[int, int] | None = None
     last_payload: dict[str, Any] = {}
     for _ in range(_VERSION_POLL_ROUNDS):
         payload = _dws(*CMD_VERSION_LIST, FLAG_NODE, doc_id)
         last_payload = payload
-        older: list[tuple[int, int]] = []
+        pending = False
         for entry in _extract_version_entries(payload):
-            rev, version = _entry_revision(entry), _entry_version(entry)
-            if rev is None or version is None:
+            version = _entry_version(entry)
+            if version is None or version in revision_cache:
                 continue
-            if rev == revision_before:
+            pending = True
+            revision = _version_revision(doc_id, version)
+            if revision is None:
+                continue
+            revision_cache[version] = revision
+            if revision == revision_before:
                 return version
-            if rev <= revision_before:
-                older.append((rev, version))
-        if older:
-            fallback = max(older)
+            if revision <= revision_before:
+                candidate = (revision, version)
+                fallback = candidate if fallback is None else max(fallback, candidate)
+        if not pending:
+            break
         time.sleep(_VERSION_POLL_INTERVAL_SECONDS)
     if fallback is not None:
         print(
@@ -668,9 +873,12 @@ def test_b8_content_integrity(tmp_path):
     )
     doc_id = _extract_doc_id(created)
     try:
+        _probe_delete_handle(doc_id)
+        # 默认档（--detail simple）是 B8 的保真断言车道：正文键 content.markdown
+        # （live-captured 2026-09-09——兑现轮死在 data.content 空串上的键位）。
         fetched = _dws(*CMD_FETCH, FLAG_NODE, doc_id)
         rendered = json.dumps(fetched, ensure_ascii=False)
-        content = str(_extract_data(fetched).get("content", ""))
+        content = _extract_markdown(fetched)
         for needle in (
             "Phase 2 完整性探针",  # 标题块
             "第一段中文内容",  # 段一
@@ -680,14 +888,15 @@ def test_b8_content_integrity(tmp_path):
         ):
             assert needle in rendered, f"B8 content lost {needle!r}; fetched={rendered[:600]}"
         # 换行保真只在正文上断言（JSON 序列化会把 \n 转义，rendered 上断不到）。
-        # 失败消息同时带 content 与 rendered payload——键位漂移（data.content 落
-        # 空）时也能从消息里读出正文到底去了哪个字段。
+        # 失败消息同时带 content 与 rendered payload——键位再漂移时也能从消息里
+        # 读出正文到底去了哪个字段。
         assert "❤️🎉" in content and "与多行\n换行内容" in content, (
-            f"B8 data.content lost emoji/newline fidelity: content={content[:400]!r} "
+            f"B8 content.markdown lost emoji/newline fidelity: content={content[:400]!r} "
             f"rendered={rendered[:600]}"
         )
+        # revision 只在 with-ids 档（live-captured）——evidence 读数单独取。
         print(
-            f"[kgent-phase2-probe] B8 revision={_extract_revision(fetched)} "
+            f"[kgent-phase2-probe] B8 revision={_extract_revision(_fetch_detail(doc_id))} "
             f"content_bytes={len(content.encode('utf-8'))}"
         )
     finally:
@@ -716,7 +925,7 @@ def test_b6_undo_plan_and_version_revert(tmp_path):
 
         # TOCTOU 执行前复核（dingtalk-integration skill Undo 节步骤 3）：当前
         # revision == plan.plan.revision_current——绝不带着过期计划落 revert。
-        current_revision = _extract_revision(_dws(*CMD_FETCH, FLAG_NODE, doc_id))
+        current_revision = _extract_revision(_fetch_detail(doc_id))
         assert current_revision is not None, (
             "doc +fetch returned no revision for the TOCTOU recheck"
         )
@@ -771,14 +980,14 @@ def test_b6_fm2_rejects_after_concurrent_edit(tmp_path):
         )
         revision_concurrent = _extract_revision(concurrent)
         if revision_concurrent is None:
-            revision_concurrent = _extract_revision(_dws(*CMD_FETCH, FLAG_NODE, doc_id))
+            revision_concurrent = _extract_revision(_fetch_detail(doc_id))
         assert revision_concurrent is not None, "concurrent write left no readable revision"
         assert revision_concurrent > revision_after, (
             f"concurrent write did not advance revision: after={revision_after} "
             f"concurrent={revision_concurrent}"
         )
 
-        plan_json = _kgent_json("undo", op_id)
+        plan_json = _kgent_json("undo", op_id, ok_rc=(0, 1))
         print("undo plan (FM2):", json.dumps(plan_json, ensure_ascii=False, indent=2))
         assert plan_json["status"] == "rejected"
         assert plan_json["mode"] == "plan"
@@ -803,8 +1012,7 @@ def _retry_leftovers():
             print(f"probe doc {doc_id} deleted on retry")
     for doc_id in _leftover_probes:
         print(
-            f"LEFTOVER PROBE DOC: {doc_id} — delete manually via the drive domain: "
-            f"dws {CMD_DRIVE_FIND_FILE[0]} {CMD_DRIVE_FIND_FILE[1]} "
-            f"--query kgent-phase2-probe -f json → dentryId; "
-            f"then dws {CMD_DRIVE_DELETE[0]} {CMD_DRIVE_DELETE[1]} --node <dentryUuid> -f json"
+            f"LEFTOVER PROBE DOC: {doc_id} — delete manually via the drive domain "
+            f"(delete handle = the DOC_ID itself, live-verified): "
+            f"dws {CMD_DRIVE_DELETE[0]} {CMD_DRIVE_DELETE[1]} --node {doc_id} -y -f json"
         )

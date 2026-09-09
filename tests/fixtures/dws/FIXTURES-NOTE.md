@@ -1,62 +1,62 @@
-# FIXTURES-NOTE — tests/fixtures/dws/（Phase 2 Task 3）
+# FIXTURES-NOTE — tests/fixtures/dws/
 
-**Provenance: documented shape from dws native-skill references; NOT live-captured
-（credentials unavailable, 2026-09-08）.**
+**Provenance: live-captured 2026-09-09（dws v1.0.61 真机，MergeGameStudio 租户；
+B6/B8 兑现轮修复半场）.**
 
-- 维护者裁决（2026-09-08，progress.md）：无有效钉钉账号，真机捕获永久阻塞。
-  本目录两份 payload fixture 按文档形状构造，**不是真机输出**；B6/B11 的真值
-  实证状态以仓库 EVIDENCE 为准，fixture 绿 ≠ 真机验收。
-- 形状来源（按优先级，冲突以能与 `PROBE-NOTES.md` §1 命令真值对上者为准）：
-  1. `PROBE-NOTES.md` §1 命令真值表 [help 实测]——`doc +search`、
-     `doc +fetch --node`、`-f json`、`--limit`（默认 10 最大 30）；
-  2. 原生 skill `~/.agents/skills/dingtalk-doc/`（dws 团队对着真 API 写）：
-     `SKILL.md`（搜索外层 `complete/count/failures`）、`references/contracts.md`
-     （doc.operation.v1 外层 `ok/status/complete/data/...`、分页
-     `hasMore/truncated/stopReason`、目标至少保留 `nodeId`/资源类型/canonical
-     URL）、`references/doc/doc-create.md`（`data.nodeId/verified` 实例）、
-     `references/doc/doc-read.md`（fetch 默认 `--detail simple --scope full`
-     返回 Markdown；revision 是编辑版本号）；
-  3. 原生 skill `~/.agents/skills/dingtalk-shared/references/url-patterns.md`
-     （URL 形状事实：`/i/nodes/` 不编码类型、`/document/{edit|preview}`、
-     `/spreadsheetv2/`、`/i/p/` 分享短链；路由依据是 `extension`）；
-  4. 原生 skill `~/.agents/skills/dingtalk-wiki/references/wiki-node-ops.md`
-     （节点结果的 `extension/type/.../parentFolderId`、workspace 容器事实）。
-- 文件清单：
-  - `doc-search.json` — `dws doc +search --query "kgent-phase2-probe" -f json`
-    的期望形状。三条 hit 覆盖类型判定三步：扁平文档（`/i/nodes/` + `type=adoc`）、
-    知识库文档（同 URL 形状 + `workspaceId` 容器事实）、非文字文档产品
-    （`/spreadsheetv2/` + `type=axls`）。
-  - `doc-fetch.json` — `dws doc +fetch --node mXk4Qw7bZnVc2yPq8RtJeH -f json`
-    的期望形状（`--detail simple` 默认档）。
-  - `version-list.json` **未建**——Task 3 读车道不消费该命令（revision 从
-    `+fetch` 取），不为未消费的命令发明形状；undo/version-revert 腿（integration
-    skill）真机补捕时再按实测落盘（PROBE-NOTES §5 补捕命令含它）。
-- 值的可信度分级：**外层/容器键**（`ok/status/complete/count/hasMore/failures/`
-  `items`/`data`）有文档实证；**叶子键名**（`nodeId/title/url/type/snippet/rank/`
-  `extension/revision/content/workspaceId`）是「文档语义名 + dws 惯用 camelCase」
-  的构造值——dws `schema --compact` 不含返回 payload 字段契约（PROBE-NOTES §1.4
-  [help 实测]），叶子键名必须等真机补捕定谳。**解析代码不散落读这些键**：
-  全部集中在 `src/kgent/adapters/dingtalk.py` 模块级 `_extract_*` 帮助函数
-  （键位对账锚点），补捕后只改锚点 + 回填本目录 fixture。
-
-## 文档间冲突点（按 PROBE-NOTES 对上者裁决）
-
-1. **fetch 的 revision 出现档**：`dingtalk-doc/references/doc/doc-read.md` 说
-   revision「JSONML 读取响应返回」，而 adapter 读车道走默认 markdown 档
-   （`--detail simple`）。markdown 档响应是否带 `revision` 文档未写死——fixture
-   按「读响应携带 revision」构造（B6 需要），补捕时验证；若 markdown 档不带，
-   锚点 `_extract_revision` 需改为 `--detail with-ids` 或 `--doc-format jsonml`
-   的取数路径。
-2. **搜索命中容器键**：`SKILL.md` 证明外层有 `complete/count/failures`，但命中
-   数组键名（`items` vs `data.items` vs `results`）文档未点名；PROBE-NOTES §2
-   把「是否在 `items[]` 下」列为 PENDING。fixture 取 `items[]`（contracts.md 的
-   partial 分支已用 `details.items` 命名，`items` 是同族容器键）。
-3. **类型字段名**：`dingtalk-shared` 说路由依据是 `extension`；
-   `dingtalk-wiki/wiki-node-ops.md` 说节点结果的 `extension/type` 互为规范化
-   别名；PROBE-NOTES §2 记的字段名是 `type`。fixture 主用 `type`（search hit）/
-   `extension`（fetch data），解析锚点对两者都认（`_extract_hit_type`）。
-4. **知识库 hit 的判型事实**：知识库（wiki/workspace）节点 URL 形状
-   [PENDING-凭据]（PROBE-NOTES §3），URL 路径段对知识库/扁平文档**不可判型**
-   （`/i/nodes/` 共享）。fixture 用 `workspaceId` 容器事实判 `wiki_node`——
-   该叶子键名同样待真机定谳；`_node_type_from_hit` 的判型顺序不因补捕改变，
-   只改 `_extract_*` 锚点。
+- 前史：2026-09-08 维护者无账号裁决下，`doc-search.json`/`doc-fetch.json` 曾以
+  **documented-not-captured** 形态落盘（叶子键名是构造值）。2026-09-09 B6/B8
+  真机兑现轮首跑 3/3 failed（命令形状类——documented 锚点与真 payload 漂移，
+  见 `.superpowers/sdd/2026-09-08-phase3-wecom-integration/dingtalk-closure-report.md`
+  §3/§4），修复轮按真值回填：**全部 payload 原样真机捕获，键位定谳**。
+- 纪法（PROBE-NOTES §6）：结构原样保存；**身份信息剥除**（`version-list.json`
+  的 `userId` → `[user-id-stripped]`）；标题保留 verbatim——它们是 e2e 的
+  `PROBE_TITLE` 探针协议名，非个人身份；URL/utm 跟随参数/logId 保留（fixtures
+  是 B11/adapter 的真值来源）。
+- 真机命令（捕获原样）：
+  - `dws doc +search --query "kgent-phase2-probe" -f json` → `doc-search.json`
+  - `dws doc +fetch --node <DOC_ID> --detail with-ids -f json` → `doc-fetch.json`
+  - `dws doc +fetch --node <DOC_ID> -f json`（默认 `--detail simple`）→
+    `doc-fetch-simple.json`
+  - `dws doc +version-list --node <DOC_ID> -f json` → `version-list.json`
+  - `dws drive +info --node <DOC_ID> -f json` → `drive-info.json`
+  - `dws drive +find-file --query "kgent-phase2-probe" -f json` →
+    `drive-find-file.json`
+  - `dws drive +delete --node <DOC_ID> -y -f json` → `drive-delete.json`
+- 文件清单与锚点定谳（解析锚点全在 `src/kgent/adapters/dingtalk.py` 模块级
+  `_extract_*`；测试侧在 `tests/e2e/test_dingtalk_undo_real.py` 的 `_extract_*`）：
+  - `doc-search.json` — `doc.list.v1` 外层；命中容器键 **`documents`**（非
+    `items`/`data.items`）；hit 键 `nodeId`/`name`/`docType`/`url`/
+    `modifiedTime`，**无 `snippet`、无 `rank`、无 `title`、无 `type`**。
+    真机分页语义：3 命中（< limit 10）也报 `complete:false + hasMore:true +
+    stopReason:single_page`；0 命中才是 `complete:true +
+    stopReason:source_complete`（`search-after-clean` 观测）。
+  - `doc-fetch.json`（with-ids 档）— `doc.content.v1` 外层，目标块是**顶层
+    `content`**（外层无 `data`）；`content.revision` = **字符串** `"1"`；
+    正文键是 **`jsonml`**（JSONML 字符串，**非 markdown**）；键集
+    `docUrl/jsonml/logId/nodeId/revision/success/title`。
+  - `doc-fetch-simple.json`（默认档）— 同外层；正文键 **`markdown`**；
+    **无 `revision`、无 `jsonml`**。⇒ dws **没有任何单档同时携带 markdown 与
+    revision**（`--detail full` 与 with-ids 同键集，另测）——adapter
+    `read_document` 两枪：with-ids 取 revision，默认档取正文。
+  - `version-list.json` — 外层 `hasMore/success/versions`；条目只有
+    `version`（int）+ `createTime/updateTime/type/userId`，**无 revision 字段**
+    ⇒ revision→version 映射走替代通道
+    `doc +fetch --version N --detail with-ids` 读 `content.revision`
+    （真机实测 1:1：`--version 0 → "0"`、`--version 1 → "1"`；历史档 `content`
+    另带 `historyVersion` 键）。新建文档即有两版本（0=AUTO_SAVE、1=OVERWRITE）。
+  - `drive-info.json` — `data.fileId` = **32 位 DOC_ID 本体**；
+    `data.dentryId` 是 **12 位内部号**；另有 `spaceId/path/extension/type`。
+  - `drive-find-file.json` — `files[].dentryId` = **DOC_ID 本体**（与
+    `drive +info` 的 `fileId` 一致）⇒ drive 域删除句柄 = DOC_ID，
+    两域 ID 对应关系定谳。
+  - `drive-delete.json` — 删除响应：`ok/outcome/data.nodeId/data.result.
+    {message,success}/data.success`（回收站语义，30 天可恢复）。
+    `drive +delete` 拒收 12 位 `dentryId`
+    （「nodeId 须为 dentryUuid：32 位字母数字字符串」）。
+- `create` 响应（未落 fixture，e2e 消费）：`doc.operation.v1` 外层
+  `ok/compensation/complete/data/steps/warnings`；`data.nodeId` 真机证实；
+  `data.verification.verified/readbackSha256` 自带读回校验；**全块无 revision**。
+- 仍为 documented-not-captured（真机未覆盖，保留构造值测试替身）：知识库 hit
+  的 `workspaceId` 容器事实（真机 search 命中全为扁平 adoc）与非文字文档 hit
+  （`docType: axls`）——B11 判型三分支里这两支用内联合成 payload 测
+  （`tests/test_dingtalk_adapter.py`，已标注 synthetic）。

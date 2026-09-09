@@ -43,8 +43,9 @@ nohup python tools/run-agent-evals.py --execute --parallel 3 \
 - 同文件内多条 eval 撞同一 target 时（如多条 update 部门入职文档），它们留在
   同一 worker 内串行——分区单位天然保证。
 - 报告按 pid 分文件（`report-<pid>.md`），跑完自动合并进 `report.md`。
-- wecom 相关 eval 在 Phase 3（wecom-integration）落地前会低分——属预期而
-  非回归；DingTalk eval 自 Phase 2 起按正常门槛验收。
+- DingTalk eval 自 Phase 2、WeCom eval 自 Phase 3 起按正常门槛验收；低分时
+  先核 fixture 前提（租户漂移）再怀疑行为——wecom 腿凭据未就绪时按 EVIDENCE
+  声明 skipped，不硬跑。
 
 ## 已知限制
 

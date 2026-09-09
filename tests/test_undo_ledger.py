@@ -1002,3 +1002,167 @@ def test_undo_cli_create_with_backfilled_uri_plans_delete_of_real_doc(undo_world
     assert code == 0
     assert out["plan"]["target"] == "kgent://lark/REAL7"
     assert fb.write_calls == []  # 只产计划：删除归 lark-integration 执行
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 Task 2 — 写后快照通道（wecom 真机证实无平台 version → 维护者签核
+# 方案 A：end 记写后全文快照，undo 拿它做新鲜度证据；FM2-wecom 形状）
+# ---------------------------------------------------------------------------
+
+
+def test_compensation_plan_post_write_snapshot_ok(wecom_backend, tmp_home):
+    """end 带 snapshot_after 且 current == 写后内容 → ok（B5 happy path 的新鲜度通道）。
+
+    begin 快照（"A"）已被写本身作废——current 是写后的 "B"，只有写后快照
+    通道放行；若误走 FM3 begin 快照比对会 rejected，这条用例就能分辨。
+    """
+    _set_content(wecom_backend, "kgent://wecom/W1", "B")  # 本次写本身
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=7,
+        content="A",
+    )
+    end(journal, entry["op_id"], status="ok", snapshot_after="B")
+    plan = compensation_plan(entry["op_id"], backends={"wecom": wecom_backend}, journal=journal)
+    assert plan["status"] == "ok"
+    assert "reason" not in plan
+    assert plan["plan"]["mechanism"] == "snapshot-restore"
+    assert plan["plan"]["snapshot_after"].endswith(".after.txt")
+
+
+def test_compensation_plan_snapshot_round_trip_cr_transparent(wecom_backend, tmp_home):
+    """快照文件往返必须 byte 透明（Phase 3 Task 6 真机定谳的装甲用例）。
+
+    wecom-cli 读回 content 恒带尾部 ``\\r`` + padding（2026-09-09 真机 repr：
+    ``'BBB-CONTENT\\r        '``，连续读稳定；Task 1 fixture 同形），而
+    lark/dingtalk 共用这两支快照函数的 legacy FM3 路径内容是多行、必含
+    ``\\n``——fixture 两级成分都钉：``\\r`` 钓**读侧** universal-newlines 折叠
+    （POSIX/Windows 同判），``\\n`` 钓**写侧**缺省文本模式的 ``\\n`` →
+    ``os.linesep`` 翻译（Windows；``\\r``-only 串上该翻译是无操作，单靠
+    ``\\r`` 的装甲探测不到只回退写侧的回归，评审 I-1）。台账把
+    ``--snapshot-content`` / ``--snapshot-after`` 落盘再读回时若经任一侧
+    newline 翻译，``current.content`` 与快照读回恒不等 → FM2-wecom/FM3
+    比对对一切真机内容恒拒（B5 happy path 不可达）。本用例在未修复代码上
+    RED（``status == "rejected"``、reason 落 ``post-write snapshot no longer
+    matches``），修复后 GREEN；``read_bytes`` 断言把字节级保护同时压在写侧。
+    """
+    before = "AAA-CONTENT\r\n        "  # 尾部 CR（真机 wecom 读回形态）+ 多行 \\n
+    after = "BBB-CONTENT\r\n        "  # 两侧任一 newline 翻译都会破坏逐字相等
+    _set_content(wecom_backend, "kgent://wecom/W1", after)  # 本次写本身
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=None,  # wecom 无 version 轴——真机 begin 不带 revision
+        content=before,
+    )
+    done = end(journal, entry["op_id"], status="ok", snapshot_after=after)
+    plan = compensation_plan(entry["op_id"], backends={"wecom": wecom_backend}, journal=journal)
+    assert plan["status"] == "ok", f"CR round trip broke freshness verdict: {plan.get('reason')}"
+    assert "reason" not in plan
+    # 落盘字节与传入快照逐字节一致（byte 透明，不经 newline 翻译）
+    assert Path(done["snapshot_after"]).read_bytes() == after.encode("utf-8")
+    assert Path(entry["snapshot"]).read_bytes() == before.encode("utf-8")
+
+
+def test_compensation_plan_post_write_snapshot_third_party_edit_rejected(wecom_backend, tmp_home):
+    """写后被第三方改过（current != 写后快照）→ rejected，reason 指写后快照（FM2-wecom）。"""
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=7,
+        content="A",
+    )
+    end(journal, entry["op_id"], status="ok", snapshot_after="B")
+    _set_content(wecom_backend, "kgent://wecom/W1", "C")  # 第三方并发编辑
+
+    plan = compensation_plan(entry["op_id"], backends={"wecom": wecom_backend}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert "post-write snapshot no longer matches" in plan["reason"]
+
+
+def test_compensation_plan_snapshot_after_file_missing_fail_closed(wecom_backend, tmp_home):
+    """写后快照文件不可读 → rejected（fail closed），绝不退回 begin 快照兜底盲放行。"""
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=7,
+        content="A",
+    )
+    done = end(journal, entry["op_id"], status="ok", snapshot_after="B")
+    Path(done["snapshot_after"]).unlink()  # current 仍是 "A"——退回 FM3 会误判 ok
+
+    plan = compensation_plan(entry["op_id"], backends={"wecom": wecom_backend}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert "post-write snapshot file is unreadable" in plan["reason"]
+
+
+def test_compensation_plan_post_write_snapshot_document_gone_rejected(wecom_backend, tmp_home):
+    """写后快照在、文档已删 → rejected（update 撞上消失不是幂等结局，B4 只属 create）。"""
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=7,
+        content="A",
+    )
+    end(journal, entry["op_id"], status="ok", snapshot_after="B")
+    gone = FakeBackend(name="wecom", trust_zone="external", capabilities=_full_caps())
+
+    plan = compensation_plan(entry["op_id"], backends={"wecom": gone}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert "post-write snapshot freshness cannot be verified" in plan["reason"]
+
+
+def test_compensation_plan_revision_after_wins_over_snapshot_after(wecom_backend, tmp_home):
+    """优先级：revision_after 存在 → 写后快照分支不生效（FM2 优先，内容漂移不管）。"""
+    _set_content(wecom_backend, "kgent://wecom/W1", "B")  # 与写后快照 "STALE" 不符
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="wecom",
+        target_uri="kgent://wecom/W1",
+        revision_before=7,
+        content="A",
+    )
+    end(journal, entry["op_id"], status="ok", revision_after=8, snapshot_after="STALE")
+
+    plan = compensation_plan(entry["op_id"], backends={"wecom": wecom_backend}, journal=journal)
+    assert plan["status"] == "ok"  # revision 相符即放行；快照字段照记但不当证据
+    assert "reason" not in plan
+    assert plan["plan"]["snapshot_after"].endswith(".after.txt")
+
+
+def test_compensation_plan_create_with_snapshot_after_skips_freshness(wecom_backend, tmp_home):
+    """create 腿不做写后快照新鲜度（补偿是删除，走既有幂等分支）——内容漂移不拒。"""
+    wecom_backend.docs["kgent://wecom/NEW1"] = _doc("kgent://wecom/NEW1", 1, content="B")
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="create",
+        backend="wecom",
+        target_uri="kgent://wecom/planned",
+        revision_before=None,
+    )
+    end(journal, entry["op_id"], status="ok", snapshot_after="STALE")
+
+    plan = compensation_plan(entry["op_id"], backends={"wecom": wecom_backend}, journal=journal)
+    assert plan["status"] == "ok"
+    assert "reason" not in plan
+    assert plan["plan"]["operation"] == "create"
+    assert plan["plan"]["snapshot_after"].endswith(".after.txt")

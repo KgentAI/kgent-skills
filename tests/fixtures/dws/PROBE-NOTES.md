@@ -1,11 +1,13 @@
 # PROBE-NOTES — dws 命令真值单（Phase 2 Task 1）
 
-- 探测日期：2026-09-08
-- CLI：`dws version v1.0.61 (50eb73a0, 2026-08-31T14:46:17Z)`，npm 包 `dingtalk-workspace-cli`
+- 探测日期：2026-09-08（§0–§5）；**§2 payload 键位已 live-captured 回填：2026-09-09**（B6/B8 兑现轮修复半场，§7）
+- CLI：`dws version v1.0.61 (50eb73a0, 2026-08-31T14:46:17Z)`，npm 包 `dingtalk-workspace-cli`（2026-09-09 复核同版本，无升级漂移）
 - 环境：Windows 11 + Git Bash（win32）
 - 探测方式标注：
   - **[help 实测]** = 在本机 `dws <path> --help` / `dws schema --cli-path ... --compact` 实际输出，逐字核对过
-  - **[PENDING-凭据]** = 需要登录后真机捕获，本次**未捕获**，标注了补捕命令
+  - **[PENDING-凭据]** = 需要登录后真机捕获（**2026-09-09 起全部定谳，见 §7**）
+  - **[live-captured 2026-09-09]** = 真机捕获原样定谳（payload 全文见
+    `FIXTURES-NOTE.md` 与 `.superpowers/sdd/2026-09-08-phase3-wecom-integration/dingtalk-closure-report.md`、同目录 `dingtalk-closure-fix-report.md`）
 
 ## 0. 登录状态（本任务写入时的阻塞点）
 
@@ -52,9 +54,9 @@
 | 版本快照 | `dws doc +version-save --node <DOC_ID>` | 无其他必填 | effect=write |
 | 版本回滚 | `dws doc +version-revert --node <DOC_ID> --version <N>` | `--version` 从 +version-list 取 | effect=destructive risk=high confirmation=user_required |
 | 更新（update-first 的写入面） | `dws doc +update --node <DOC_ID> --command <动作> --content ...` | `--command append\|overwrite\|block_insert_before\|block_insert_after\|block_replace\|block_delete\|str_replace\|block_copy_insert_after`；条件写 `--expected-revision`（仅 overwrite+jsonml）；`--doc` 是 `--node` 的 alias，`--text` 是 `--content` 的 alias | effect=write risk=medium confirmation=user_required |
-| 删除探针（teardown） | **`dws drive +delete --node <dentryUuid>`** | 移入回收站（非永久删）；反悔用 `dws drive +recycle-restore` | effect=destructive risk=high confirmation=user_required |
+| 删除探针（teardown） | **`dws drive +delete --node <DOC_ID>`** | 移入回收站（非永久删）；反悔用 `dws drive +recycle-restore`；句柄定谳见 §7.3 [live-captured 2026-09-09] | effect=destructive risk=high confirmation=user_required |
 
-注意：`doc` 树里**没有删除命令**——帮助明说「文件管理（…删除…）已迁移到 dws drive」，探针 teardown 走 `dws drive +delete`，`--node` 要的是 **dentryUuid**（drive 域的节点 ID），不是 doc 域的 DOC_ID；两域 ID 的对应关系是真机补捕时要顺带验证的点 [PENDING-凭据]。
+注意：`doc` 树里**没有删除命令**——帮助明说「文件管理（…删除…）已迁移到 dws drive」，探针 teardown 走 `dws drive +delete`。`--node` 的真值（2026-09-09 定谳）是 **doc 域 DOC_ID 本体**（32 位字母数字；`drive +find-file` 的 `files[].dentryId` 与 `drive +info` 的 `data.fileId` 都等于它）；`drive +info` 的 `data.dentryId` 是 12 位内部号，**被 `drive +delete` 拒收**（「nodeId 须为 dentryUuid：32 位字母数字字符串」）。
 
 ### 1.3 组合入口（`+` 前缀）与原生入口的并行关系 [help 实测]
 
@@ -78,29 +80,21 @@ kgent adapter 建议固定用 `+` 组合入口（自带验证/读回/投影，sc
 
 ---
 
-## 2. payload 键位表 —— **[PENDING-凭据]**
+## 2. payload 键位表 —— **[live-captured 2026-09-09 定谳]**（原 PENDING 全部回填）
 
-真实 payload 未捕获（见 §0）。README 形状仅作占位假设，**禁止**在捕获前写进 fixtures 或硬编码进 adapter。补捕后按实测修正本节：
-
-| payload | 需要确认的字段路径 | 状态 |
+| payload | 定谳（原 PENDING 问题 → 真值） | fixture |
 | --- | --- | --- |
-| search hit | `id` / `title` / `url` / `type` 字段路径（是否在 `items[]` 下、外层分页键名 nextPageToken 等） | PENDING |
-| fetch | `revision`（编辑版本号，供 +update --expected-revision 条件写）与 `content`（Markdown 正文）字段路径 | PENDING |
-| version-list | 条目的 `(revision, version_id)` 字段路径——注意版本轴（version 号）与修订轴（revision 号）在 dws 里是**两个不同的轴**：`+fetch --revision` 被明确标注不支持，历史版本走 `--version` | PENDING |
-| create 响应 | 新文档 DOC_ID 与原生 URL 字段路径 | PENDING |
-| drive +delete 响应 | 回收站条目 ID 字段路径（teardown 验账用） | PENDING |
+| search hit | 命中容器键 **`documents`**（非 `items`/`data.items`）；hit 键 `nodeId`/`name`/`docType`/`url`/`modifiedTime`，**无 `snippet`、无 `rank`、无 `title`、无 `type`**；外层 `complete/contractVersion/count/documents/failures/hasMore/nextCursor/pagesRead/status/stopReason/truncated`（`doc.list.v1`） | `doc-search.json` |
+| fetch | 目标块是**顶层 `content`**（`doc.content.v1`，外层无 `data`）；正文键默认档 **`markdown`**、with-ids/full 档 **`jsonml`**；`revision` **只在 with-ids/full 档**（字符串 `"1"`）——**没有任何单档同时携带 markdown 与 revision** | `doc-fetch.json`（with-ids）、`doc-fetch-simple.json`（默认档） |
+| version-list | 外层 `hasMore/success/versions`；条目只有 `version`（int）+`createTime/updateTime/type/userId`，**无 revision 字段**——revision→version 映射走替代通道（§7.2） | `version-list.json` |
+| create 响应 | `doc.operation.v1` 外层 `ok/compensation/complete/data/steps/warnings`；DOC_ID 在 **`data.nodeId`**（URL 在 `data.result.docUrl`）；**全块无 revision**；`data.verification.verified/readbackSha256` 自带读回校验 | （e2e 消费，未落 fixture） |
+| `doc +update` 响应 | `data` 块只有 `nodeId/verified`，**全块无 revision**（revision_after 由写后 with-ids 档读回取）；overwrite+jsonml 通道 rc=1 `doc_write_verification_failed` 为**结构性假阴性**（写已落，写后验证以读回为准）→ §7.4 | （e2e 消费，未落 fixture） |
+| drive +delete 响应 | `ok/outcome/data.nodeId/data.result.{message,success}/data.success`（回收站 30 天可恢复）；**删除句柄 = DOC_ID 本体**（§7.3） | `drive-delete.json` |
+| drive +info / +find-file | `data.fileId` = **32 位 DOC_ID 本体**、`data.dentryId` = **12 位内部号**（拒收）；`files[].dentryId` = **DOC_ID 本体**——两域 ID 对应定谳 | `drive-info.json`、`drive-find-file.json` |
 
-补捕命令（登录后原样执行，输出直接存 fixtures）：
-
-```bash
-mkdir -p /tmp/dws-probe && cd /tmp/dws-probe
-printf '# kgent-phase2-probe-临时\n\nprobe body line for payload capture.\n' > probe.md
-dws doc +create --name "kgent-phase2-probe-临时" --content @probe.md -f json | tee create.json
-dws doc +search --query "kgent-phase2-probe" -f json | tee doc-search.json
-dws doc +fetch --node <create.json 里的 DOC_ID> -f json | tee doc-fetch.json
-dws doc +version-list --node <DOC_ID> -f json | tee version-list.json
-dws drive +delete --node <drive 域 dentryUuid> -f json | tee delete.json   # teardown，必做
-```
+真机分页语义（值得注意）：3 命中（< 默认 limit 10）也报 `complete:false +
+hasMore:true + stopReason:single_page`；0 命中才是 `complete:true +
+stopReason:source_complete`——`complete` 不能当「读全」断言用。
 
 ---
 
@@ -125,7 +119,10 @@ dws drive +delete --node <drive 域 dentryUuid> -f json | tee delete.json   # te
 
 - `@` 路径是**工作目录相对**（help 原文「内容字面量、@工作目录相对文件或 - 表示 stdin」）——adapter 里 subprocess 的 cwd 语义要锚定
 - 长内容/多行走 `@file`（+命令）或 `--content-file`（原生 create）；argv 单行只兜底短字面量
-- 真机回读验证（写入后 +fetch 比对）PENDING-凭据
+- 真机回读验证 [live-captured 2026-09-09]：`+create`/`+update` 自带 verify 步
+  （`data.verification.verified/readbackSha256`，markdown 通道通过）；
+  **overwrite+jsonml 通道 verify 假阴性**（§7.4）；B8 探针多段中文+emoji 经
+  `@file` 写入读回全量保真（closure report §3.1 原文）
 
 ---
 
@@ -146,3 +143,76 @@ dws drive +delete --node <drive 域 dentryUuid> -f json | tee delete.json   # te
 `tests/fixtures/dws/` 本次只含本文件。三个捕获件（`doc-search.json` / `doc-fetch.json` / `version-list.json`）**未创建**——必须是真实 payload，凭据就绪前不造数。补捕后：结构原样保存，标题中的「临时」换中性词，token/URL 保留（fixtures 是 B11/adapter 的真值来源）。
 
 > **裁决指针（2026-09-08 最终评审修复波次补记）**：上段「凭据就绪前不造数」的原始禁令已被维护者 2026-09-08 无账号裁决取代——`doc-search.json` / `doc-fetch.json` 两份 fixtures 已按该裁决以 **documented-not-captured** 形态落盘（provenance 逐键见 `FIXTURES-NOTE.md`）；`version-list.json` 仍按「未消费的命令不发明形状」未建。真机补捕时以真实捕获件原样覆盖。
+>
+> **回填（2026-09-09，B6/B8 兑现轮修复半场）**：凭据就绪，本目录全部 fixtures 已按真机捕获件**原样覆盖/新增**（live-captured，userId 剥除）——本节纪法执行完毕，见 §7。
+
+---
+
+## 7. 真机定谳补记 [live-captured 2026-09-09]（B6/B8 兑现轮修复半场）
+
+以下全部为 dws v1.0.61 真机（MergeGameStudio 租户）捕获定谳，payload 全文在
+`FIXTURES-NOTE.md` 所列 fixtures；e2e 载体 `tests/e2e/test_dingtalk_undo_real.py`。
+
+### 7.1 fetch 档位与读车道纪法
+
+- 默认档（`--detail simple`）：`content.markdown` 正文，**无 revision**。
+- `--detail with-ids`（`full` 同键集）：`content.revision`（**字符串** `"1"`）+
+  `content.jsonml`（JSONML 字符串），**无 markdown**。
+- ⇒ **没有任何单档同时携带 markdown 与 revision**：要两者就打两枪
+  （adapter `read_document` 的做法：with-ids 取 revision/title，默认档取正文）。
+- `+fetch` 不收 `--doc-format`（`blocked_flag`）；历史版本 `--version N` 与
+  `--detail` 可同用。
+
+### 7.2 revision→version 映射替代通道（version-list 条目无 revision）
+
+version-list 条目只有 `version` int（+type/时间戳/userId）。两轴映射用
+**`doc +fetch --version N --detail with-ids` 读 `content.revision`**：真机实测
+1:1（`--version 0 → "0"`、`--version 1 → "1"`，跨三个探针复现）；历史档 `content`
+另带 `historyVersion` 键。读车道、幂等。新建文档即有两个版本
+（0=AUTO_SAVE、1=OVERWRITE），create 后 `content.revision = "1"`。
+
+### 7.3 teardown 删除句柄 = DOC_ID 本体
+
+- `drive +find-file --query <kw>` 的 `files[].dentryId`、`drive +info` 的
+  `data.fileId` 都等于 **DOC_ID 本体**（32 位字母数字）。
+- `drive +info` 的 `data.dentryId` 是 **12 位内部号**，`drive +delete` 拒收
+  （「nodeId 格式不合法，非 URL 格式时 nodeId 须为 dentryUuid：32 位字母数字
+  字符串」）——B6/B8 兑现轮 teardown 三连败根因。
+- `drive +delete --node <DOC_ID> -y` 实测成功（回收站 30 天可恢复），手工通道
+  与测试 teardown 通道同权。
+
+### 7.4 `doc +update` overwrite+jsonml 的 CLI 回读验证假阴性
+
+`--command overwrite --doc-format jsonml --expected-revision <rev>`（唯一条件写
+通道）真机行为：**写执行成功但 rc=1**——错误 envelope（在 **stderr**）
+`reason: doc_write_verification_failed`、cause「回读结果未包含预期内容」、
+`execution_started: true`、steps=`[update_document: success, verify: failed]`、
+`retryable: false`、status `partial_success`。四轮复现（两探针 + 两独立复跑 +
+多次 e2e）全部同一现场；同场对照：`overwrite --doc-format markdown` verify 通过
+（rc=0）。⇒ 判定为 CLI 对 jsonml 源文与 markdown 读数的比对形状问题（结构性
+假阴性），**写实际已落**（读回 markdown/revision+1/新 version 全部到位）。
+处置按其错误契约自证：「请先检查当前内容，不要直接重试写入」——读回确认写后
+内容出现即视为成功（e2e `_conditional_overwrite` 的恢复路径；CLI 修复后自动走
+rc=0 快路径）。update 响应 `data` 块只有 `nodeId/verified`，**无 revision**。
+
+### 7.5 瞬态读超时（环境类）
+
+create 后立刻 `doc +fetch --detail with-ids` 偶发服务端 HSF 读超时（rc=1
+`business_error`/`server_error_code: internalError`，message 带
+`HSFTimeOutException-HSF-0002`、timeout 3000ms）——with-ids 档要服务端现拼
+JSONML，比 markdown 档重。读幂等，有界重试安全（e2e `_fetch_detail` 内置
+2 次 × 2s）。六轮真机运行中出现一次。
+
+### 7.6 kgent 侧契约（真机证实，非 dws）
+
+- `kgent undo` 对 **rejected 计划按设计退 rc=1**，全量 JSON 证据在 stdout
+  （`src/kgent/cli.py`：「return 0 if plan["status"] == "ok" else 1」）——
+  消费方按 JSON 解析后断言 `status`，不能把 rc!=0 当命令失败。
+- FM2 真机读数：第三方 append 后 undo → `status: rejected`、
+  reason `document edited since the journaled write: expected revision 2,
+  current 3`、`plan.revision_current: "3"`（新鲜度读经 DingTalkAdapter 读车道，
+  `backends.dingtalk.enabled: true` 门内）。
+- B6 真机读数：undo plan `status: ok`（mechanism version-revert、
+  `history_hint: dws doc +version-list`、TOCTOU `revision_current` 与 fetch
+  读数一致）→ `doc +version-revert --version 1` → 读回 AAA-CONTENT 还原、
+  写后内容消失。

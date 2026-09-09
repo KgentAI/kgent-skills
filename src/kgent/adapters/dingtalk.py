@@ -3,7 +3,8 @@
 Deprecated (skills): 平台操作经 dingtalk-integration（ADR 0004）；CLI 面保留供
 调试与 kgent hosted backend 车道。Phase 2 接真 dws 的**读**车道：
 
-- :meth:`DingTalkAdapter.read_document` — ``doc +fetch --node <id>``；
+- :meth:`DingTalkAdapter.read_document` — ``doc +fetch --node <id>`` 两枪
+  （``--detail with-ids`` 取 revision、默认档取 markdown，档位纪法见下）；
   ``revision`` → ``metadata.version``，是 ``kgent undo`` 补偿计划期的新鲜度
   数据源（B6 依赖当前 revision）。
 - :meth:`DingTalkAdapter.search_by_keywords` — ``doc +search --query``；
@@ -19,12 +20,20 @@ Windows 解析：npm 全局安装的 dws 是 .cmd shim，``CreateProcess``（``s
 打不开裸名（WinError 2，lark-cli.cmd 同款教训；PROBE-NOTES §5 实测三 shim 并存）——
 默认 ``dws.cmd``（win32）／``dws``（其余）。
 
-**Payload 形状 provenance**：无真机捕获（credentials unavailable, 2026-09-08，
-维护者裁决）——外层/容器键来自原生 dingtalk-* skill 文档（doc.operation.v1
-envelope、分页 `complete/hasMore`、目标 `nodeId`/URL），叶子键名是文档语义名
-的构造值。所有字段路径集中在模块级 ``_extract_*`` 帮助函数：**键位对账锚点，
-payload 真值回填时只改这里**（fixture 同步回填，见
-``tests/fixtures/dws/FIXTURES-NOTE.md`` 的逐键 provenance 与文档冲突点）。
+**Payload 形状 provenance**：**live-captured 2026-09-09**（dws v1.0.61 真机，
+B6/B8 兑现轮 + 修复轮；全量 payload 见
+``.superpowers/sdd/2026-09-08-phase3-wecom-integration/dingtalk-closure-report.md``
+§3 与 ``tests/fixtures/dws/`` 的 live-captured fixtures）。所有字段路径集中在
+模块级 ``_extract_*`` 帮助函数：**键位对账锚点，payload 真值漂移时只改这里**
+（live 键为主键，documented-not-captured 时代的构造键保留为兜底候选，防
+键位再漂移时静默空结果）。
+
+档位纪法（真机定谳，2026-09-09）：``doc +fetch`` **没有任何单档同时携带
+markdown 与 revision**——默认档（``--detail simple``）正文键 ``markdown`` 但无
+``revision``；``--detail with-ids``（``full`` 同键集）带 ``content.revision``
+但正文键是 ``jsonml``（JSONML 字符串，非 markdown）。所以
+:meth:`DingTalkAdapter.read_document` 走两枪：with-ids 取 title/revision
+（B6 新鲜度），默认档取 markdown 正文。
 """
 
 from __future__ import annotations
@@ -47,24 +56,43 @@ _DWS_SEARCH_LIMIT_MAX = 30
 
 
 def _extract_hits(payload: dict[str, Any]) -> list[Any]:
-    """``doc +search`` 命中列表。键位对账锚点：payload 真值回填时只改这里。
+    """``doc +search`` 命中列表。键位对账锚点（live-captured 2026-09-09）。
 
-    documented shape：doc.operation.v1 外层（dingtalk-doc contracts.md）下命中
-    在 ``items[]``——外层 ``complete/count/failures`` 有 SKILL.md 实证，容器键名
-    本身是 PROBE-NOTES §2 PENDING 项（FIXTURES-NOTE 冲突点 2）。
+    live shape：``doc.list.v1`` 外层（``complete/contractVersion/count/
+    documents/failures/hasMore/nextCursor/pagesRead/status/stopReason/
+    truncated``），命中容器键是 **``documents``**。``items`` 是
+    documented-not-captured 时代的构造键（fake CLI / 旧 fixture），保留为兜底
+    候选防键位再漂移时静默空结果。
+
+    真机分页语义（fixture ``doc-search.json`` 原样）：3 命中（< 默认 limit 10）
+    也报 ``complete:false + hasMore:true + stopReason:single_page``；0 命中才是
+    ``complete:true + stopReason:source_complete``——``complete`` 不能当「读全」
+    断言用。
     """
-    items = payload.get("items")
-    return items if isinstance(items, list) else []
+    hits = payload.get("documents")
+    if isinstance(hits, list):
+        return hits
+    legacy = payload.get("items")
+    return legacy if isinstance(legacy, list) else []
 
 
 def _extract_document(payload: dict[str, Any]) -> dict[str, Any]:
-    """``doc +fetch`` 的目标块（``data``，doc-create.md 同款 envelope）。锚点同上。"""
+    """``doc +fetch`` 的目标块。键位对账锚点（live-captured 2026-09-09）。
+
+    live shape：``doc.content.v1`` 外层（``complete/content/contractVersion/
+    status/target``），目标是**顶层 ``content``**——外层没有 ``data``。
+    ``data`` 保留为 documented-not-captured 旧锚点兜底（fake CLI 同款）。
+    """
+    block = payload.get("content")
+    if isinstance(block, dict):
+        return block
     data = payload.get("data")
     return data if isinstance(data, dict) else {}
 
 
 def _extract_native_id(item: dict[str, Any]) -> str:
-    """hit/目标块的稳定文档 ID（contracts.md：目标至少保留 ``nodeId``）。锚点同上。"""
+    """hit/目标块的稳定文档 ID。锚点同上（live-captured 2026-09-09：search hit
+    ``nodeId``、fetch ``content.nodeId``、create ``data.nodeId`` 三处同一键名）。"""
     value = item.get("nodeId")
     return str(value) if value else ""
 
@@ -72,25 +100,42 @@ def _extract_native_id(item: dict[str, Any]) -> str:
 def _extract_title(item: dict[str, Any]) -> str:
     """文档名称（contracts.md：名称/标题不是稳定身份，仅作展示）。锚点同上。
 
-    fetch ``data`` 与 search hit 共用 ``title`` 键。
+    live-captured 2026-09-09：fetch ``content`` 块内是 ``title``；search hit 内
+    是 **``name``**（hit 无 ``title`` 键）——两车道共用本锚点，候选序
+    title → name。
     """
-    value = item.get("title")
-    return str(value) if value is not None else ""
+    for key in ("title", "name"):
+        value = item.get(key)
+        if value is not None:
+            return str(value)
+    return ""
 
 
 def _extract_content(data: dict[str, Any]) -> str:
-    """Markdown 正文（``--detail simple`` 默认档；doc-read.md）。锚点同上。
+    """Markdown 正文。锚点同上（live-captured 2026-09-09）。
+
+    live shape：正文键是 **``markdown``**，且只在默认档（``--detail simple``）——
+    ``with-ids``/``full`` 档正文键是 ``jsonml``（JSONML 字符串，非 markdown），
+    本锚点不取它。``content`` 保留为 documented-not-captured 旧键兜底
+    （fake CLI 同款）。
 
     dws 的正文不内嵌文档名 H1（``+create`` 纪律：正文不重复同名一级标题），
     所以不做 lark 的 ``# title`` 剥离。
     """
-    value = data.get("content")
+    value = data.get("markdown")
+    if value is None:
+        value = data.get("content")
     return str(value) if value is not None else ""
 
 
 def _extract_revision(data: dict[str, Any]) -> str | None:
     """文档编辑版本号 ``revision``（≠ 历史版本号 ``version``——双轴，PROBE-NOTES
     §1.1 实测）。B6 undo 计划期新鲜度数据源。锚点同上。
+
+    live-captured 2026-09-09：revision 只在 ``--detail with-ids`` 档的
+    ``content.revision``（**字符串**，``"1"``）；默认 markdown 档不带；
+    ``doc +create`` 的 ``doc.operation.v1`` 响应全块也无 revision——调用方
+    （:meth:`DingTalkAdapter.read_document`）负责选对档位。
 
     ``--expected-revision`` 是 int 轴，kgent 统一存字符串（§3.9 version 语义）；
     CLI 输出按未验证输入处理，非数值（如 fake 的 ``"v1"``）原样字符串化不抛。
@@ -100,22 +145,24 @@ def _extract_revision(data: dict[str, Any]) -> str | None:
 
 
 def _extract_snippet(item: dict[str, Any]) -> str | None:
-    """hit 摘要。锚点同上。"""
+    """hit 摘要。锚点同上（live-captured 2026-09-09：``doc +search`` hit 真机
+    无 ``snippet`` 键 → 恒 ``None``；fake 的 ``snippet`` 仍被消费）。"""
     value = item.get("snippet")
     return str(value) if value is not None else None
 
 
 def _extract_hit_url(item: dict[str, Any]) -> str | None:
-    """hit 的 canonical URL（contracts.md：服务返回时保留）。锚点同上。"""
+    """hit 的 canonical URL（live-captured 2026-09-09：``url`` 键，``?utm_scene=
+    person_space`` 跟随）。锚点同上。"""
     value = item.get("url")
     return str(value) if isinstance(value, str) and value else None
 
 
 def _extract_hit_type(item: dict[str, Any]) -> str | None:
-    """hit 的类型字段：``type``，别名 ``extension``（dingtalk-wiki
-    wiki-node-ops：两者互为规范化别名；dingtalk-shared：路由依据是
-    ``extension``）。锚点同上。"""
-    for key in ("type", "extension"):
+    """hit 的类型字段。锚点同上（live-captured 2026-09-09：search hit 是
+    **``docType``**，值 ``adoc``；``type``/``extension`` 是 dingtalk-wiki/
+    dingtalk-shared 的文档化别名，保留为候选——fetch ``content`` 块无类型键）。"""
+    for key in ("docType", "type", "extension"):
         value = item.get(key)
         if isinstance(value, str) and value:
             return value
@@ -123,7 +170,12 @@ def _extract_hit_type(item: dict[str, Any]) -> str | None:
 
 
 def _extract_workspace_id(item: dict[str, Any]) -> str | None:
-    """知识库（workspace）容器事实——wiki-node-ops 的节点容器字段族。锚点同上。"""
+    """知识库（workspace）容器事实——wiki-node-ops 的节点容器字段族。锚点同上。
+
+    live-captured 2026-09-09 未覆盖知识库 hit（真机 search 命中全为扁平 adoc，
+    无 ``workspaceId``）——documented-not-captured 锚点，知识库 hit 真机补捕时
+    回填。
+    """
     value = item.get("workspaceId")
     return str(value) if value else None
 
@@ -226,15 +278,23 @@ class DingTalkAdapter(CliCapabilityAdapter):
         fetch 无位置参数，``--node`` 旗标；``+`` 组合入口 §1.3）。``revision``
         → ``metadata.version``——``kgent undo`` 补偿计划期新鲜度数据源（B6）。
 
+        档位纪法（live-captured 2026-09-09，模块 docstring 同源）：没有任何单档
+        同时携带 markdown 与 revision——**两枪**：``--detail with-ids`` 取
+        title/revision/类型事实（B6 新鲜度车道，先打：它失败即新鲜度契约破裂，
+        要响亮）；默认档取 ``content.markdown`` 正文（两个都是读车道）。
+
         节点类型沿用 :func:`_node_type_from_hit` 消费 fetch 响应自带的
         URL/类型/容器事实（fetch 不再做 lark 式 ``wiki +node-get`` 探针——dws
         读响应即带类型事实）。
         """
         native_id = self._native_id(doc_uri)
-        payload = self._run_dws(["doc", "+fetch", "--node", native_id])
-        data = _extract_document(payload)
+        detail = self._run_dws(
+            ["doc", "+fetch", "--node", native_id, "--detail", "with-ids"]
+        )
+        data = _extract_document(detail)
         title = _extract_title(data)
-        content = _extract_content(data)
+        simple = self._run_dws(["doc", "+fetch", "--node", native_id])
+        content = _extract_content(_extract_document(simple))
         meta = DocumentMetadata(
             doc_uri=doc_uri,
             title=title,

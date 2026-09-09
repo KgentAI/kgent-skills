@@ -334,5 +334,21 @@ Implementation is production-ready for kgent packaging.
 
 **Full report**: [`specs/2026-09-07-phase2-dingtalk-integration-evidence.md`](specs/2026-09-07-phase2-dingtalk-integration-evidence.md)（fresh-run 逐层数字、B6/B8/B11 → 测试映射、凭据阻塞声明、Task 7 收尾修复（diff-cover 假绿 92%→100% + 新增文件 format 债清零 + `--fail-under 100` 显式门与双层负控）、已知限制（command-index 过期、原生 URL PENDING、dws `.cmd` shim、`DWS_PROBE_CONFIRM` 确认门协议、payload 键位 PENDING 清单）、deferred minors 25 条全清单）
 
-**Reproduce**: 仓库根 `bash tools/gauntlet.sh`；agent evals：`python tools/run-agent-evals.py --execute --file platform-via-integration-evals --timeout 600`；真机 dingtalk e2e 待凭据（`DWS_PROBE_CONFIRM=yes` runbook 在 full report §0/§9）。
+**兑现更新（2026-09-09）**：凭据就绪（dws 登录 corp `MergeGameStudio`）后上列凭据阻塞已兑现——B6/FM2/B8 真机 3 PASS（首跑 + 独立复跑 ×2；B6 `revision_before=1` → `revision_after=2` → `version-revert --version 1` 读回还原、FM2 rejected `expected revision 2, current 3`、B8 全量保真 `content_bytes=136`），租户残留 0、ledger/undo 产品码零改动、B11 fixtures 转 live-captured——兑现读数与复现命令见 full report **§0.1 兑现注记**。
+
+**Reproduce**: 仓库根 `bash tools/gauntlet.sh`；agent evals：`python tools/run-agent-evals.py --execute --file platform-via-integration-evals --timeout 600`；真机 dingtalk e2e 凭据已就绪（兑现读数见上——`DWS_PROBE_CONFIRM=yes` runbook 在 full report §0.1/§9）。
+
+---
+
+# Evidence Addendum — Phase 3: wecom-integration 2026-09-09
+
+**Status**: ✅ fresh run 全绿（分层执行，最后一次代码编辑 `8dba55c` 之后）——排除两平台真机 e2e 文件：**608 passed / 4 skipped / 0 failed**（固定序 305.75s；随机序 289.43s 总数一致）；diff-cover 变更行 **100%**（134/0，首轮真读数 ≈98.5% 两分支未覆盖暴露无单测分支 → 补口 `8dba55c`）；mypy strict 0 错（52 files）；artifact-smoke **18/18**（新增 `journal end --snapshot-after` 功能探针行 + 一次性 `KGENT_HOME` hermetic 化，旧 artifact 负控 FAIL=1 复现）；properties 16 / adversarial 39 / secret scan pass；mutation 与 lint 同前 report-only（baseline 债 40 errors / 13 files，本分支触碰文件 0 债）。**真机验收是本 Phase 主证据**：wecom 凭据就绪（非阻塞），B5 闭环（undo 计划 → 快照写回 → 载荷级还原）+ FM2-wecom/FM3 双拒绝 + B8 完整性 = **真机 5/5 × 2 全绿**（Task 6）。**单命令全量 gauntlet 当日不可达绿灯**：640459 当日读配额（只压当日新建文档的内容读）阻断 wecom e2e——**完整 PASS 需两门同开**（wecom 配额日切 + dingtalk e2e 的 `DWS_PROBE_CONFIRM=yes` 维护者裁决；dws 已登录 = Phase 2 前提变化），齐前完整读数以分层执行为准（full report §2/§7）。
+
+**刷新更新（2026-09-09，最终评审修复轮）**：上列 Status 读数取于 `8dba55c`；其后的兑现轮改动了代码（`dcdec9c` dingtalk adapter 锚点 live-captured 回填、`499e94c`/`2af5d43` dingtalk e2e 修复）——原「`8dba55c` 后均为 docs-only」的 Source state 表述失真，已修正。非 e2e 各层已于 `23e2c5f` 刷新复测：**611 passed / 4 skipped / 0 failed**（固定序 + 随机序一致）、diff-cover 变更行 **100%**（155/0，对 merge-base `f77b0ed`；刷新复跑首轮真读 99% 暴露兑现轮 `_extract_title` 兜底分支无单测 → test-only 补口 `23e2c5f`）、mypy strict 0 错（52 files）、artifact-smoke 18/18、properties 16 / adversarial 39。真机 e2e 证据不变（wecom Task 6 5/5 × 2 见 §4 映射；dingtalk 兑现 3 PASS 见 Phase 2 addendum §0.1）。逐层刷新读数见 full report §2.2。
+
+**Scope**: handoff spec（`specs/2026-09-07-phase2-phase3-handoff.md` §Phase 3，母 spec v3 + 2026-09-08 计划修订 `9cd3f0d`：version 轴真机证伪 → 维护者签核方案 A 扩台账写后快照通道）——`skills/wecom-integration/SKILL.md`（The Gate/Search 零命中定谳/Read 委派矩阵/Write journal 纪律含强制 `--snapshot-after`/Undo 快照写回补偿（载荷级判据）/Native URL/Known Limitations）、`DOC_FILES` 追加（conformance 接线）、`journal end --snapshot-after` 台账写后快照通道 + `compensation_plan` 写后快照新鲜度分支（`310ab5f`）+ 快照 IO 字节透明修复（`a244a44`，真机发现：平台尾部 CR × universal newlines → 恒拒，RED→GREEN 装甲）、WeComAdapter 读车道（`adapters/wecom.py`，`_extract_*` 键位锚点，version 键缺席不冒领）、B11-wecom conformance 参数化（活断言）、evals wecom 腿接线、B5/B8 真机 e2e 五测、wecom-cli 真值探针 fixtures（live-captured + documented-not-captured 分级）。
+
+**Full report**: [`specs/2026-09-08-phase3-wecom-integration-evidence.md`](specs/2026-09-08-phase3-wecom-integration-evidence.md)（凭据与环境声明先行——**wecom 真机全跑动非 skipped**、640459 作用域细化与配额时间线、agent evals 三条 transcript 逐条抽读与租户残留处置（含 lark history-revert 还原实证）、设计裁决修订史（全带 commit）、B5/B8/B11-wecom → 测试映射、已知限制十条、deferred minors 26 条全清单、复现入口）
+
+**Reproduce**: 仓库根 `bash tools/gauntlet.sh`（wecom e2e 需 640459 配额窗；dingtalk e2e 需 `DWS_PROBE_CONFIRM=yes`——两者环境门在 full report §0/§7）；agent evals 三条命令在 full report §5；分层读数命令在 full report §2/§9。
 

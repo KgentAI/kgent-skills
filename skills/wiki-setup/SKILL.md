@@ -98,7 +98,7 @@ Important details to include:
 
 - Operation type per leg (CREATE or UPDATE)
 - Target backend per leg
-- Native platform URL (not the `kgent://` URI) — for Lark legs, with the Lark backend enabled, invoke the `lark-integration` skill and convert per its URL construction table; for DingTalk legs, with the DingTalk backend enabled, invoke the `dingtalk-integration` skill and convert per its Native URL table; for WeCom legs, show the admin console URL format
+- Native platform URL (not the `kgent://` URI) — for Lark legs, with the Lark backend enabled, invoke the `lark-integration` skill and convert per its URL construction table; for DingTalk legs, with the DingTalk backend enabled, invoke the `dingtalk-integration` skill and convert per its Native URL table; for WeCom legs, with the WeCom backend enabled, invoke the `wecom-integration` skill and cite the platform-response URL verbatim per its Native URL rules
 
 ### Lark Wiki (Knowledge Space) Integration
 

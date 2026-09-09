@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 import pytest
 
@@ -457,6 +458,58 @@ def test_journal_end_unknown_id_fails(tmp_home, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "failed"
     assert "op-20260905-00000000" in payload["error"]
+
+
+def test_journal_end_snapshot_after_flag(tmp_home, capsys):
+    """CLI：``journal end --snapshot-after`` 把写后全文原样透传并落 ``<op_id>.after.txt``。
+
+    透传是字符串、不做 int 化（写后快照是内容全文，不是 revision——payload 刻意
+    带数字与空白，``int()`` 化会当场 ValueError）；entry 的 ``snapshot_after`` 记
+    文件路径，begin entry 不受影响（append-only）。
+    """
+    code = main(
+        [
+            "journal",
+            "begin",
+            "--operation",
+            "update",
+            "--backend",
+            "wecom",
+            "--doc-uri",
+            "kgent://wecom/ABC",
+            "--revision-before",
+            "3",
+            "--json",
+        ]
+    )
+    assert code == 0
+    op_id = json.loads(capsys.readouterr().out)["entry"]["op_id"]
+
+    payload_text = "第 2 版全文\nsecond line\n"
+    code = main(
+        [
+            "journal",
+            "end",
+            "--op-id",
+            op_id,
+            "--status",
+            "ok",
+            "--snapshot-after",
+            payload_text,
+            "--json",
+        ]
+    )
+    assert code == 0
+    end_payload = json.loads(capsys.readouterr().out)
+    after_path = end_payload["entry"]["snapshot_after"]
+    assert after_path.endswith(".after.txt")
+    assert Path(after_path).read_text(encoding="utf-8") == payload_text
+
+    from kgent.router.journal import Journal
+
+    entries = {e["kind"]: e for e in Journal(tmp_home).entries if e["op_id"] == op_id}
+    assert entries["end"]["snapshot_after"] == after_path
+    assert "snapshot_after" not in entries["begin"]
 
 
 # ---------------------------------------------------------------------------

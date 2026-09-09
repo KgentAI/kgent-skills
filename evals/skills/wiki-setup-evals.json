@@ -44,6 +44,7 @@
         "The proposal lists all 3 backends as targets",
         "The user confirms before any write",
         "Each backend is attempted independently",
+        "Each leg executes through its platform's integration skill (lark via lark-integration, dingtalk via dingtalk-integration, wecom via wecom-integration)",
         "If one backend fails, the skill reports the failure with the specific error",
         "Successful backends are confirmed with native URLs",
         "Failed legs mention repairability via 'kgent sync --repair <op_id>'",

@@ -2,6 +2,7 @@
 import json
 import os
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -308,6 +309,60 @@ def test_end_records_doc_uri_only_when_given(journal):
                   target_uri="kgent://lark/planned2", revision_before=None)
     done2 = end(journal, plain["op_id"], status="ok")
     assert "doc_uri" not in done2
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 Task 2 — end 的写后快照通道（wecom 无平台 version → undo 的新鲜度证据）
+# ---------------------------------------------------------------------------
+
+
+def test_end_snapshot_after_writes_after_file(journal, tmp_home):
+    """``end(snapshot_after=...)`` 落 ``<op_id>.after.txt`` 且内容逐字一致（FM5 纪律）。
+
+    entry 的 ``snapshot_after`` 记文件路径（undo 的新鲜度证据）；begin 快照
+    ``.txt`` 不受影响（同 op 两个快照文件并存）。
+    """
+    entry = begin(journal, operation="update", backend="wecom",
+                  target_uri="kgent://wecom/X", revision_before=3, content="A")
+    done = end(journal, entry["op_id"], status="ok", snapshot_after="B-CONTENT")
+    after = Path(done["snapshot_after"])
+    assert after.name.endswith(".after.txt")
+    assert after.read_text(encoding="utf-8") == "B-CONTENT"
+    # begin 的写前快照原样保留（两个快照是两个文件，不互相覆盖）
+    before = tmp_home / "journal" / "snapshots" / f"{entry['op_id']}.txt"
+    assert before.read_text(encoding="utf-8") == "A"
+
+
+def test_end_without_snapshot_after_records_no_field(journal):
+    """``end(snapshot_after=...)`` 不给就不落字段（与 doc_uri 同款：兼容旧形态）。"""
+    entry = begin(journal, operation="update", backend="wecom",
+                  target_uri="kgent://wecom/X", revision_before=3, content="A")
+    done = end(journal, entry["op_id"], status="ok", revision_after=4)
+    assert "snapshot_after" not in done
+
+
+def test_end_snapshot_after_content_verbatim(journal):
+    """写后快照逐字落盘（含换行/中文）——undo 的新鲜度比对是全文等值。"""
+    entry = begin(journal, operation="update", backend="wecom",
+                  target_uri="kgent://wecom/X", revision_before=3)
+    payload = "第一行\nsecond line\twith tabs\n"
+    end(journal, entry["op_id"], status="ok", snapshot_after=payload)
+    got = Path(journal.get(entry["op_id"])["snapshot_after"])
+    assert got.read_text(encoding="utf-8") == payload
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not representable on Windows")
+def test_end_snapshot_after_file_0600_dir_0700(journal, tmp_home):
+    """写后快照文件 0600 + snapshots 目录 0700（FM5 同 begin）；POSIX 上才可断言 mode 位。
+
+    Windows 侧由 ``test_end_snapshot_after_writes_after_file`` 断言存在 + 内容一致。
+    """
+    entry = begin(journal, operation="update", backend="wecom",
+                  target_uri="kgent://wecom/X", revision_before=3, content="A")
+    end(journal, entry["op_id"], status="ok", snapshot_after="B-CONTENT")
+    snap = tmp_home / "journal" / "snapshots" / f"{entry['op_id']}.after.txt"
+    assert stat.S_IMODE(snap.stat().st_mode) == 0o600
+    assert stat.S_IMODE(snap.parent.stat().st_mode) == 0o700
 
 
 def test_audit_skips_blank_lines_in_audit_ndjson(tmp_home, capsys):

@@ -1,9 +1,14 @@
 # Installed-artifact surface contract: every line must parse via `kgent <line>`.
 # tools/artifact-smoke.sh iterates this file (fail closed on any miss).
 # Keep in sync when adding subcommands — a stale manifest defeats the gate.
+# `{op_id}` in a line is substituted with a begin-seeded probe op; probes run
+# under a throwaway KGENT_HOME, so functional (non---help) lines never touch
+# real state. A functional line is the only shape that catches a stale flag:
+# `--help` short-circuits argparse before unrecognized-args errors fire.
 route --help
 journal begin --help
 journal end --help
+journal end --op-id {op_id} --status ok --snapshot-after SMOKE-PROBE-AFTER
 undo --help
 audit --help
 sync --help

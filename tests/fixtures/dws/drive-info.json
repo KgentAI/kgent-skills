@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "outcome": "success",
+  "data": {
+    "createTime": 1788972853000,
+    "dentryId": "235685522845",
+    "docUrl": "https://alidocs.dingtalk.com/i/nodes/Amq4vjg89077YwjvFxae4d7dJ3kdP0wQ",
+    "extension": "adoc",
+    "fileId": "Amq4vjg89077YwjvFxae4d7dJ3kdP0wQ",
+    "fileSize": 0,
+    "message": "该文件属于钉钉文档（在线文档/表格/脑图等），通过钉盘接口获取的元数据（如文件名称）可能不准确。建议使用钉钉文档相关接口获取更准确的文档信息。",
+    "modifyTime": 1788972853000,
+    "name": "8224878831.adoc",
+    "path": "/8219238662/8224878830/8224878831.adoc",
+    "spaceId": "25820120874",
+    "status": "NORMAL",
+    "type": "ALIDOC"
+  }
+}
