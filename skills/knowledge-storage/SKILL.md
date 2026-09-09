@@ -231,7 +231,7 @@ After execution, **never show `kgent://...` URIs to the user** (N20, S73). Conve
 **Lark results:** with the Lark backend enabled — `backends.lark.enabled: true` in `~/.kgent/config.yaml` — invoke the `lark-integration` skill and convert each `kgent://lark/<token>` per its URL construction table. The skill owns the Lark path mapping and the `workspace_domain` fix (`kgent config set-workspace-domain`).
 
 **DingTalk**: with the DingTalk backend enabled, invoke the `dingtalk-integration` skill and convert each `kgent://dingtalk/<id>` per its Native URL table (all node types share the `/i/nodes/<nodeId>` shape — confirm the content type before citing; share links `/i/p/` are passed through as-is)
-**WeCom**: `kgent://wecom/<id>` → WeCom admin console URL
+**WeCom**: with the WeCom backend enabled, invoke the `wecom-integration` skill and cite the native URL returned by the platform response verbatim (per its Native URL rules) — WeCom doc URLs carry a `?scode=` share signature that cannot be reconstructed, and the admin-console URL shape was never a content link.
 
 **Confirmation format:**
 
