@@ -1038,17 +1038,20 @@ def test_compensation_plan_snapshot_round_trip_cr_transparent(wecom_backend, tmp
     """快照文件往返必须 byte 透明（Phase 3 Task 6 真机定谳的装甲用例）。
 
     wecom-cli 读回 content 恒带尾部 ``\\r`` + padding（2026-09-09 真机 repr：
-    ``'BBB-CONTENT\\r        '``，连续读稳定；Task 1 fixture 同形）。台账把
-    ``--snapshot-content`` / ``--snapshot-after`` 落盘再读回时若经文本模式
-    newline 翻译（写缺省把 ``\\n`` 翻成 os.linesep、读 universal newlines 把
-    ``\\r`` 折成 ``\\n``），``current.content``（带 CR）与快照读回（CR 变 LF）
-    恒不等 → FM2-wecom/FM3 比对对一切真机 wecom 内容恒拒（B5 happy path
-    不可达）。本用例在未修复代码上 RED（``status == "rejected"``、reason 落
-    ``post-write snapshot no longer matches``），修复后 GREEN——POSIX 与
-    Windows 同判（universal newlines 两侧行为一致）。
+    ``'BBB-CONTENT\\r        '``，连续读稳定；Task 1 fixture 同形），而
+    lark/dingtalk 共用这两支快照函数的 legacy FM3 路径内容是多行、必含
+    ``\\n``——fixture 两级成分都钉：``\\r`` 钓**读侧** universal-newlines 折叠
+    （POSIX/Windows 同判），``\\n`` 钓**写侧**缺省文本模式的 ``\\n`` →
+    ``os.linesep`` 翻译（Windows；``\\r``-only 串上该翻译是无操作，单靠
+    ``\\r`` 的装甲探测不到只回退写侧的回归，评审 I-1）。台账把
+    ``--snapshot-content`` / ``--snapshot-after`` 落盘再读回时若经任一侧
+    newline 翻译，``current.content`` 与快照读回恒不等 → FM2-wecom/FM3
+    比对对一切真机内容恒拒（B5 happy path 不可达）。本用例在未修复代码上
+    RED（``status == "rejected"``、reason 落 ``post-write snapshot no longer
+    matches``），修复后 GREEN；``read_bytes`` 断言把字节级保护同时压在写侧。
     """
-    before = "AAA-CONTENT\r        "  # 写前读回（真机形态，Task 1 fixture 同形）
-    after = "BBB-CONTENT\r        "  # 写后读回（真机形态）
+    before = "AAA-CONTENT\r\n        "  # 尾部 CR（真机 wecom 读回形态）+ 多行 \\n
+    after = "BBB-CONTENT\r\n        "  # 两侧任一 newline 翻译都会破坏逐字相等
     _set_content(wecom_backend, "kgent://wecom/W1", after)  # 本次写本身
     journal = Journal(tmp_home)
     entry = begin(
