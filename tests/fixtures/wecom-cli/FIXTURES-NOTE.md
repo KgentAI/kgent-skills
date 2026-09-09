@@ -55,7 +55,32 @@ fixture；出现与否未定谳的字段（`file_path`/`document`/hit 族）→ 
 
 ## 补捕回填顺序（剩余缺口）
 
-1. search 命中档真实样本（等索引生效或换机器人可读文档试捕）→ 覆盖
-   `doc-search.json` 或新增命中档 fixture，回填 §2.2 键位表 provenance
+1. search 命中档真实样本（等索引生效或换机器人可读文档试捕）→ **覆盖
+   `doc-search-hit.json`**（Task 4 的 schema 契约构造件，见下节），回填
+   §2.2 键位表 provenance
 2. `sheet`/`smartsheet`/`smartpage` 型探针的 URL `<type>` 段实测值（PROBE-NOTES §3）
-3. 长内容（>阈值）contents get 的 `file_path` 落盘语义（§1.5 第 3 行）
+3. 长内容（>阈值）contents get 的 `file_path` 落盘语义（§1.5 第 3 行）——
+   **adapter 未消费**（Phase 3 Task 4：正文键缺席即 fail closed，不猜路径读盘）
+
+## Task 4 构造件：`doc-search-hit.json`（search 命中档，schema 契约构造）
+
+**Provenance: schema-only（纸面契约 `OaDocSearchDocInfo`），NOT live-captured
+（2026-09-08，Phase 3 Task 4）。** Task 1 观测窗内 search 从未返回过 hit，
+命中档真实样本仍缺；Task 4 读车道测试需要命中档 fixture，按控制器裁决以
+PROBE-NOTES §2.2 schema 契约构造本件（**不覆盖** Task 1 的两份 live 捕获件）。
+
+- 形状：外层 `errcode/errmsg`（live 定谳的顶层无包裹 envelope）+ `docs[]`
+  （schema 容器键）。**不含** `docs_count/has_more/next_cursor`——「带 hit 时
+  是否同现」未定谳，沿用上方构造取舍理据（不臆造；adapter 对键缺席降级）。
+- hit 键：只含 adapter 消费全集 `docid/doc_name/doc_type/url` + 高亮族
+  `title_highlight/text_highlight`（钉死 **string[]** 形状——schema 明示数组
+  非 string，是解析要点）。其余 schema-only 展示键
+  （`creator_userid/creator_name/create_time/modify_time/open_time/ai_notice/
+  sub_title_highlight`）adapter 不消费，留 PROBE-NOTES §2.2，不臆造。
+- 值可追溯：`docid`/`url`/`doc_name` 取 Task 1 探针文档真值（PROBE-NOTES §4
+  leftover 点名 + 改名终态）——顺带钉死 **URL token（`w3_...`）≠ API docid**
+  的实测事实；高亮数组值取探针内容串（构造）。
+- 真值回填：命中档真实样本补捕后**原样覆盖本件**，并只改
+  `src/kgent/adapters/wecom.py` 的 `_extract_*` 锚点与
+  `tests/test_wecom_adapter.py` 的期望常量（`DOC_ID`/`HIT_TITLE`/snippet
+  拼接形态），断言结构不动。

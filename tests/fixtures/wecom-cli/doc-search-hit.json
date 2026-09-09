@@ -1,0 +1,14 @@
+{
+  "errcode": 0,
+  "errmsg": "ok",
+  "docs": [
+    {
+      "docid": "dcT9VUpdeMfQPcGiRxwoyVd731mp_zPtLqUxQjN4P8Zs2xq5lviDrKt1sdrN2aofj1Hrz6preKBccku08mgwFU5g",
+      "doc_name": "kgent-phase3-probe-临时",
+      "doc_type": "doc",
+      "url": "https://doc.weixin.qq.com/doc/w3_ABoAF3hLAPsCN1iJVRLGxRXGQ502e_a?scode=AJoAggckACE0bENQUyABoAF3hLAPs",
+      "title_highlight": ["kgent-phase3-probe"],
+      "text_highlight": ["AAA-CONTENT", "BBB-APPEND"]
+    }
+  ]
+}

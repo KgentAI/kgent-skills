@@ -41,6 +41,37 @@ Two behaviors, selected by the invocation:
                                                            "hasMore","failures",
                                                            "items":[{nodeId,title,snippet,rank}]}
 
+   wecom-cli wire protocol (the real WeComAdapter's read-lane command shape;
+   ``--json`` here is the *request body* flag — the fake strips the flag token
+   like the wire-v1 marker, so the dialect sees the JSON body as a bare argv
+   token). Same per-backend state bucket as ``documents``, so S65 conformance
+   holds across backends regardless of CLI dialect. Read lanes only: real
+   WeCom writes go through the wecom-integration skill (ADR 0004), so the fake
+   has no ``doc import`` / ``contents append|overwrite``.
+
+       doc contents get --json '{"docid": "<native-id>"}'
+                                                        → {"errcode":0,"name","content",
+                                                           "version","url"}
+       doc search --json '{"keywords": [...], "search_scope": ...,
+                           "limit": <n>}'                → {"errcode":0,"errmsg":"ok",
+                                                           "docs":[{docid,doc_name,doc_type,
+                                                                    url,title_highlight,
+                                                                    text_highlight,rank}]}
+       zero hits                                        → {"errcode":0,"errmsg":"ok"}
+                                                          (the ``docs`` family is absent —
+                                                          live-captured truth)
+
+   ``name``/``version``/``rank`` are served from the shared state bucket so the
+   S65 title/version/rank assertions stay observable through the wecom read
+   lane (same rationale as the dws ``revision``). The real server omits
+   ``version``/``name`` from ``contents get`` (PROBE-NOTES 顶部定谳,
+   tests/fixtures/wecom-cli/) and its hits carry no ``rank`` — the adapter
+   tolerates all three absences. Payload shapes mirror
+   tests/fixtures/wecom-cli (PROBE-NOTES §2): contents get serves the
+   top-level ``errcode/content/url`` envelope captured live; search hits are
+   keyed per the ``OaDocSearchDocInfo`` schema contract (hit shape is
+   documented-not-captured).
+
    Failures print ``{"error": "<message>"}`` to **stderr** and exit nonzero
    (the adapter's ``normalize_error`` turns that into :class:`AdapterError`).
    Updating with a stale ``--version`` exits 3 with ``version conflict:
@@ -141,8 +172,12 @@ def _dispatch(bucket: dict[str, Any], rest: list[str]) -> int:
         return _docs_lark(bucket, rest[1], rest[2:])
     if rest[0] == "doc" and len(rest) >= 2:
         # dws wire protocol (the real DingTalkAdapter read-lane shape; ``doc``
-        # is dws' product prefix — distinct from lark's ``docs``).
-        return _doc_dws(bucket, rest[1], rest[2:])
+        # is dws' product prefix — distinct from lark's ``docs``). dws ops are
+        # ``+``-prefixed (``+fetch``/``+search``); the wecom-cli dialect uses
+        # bare resource verbs (``search`` / ``contents get``).
+        if rest[1].startswith("+"):
+            return _doc_dws(bucket, rest[1], rest[2:])
+        return _doc_wecom(bucket, rest[1], rest[2:])
     if rest[0] == "drive" and len(rest) >= 2 and rest[1] == "+delete":
         return _drive_delete(bucket, rest[2:])
     if rest[0] == "search":
@@ -330,6 +365,107 @@ def _doc_dws(bucket: dict[str, Any], op: str, args: list[str]) -> int:
         return 0
 
     return _fail(f"unknown doc op: {op}", 2)
+
+
+def _doc_wecom(bucket: dict[str, Any], op: str, args: list[str]) -> int:
+    """wecom-cli wire protocol: ``doc search`` / ``doc contents get`` (read lanes).
+
+    Payload shapes mirror tests/fixtures/wecom-cli (PROBE-NOTES §2): contents
+    get serves the top-level ``errcode/content/url`` envelope captured live;
+    search serves ``errcode/errmsg`` plus ``docs[]`` hits keyed per the
+    ``OaDocSearchDocInfo`` schema contract (hit shape is
+    documented-not-captured — zero-hit ``{"errcode":0,"errmsg":"ok"}`` is the
+    live truth, so an empty result omits the whole ``docs`` family).
+    ``name``/``version``/``rank`` come from the shared state bucket so the S65
+    title/version/rank assertions stay observable through this read lane (dws
+    ``revision`` precedent); the real server omits ``version``/``name`` and its
+    hits carry no ``rank`` — the adapter tolerates all three absences.
+    """
+    docs: dict[str, Any] = bucket["docs"]
+
+    if op == "search":
+        body = _wecom_body(args)
+        keywords = body.get("keywords")
+        if not isinstance(keywords, list) or not keywords:
+            return _fail("doc search --json requires keywords[]", 2)
+        terms = [str(keyword) for keyword in keywords]
+        try:
+            limit = int(body.get("limit") or 10)
+        except (TypeError, ValueError):
+            return _fail("doc search --json limit must be an integer", 2)
+        scope = str(body.get("search_scope") or "title_content")
+
+        def _matches(doc: dict[str, Any]) -> bool:
+            if doc["archived"]:
+                return False
+            if scope == "title":
+                return any(term in doc["title"] for term in terms)
+            if scope == "content":
+                return any(term in doc["content"] for term in terms)
+            return any(term in doc["title"] or term in doc["content"] for term in terms)
+
+        matches = [doc for doc in docs.values() if _matches(doc)]
+        if not matches:
+            # Live-captured zero-hit truth: the whole ``docs`` family is absent.
+            print(json.dumps({"errcode": 0, "errmsg": "ok"}))
+            return 0
+        hits = [
+            {
+                "docid": doc["id"],
+                "doc_name": doc["title"],
+                "doc_type": "doc",
+                "url": f"https://doc.weixin.qq.com/doc/w3_{doc['id']}",
+                "title_highlight": [doc["title"]],
+                "text_highlight": [doc["content"][:120]],
+                "rank": i,
+            }
+            for i, doc in enumerate(matches[:limit], start=1)
+        ]
+        print(json.dumps({"errcode": 0, "errmsg": "ok", "docs": hits}))
+        return 0
+
+    if op == "contents":
+        if not args or args[0] != "get":
+            return _fail("doc contents supports get only (read lane)", 2)
+        native = _wecom_body(args[1:]).get("docid")
+        if not isinstance(native, str) or not native:
+            return _fail("doc contents get requires docid", 2)
+        doc = docs.get(native)
+        if doc is None:
+            return _fail(f"document not found: {native}")
+        if doc["archived"]:
+            return _fail(f"document archived: {native}")
+        print(
+            json.dumps(
+                {
+                    "errcode": 0,
+                    "name": doc["title"],
+                    "content": doc["content"],
+                    "version": doc["version"],
+                    "url": f"https://doc.weixin.qq.com/doc/w3_{native}",
+                }
+            )
+        )
+        return 0
+
+    return _fail(f"unknown doc op: {op}", 2)
+
+
+def _wecom_body(args: list[str]) -> dict[str, Any]:
+    """Locate the wecom-cli ``--json`` request body among the argv tokens.
+
+    ``_parse_invocation`` strips the ``--json`` flag token itself (it treats it
+    as the wire-v1 trailing marker), so the wecom dialect sees the JSON body as
+    a bare argv token; the first token that parses to a JSON object is the body.
+    """
+    for token in args:
+        try:
+            value = json.loads(token)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(value, dict):
+            return value
+    return {}
 
 
 def _drive_delete(bucket: dict[str, Any], args: list[str]) -> int:
