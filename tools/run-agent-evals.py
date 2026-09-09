@@ -184,7 +184,7 @@ def main() -> int:
                 argv.append("--continue")
             # eval 要真实执行 skill 流：只放行 kgent/lark-cli/dws 与本地文件工具
             argv += ["--allowedTools", "Bash(kgent:*)", "Bash(lark-cli:*)", "Bash(dws:*)",
-                     "Bash(dir:*)", "Read", "Write", "Edit"]
+                     "Bash(wecom-cli:*)", "Bash(dir:*)", "Read", "Write", "Edit"]
             try:
                 done = subprocess.run(
                     argv, capture_output=True, text=True, encoding="utf-8",

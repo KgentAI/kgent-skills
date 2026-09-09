@@ -34,3 +34,19 @@ def test_every_eval_file_skill_name_matches_stem():
     for path in sorted((REPO / "evals" / "skills").glob("*-evals.json")):
         data = json.loads(path.read_text(encoding="utf-8"))
         assert data["skill_name"] == path.stem.replace("-evals", ""), path.name
+
+
+def test_runner_allows_wecom_cli():
+    """Phase 3 接线：allowedTools 必须放行 wecom-cli——wecom 腿的 eval 会真实
+    调平台 CLI，缺放行 = 权限拒绝失败，失败形态不是断言未命中而是工具被拦，
+    报告里看不出来龙去脉。源码文本级钉住（claude() 是嵌套函数，无纯函数面）。"""
+    source = (REPO / "tools" / "run-agent-evals.py").read_text(encoding="utf-8")
+    assert '"Bash(wecom-cli:*)"' in source
+
+
+def test_grader_accepts_wecom_integration_wording():
+    passed, misses, manual = runner.heuristic_grade(
+        ["For WeCom targets the skill delegates execution via wecom-integration, not 'kgent update'"],
+        "transcript ... wecom-integration ... 委派了",
+    )
+    assert passed == 1 and not misses and not manual
