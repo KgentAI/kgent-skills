@@ -40,6 +40,11 @@ repr 全量打印进运行日志（wecom-integration skill Undo 节第 6 步「�
 
 **凭据门**：wecom-cli 未装或 ``wecom-cli auth show --status`` 非
 ``authorized`` 时整文件 skip（bot-only 身份，auth init 需维护者本人扫码）。
+该门只探 CLI 身份，**不替代 kgent 后端门**：``~/.kgent/config.yaml`` 的
+``backends.wecom.enabled: true``（wecom-integration skill 的 The Gate）是
+本文件的**前置**——``kgent undo`` 计划的 ``integration_skill:
+wecom-integration`` 正来自该 backend 接线，缺它时计划不再路由到 wecom 腿
+（相关断言失败，而非 skip）。
 命令拼写真值：``tests/fixtures/wecom-cli/PROBE-NOTES.md``；payload 键位
 live/schema 分级：同目录 ``FIXTURES-NOTE.md``。
 
@@ -538,6 +543,13 @@ def _create_probe(tmp_path: Path, title: str, content: str) -> tuple[str, str]:
         docid = _extract_docid(imported or {})
     except AssertionError:
         docid = None
+    if docid:
+        # docid 到手即打印（M-1）：平台无删除命令，后续任何一步失败都必须
+        # 能凭这行输出定位/隔离探针，而不是让 docid 随断言一起丢。
+        print(
+            f"[kgent-phase3-probe] import accepted: title={title!r} "
+            f"docid={docid} url={_probe_url(imported or {})}"
+        )
     for _ in range(_IMPORT_POLL_ROUNDS):
         if docid:
             break
@@ -564,15 +576,29 @@ def _create_probe(tmp_path: Path, title: str, content: str) -> tuple[str, str]:
         f"{json.dumps(imported, ensure_ascii=False)[:600]}"
     )
     got: dict[str, Any] = {}
-    for _ in range(_IMPORT_POLL_ROUNDS):
-        got = _wecom_json(CMD_CONTENTS_GET, {"docid": docid}, cwd=tmp_path, check=False) or {}
-        if "content" in got and content in _extract_content(got):
-            return docid, _probe_url(got)
-        time.sleep(_IMPORT_POLL_INTERVAL_SECONDS)
+    try:
+        for _ in range(_IMPORT_POLL_ROUNDS):
+            got = _wecom_json(CMD_CONTENTS_GET, {"docid": docid}, cwd=tmp_path, check=False) or {}
+            if "content" in got and content in _extract_content(got):
+                return docid, _probe_url(got)
+            time.sleep(_IMPORT_POLL_INTERVAL_SECONDS)
+    except BaseException:
+        # docid 已知后的任何失败（含 640459 配额阻断——rename 隔离是写操作，
+        # 配额日仍可用）都要把已建的探针隔离，不留真机租户残留。本分支两次
+        # 真机跑动在无此兜底时泄漏过探针（2026-09-09，M-1 修复现场）。
+        _teardown(docid)
+        raise
     raise AssertionError(
         f"imported probe content {content!r} not visible within "
         f"{_IMPORT_POLL_ROUNDS * _IMPORT_POLL_INTERVAL_SECONDS}s: "
         f"{json.dumps(got, ensure_ascii=False)[:600]}"
+        # M-1：docid 已知时必随终局错误点名——探针不留给真机租户。
+        + (
+            f"\n  MANUAL CLEANUP (platform has no CLI delete): "
+            f"wecom-cli doc names update --json "
+            f'\'{{"docid":"{docid}","new_name":"{DELETE_ME_PREFIX}{docid}"}}\' '
+            f"then delete probe {title!r} ({docid}) in the WeCom client"
+        )
     )
 
 
@@ -718,7 +744,10 @@ def _wecom_identity_available() -> bool:
     ``.cmd`` 规则）——门与探针看到的必须是同一个二进制。解析落空/非零退出/
     输出不是单行 ``authorized`` 一律按「凭据不可用」处理（fail-closed；
     wecomcli-shared 的 pre-flight 同语义：输出别的都算「未就绪」）。bot-only
-    身份，auth init 需维护者本人扫码。
+    身份，auth init 需维护者本人扫码。本门**不查** ``~/.kgent/config.yaml``
+    的 ``backends.wecom.enabled``——那不是凭据而是配置前置（模块 docstring
+    「凭据门」节），本文件按 skill 车道直调 wecom-cli，undo 计划的路由断言
+    会在配置缺席时失败而非 skip。
     """
     cmd = _wecom_cmd()
     if not Path(cmd[0]).exists():
@@ -929,8 +958,9 @@ def test_b5_create_leg_quarantine_compensation(tmp_path):
 
     create 的补偿不是内容写回而是隔离（B4 同构；平台无删除命令 → rename 到
     ``DELETE-ME-`` 前缀 + 人工清理 runbook）。undo 的目标必须是 end 回填的
-    真实 URI（C1：end.doc_uri 优先于 begin 占位）。end 的写后快照可省略——
-    create 腿豁免新鲜度比对（ledger 对 create 不走快照通道）。
+    真实 URI（C1：end.doc_uri 优先于 begin 占位）。end 仍带 ``--snapshot-after``
+    <首读全文>（M-2：忠实彩排 skill Write 节创建流）——create 腿豁免新鲜度
+    比对（ledger 对 create 不走快照通道），快照只是把证据记全，行为不变。
     """
     placeholder_uri = f"kgent://wecom/planned-{PROBE_TITLE_CREATE}"
     begin = _kgent_json(
@@ -960,16 +990,30 @@ def test_b5_create_leg_quarantine_compensation(tmp_path):
             cwd=tmp_path,
         )
         docid = _extract_docid(imported or {})
+        # docid 到手即打印（M-1）：建档受理成功后任何一步失败，探针都凭这行
+        # 输出可定位——平台无删除命令，docid 不能只活在断言消息里。
+        print(
+            f"[kgent-phase3-probe] import accepted: title={PROBE_TITLE_CREATE!r} "
+            f"docid={docid} url={_probe_url(imported or {})}"
+        )
+        first_read = ""
         for _ in range(_IMPORT_POLL_ROUNDS):
             got = _wecom_json(CMD_CONTENTS_GET, {"docid": docid}, cwd=tmp_path, check=False)
-            if got is not None and "content" in got and CONTENT_A in _extract_content(got):
-                probe_url = _probe_url(got)
-                break
+            if got is not None and "content" in got:
+                first_read = _extract_content(got)
+                if CONTENT_A in first_read:
+                    probe_url = _probe_url(got)
+                    break
             time.sleep(_IMPORT_POLL_INTERVAL_SECONDS)
         else:
             raise AssertionError(
                 f"create-leg probe content never became visible: "
                 f"{json.dumps(got if got else {}, ensure_ascii=False)[:600]}"
+                # M-1：终局错误点名 docid + 标题 + 人工清理指引。
+                f"\n  MANUAL CLEANUP (platform has no CLI delete): "
+                f"wecom-cli doc names update --json "
+                f'\'{{"docid":"{docid}","new_name":"{DELETE_ME_PREFIX}{docid}"}}\' '
+                f"then delete probe {PROBE_TITLE_CREATE!r} ({docid}) in the WeCom client"
             )
 
         end = _kgent_json(
@@ -981,6 +1025,11 @@ def test_b5_create_leg_quarantine_compensation(tmp_path):
             "ok",
             "--doc-uri",
             f"kgent://wecom/{docid}",
+            # M-2：忠实彩排 SKILL.md 创建流——end 带 --snapshot-after <首读全文>。
+            # ledger 对 create 腿豁免新鲜度比对（补偿是隔离不是写回），行为不变；
+            # 传了只是把证据记全（「传了 = 有证据」语义，与 skill Write 节同款）。
+            "--snapshot-after",
+            first_read,
         )
         assert end["entry"]["status"] == "ok"
 

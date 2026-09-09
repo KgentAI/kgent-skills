@@ -90,9 +90,9 @@ WeCom 无平台 history、无 version 轴 → 补偿机制是**台账快照写�
 1. `kgent undo <op_id> --json` 取补偿计划；`status == "rejected"` 时**停止**——写后内容已偏离证据（FM2-wecom：写后快照比对不符；或历史 op 的 FM3：内容偏离写前快照），`reason` 里带两侧证据。绝不带着过期计划落写回。
 2. `plan.plan.operation == "create"` → **跳过内容写回**，直接走第 7 步（create 的补偿不是恢复旧内容）。
 3. 读 `plan.plan.snapshot`（begin `--snapshot-content` 落盘的写前全文 A，文件在 `~/.kgent/journal/snapshots/<op_id>.txt`）——**先拷贝到当前目录临时文件**（Fs 沙箱只吃 cwd 相对路径，见 Known Limitations）。
-4. **执行前复核（TOCTOU/FM2-wecom）**：`wecom-cli doc contents get` 重读当前全文，与 `plan.plan.snapshot_after`（end `--snapshot-after` 落盘的写后全文 B，`<op_id>.after.txt`）比对——不符 → 停止并报告（取计划之后文档又被第三方编辑过）。`plan.plan.snapshot_after` 为 null（历史 ok 计划：end 未带写后快照，取计划时 FM3 已按「当前内容 == A」判过一次 ok）→ 以 `plan.plan.snapshot`（A）为新鲜度参照重比对，不符同样停止——取计划到执行之间文档仍可能被第三方编辑，null 分支不豁免复核。
+4. **执行前复核（TOCTOU/FM2-wecom）**：`wecom-cli doc contents get` 重读当前全文，与 `plan.plan.snapshot_after`（end `--snapshot-after` 落盘的写后全文 B，`<op_id>.after.txt`）比对——不符 → 停止并报告（取计划之后文档又被第三方编辑过）。`plan.plan.snapshot_after` 为 null（历史 ok 计划：end 未带写后快照，取计划时 FM3 已按「当前内容 == A」判过一次 ok）→ 以 `plan.plan.snapshot`（A）为新鲜度参照重比对，不符同样停止——取计划到执行之间文档仍可能被第三方编辑，null 分支不豁免复核。读快照文件必须 **byte 透明**（`open(newline="")`，不落文本模式）——台账快照通道已按此修复（`kgent/src/kgent/router/ledger.py` newline 透明往返），skill 侧自读沿用同纪：平台读回恒带尾部 `\r`，文本模式会把它折成 `\n`、比对恒拒。
 5. `wecom-cli doc contents overwrite --json '{"docid":"<DOCID>","content_type":"text","file_path":"<快照临时文件>"}'` 写回 A。`<DOCID>` 取自 `plan.plan.target`（`kgent://wecom/<docid>`）——存的是 API docid，不是 URL token。
-6. 读回校验：`wecom-cli doc contents get` 重读，内容与 A 逐字一致（A 本身就是同一命令的写前读回，形态可比）才向用户确认；平台写入可见性可能滞后，比对用有界轮询，不无限等。
+6. 读回校验：`wecom-cli doc contents get` 重读，判据钉**载荷级**——A 的载荷在场、被 undo 的写不在场（平台内容管线会把尾部 CR+padding 重排，写回不是逐字回声：真机实测 A `'AAA-CONTENT\r        '` 写回后读回 `'AAA-CONTENT        \r        '`，形态锚见 `tests/e2e/test_wecom_snapshot_real.py` 模块 docstring）才向用户确认；平台写入可见性可能滞后，比对用有界轮询，不无限等。
 7. **create 腿的补偿是隔离**（B4 同构）：平台无文档删除命令（见 Known Limitations）→ 降级 = `wecom-cli doc names update --json '{"docid":"<DOCID>","new_name":"DELETE-ME-<原名>"}'` 改名隔离 + 向用户报告 docid 与原生 URL 供人工删除——不静默、不假装已删。
 
 **历史 op 的 fail-closed 兜底**：end 未带 `--snapshot-after` 的旧台账 op，取计划时落 FM3（当前内容 == 写前快照 A 才 `ok`）——对已被本流程改过内容的文档必然拒绝。这是兜底通道，**不是常态**：写流程漏传写后快照不能靠它补救，只能重新走一遍写流程把证据补齐。

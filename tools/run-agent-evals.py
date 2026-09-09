@@ -182,7 +182,7 @@ def main() -> int:
             argv = ["claude", "-p", prompt, "--output-format", "text"]
             if cont:
                 argv.append("--continue")
-            # eval 要真实执行 skill 流：只放行 kgent/lark-cli/dws 与本地文件工具
+            # eval 要真实执行 skill 流：只放行 kgent/lark-cli/dws/wecom-cli 与本地文件工具
             argv += ["--allowedTools", "Bash(kgent:*)", "Bash(lark-cli:*)", "Bash(dws:*)",
                      "Bash(wecom-cli:*)", "Bash(dir:*)", "Read", "Write", "Edit"]
             try:

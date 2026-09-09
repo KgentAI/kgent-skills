@@ -99,6 +99,14 @@
 - `message` 尾部 `[code=893xxx]` 携带服务端原始码（893201=AuthError、893202=QrTimeout）；`code` 顶层字段是 CLI 兜底 893999
 - 类型化响应体（schema 定义）含 `errcode`(int32)/`errmsg`(string) 字段族——**正常档实测确实带 `errcode: 0`**（contents get）或 `errcode:0, errmsg:"ok"`（append/overwrite/names update；schema 里「空对象」的 TypedRsp 运行时被填了 errcode/errmsg）[live 实测]
 
+**Task 6 真机补充定谳（2026-09-09，~6 轮真机跑动；本节为 §1.4 的延伸，消费点：`tests/e2e/test_wecom_snapshot_real.py` 常量区 `RETRYABLE_ERRCODES` / `DAILY_QUOTA_ERRCODE`）**：
+
+- **限流一：分钟级 MCP 调用频率（errcode `850005`，可退避穿）** [live 实测]：「超过机器人MCP接口调用频率限制」，响应形状 `{"errcode":850005,"errmsg":"aibot exceed tool call limit, hint: [...], from ip: ...","results_json":null,"help_instruction":"…","help_message":"超过机器人MCP接口调用频率限制"}`，exit 1。背靠背连发必触发（一轮 e2e ~55 次调用真机撞过；~3 分钟后单发恢复）。**可穿防线**：调用间 2s 匀速节流 + 退避梯 `1/2/4s`（skill 自设退避）延伸 `15/30/60s`——限流窗是整租户 MCP 配额窗，短梯骑不穿时深梯可穿。
+- **限流二：当日「机器人读取文档」配额（errcode `640459`，等待无效）** [live 实测]：「当前用户通过机器人获取文档内容已超过当日最大次数限制 (callid: …)」，CLI 层 envelope `{"error":{"code":640459,"message":"…"}}`，exit 1。语义三条：**只压读**（`doc contents get` 的「获取文档内容」；同日 `doc names update` 写照常 `errcode:0`）、**等待/退避无效**（当日配额不因等待恢复，只能等日切）、**消费方 fail-fast**（轮询/重试对它一律立即失败并点名「待配额日切重跑」，不慢速烧完轮询预算）。~6 轮真机跑动（~300 次 contents get）可耗尽当日额度——量级参考。
+- **`doc import` 排队轮询语义（taskid 轮询）** [live 实测]：import 返回 `docid`（建档**受理**成功）后正文可见性可滞后数分钟（平台导入转换管线分钟级排队；全套 suite 连跑时 12 轮内不可见真机实测过）。查询任务状态用**同命令传 `taskid`** 轮询（§2.3 的 `task_status`: `succ|fail|processing`）；消费侧的等价纪律是有界轮询 `doc contents get` 直到正文出现（e2e 轮询预算 24 轮 ≈3 分钟骑穿常规排队窗）。
+
+**Task 7 补充定谳（2026-09-09，640459 的作用域细化）** [live 实测]：640459 **只压「当日新建文档」的内容读**——同一天里，早前日期创建的文档（含同批探针、已改名隔离的）`contents get` 照常 `errcode:0`（text/markdown/ooxml 三档一致），而当日经 `doc import` **或 `doc create`** 建的文档一律 `code:640459`（响应带 `taskid`/`long_task_poll`——内容取回走长任务管线，配额压在这条管线上；旧文档内容已固化，内联返回不经管线）。推论：**「配额探测」必须用当日新建的 docid 才有效**——拿旧 docid 探测会在配额已耗尽时假绿（Task 7 真机踩过：旧 docid 探测 ok → e2e 五测全撞 640459）。另记一条独立事实：**`doc create` 响应的 `docid` 是 `w3_` 前缀的 URL-token 形**（非 import 的 `dc…` 长 API docid；`contents get` 接受该形——撞的是配额错，不是 id 错），「URL token ≠ API docid」的边界比 §1.5 记载的更宽。
+
 ### 1.5 真机对账（live 实测 vs schema 纸面契约）——本节优先级高于 §2
 
 | schema 说 | 真机实测（2026-09-08） | 对 adapter 的影响 |
