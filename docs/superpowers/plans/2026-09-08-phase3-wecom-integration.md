@@ -4,7 +4,7 @@
 
 **Goal:** 落地母 spec v3 的 Phase 3——`skills/wecom-integration/SKILL.md`（能力契约六节，undo 补偿 = 台账快照写回）、WeComAdapter 接真 wecom-cli（读车道：FM3 内容比对 + version 新鲜度数据源 + B11-wecom search 类型保真）、evals fixtures wecom 腿、B5/B8/B11-wecom 验收 + agent evals + EVIDENCE 收尾。
 
-**Architecture:** 平台操作统一经 integration skill（ADR 0004）；kgent 台账已就位（`MECHANISM_BY_BACKEND["wecom"] = "snapshot-restore"`、`HISTORY_HINT_BY_BACKEND` 无 wecom 项 → 计划里为 `None`，`src/kgent/router/ledger.py:36-47`）。本 Phase 不改台账/undo/route 逻辑，只补 WeCom 侧接口层：SKILL.md（agent 走的文档流）+ adapter `read_document`（`compensation_plan` 计划期经 `backends["wecom"].read_document()` 读当前 version/content 做新鲜度判定，`ledger.py:288-294`；adapter registry 在 `src/kgent/adapters/__init__.py:36` 已注册 `WeComAdapter()` 单例，改默认 cmd 解析即自动接线）。wecom-cli 的调用形态与 lark/dws 都不同——命令是 `wecom-cli <service> [resource...] <method> --json '<JSON 参数>'`（`--json` 是**输入体**旗标，非输出格式旗标），写命令成功返回**空对象**（无 revision 可记），读取返回 `version` 字段——一切命令拼写以 `wecom-cli <path> --help` 与 `wecom-cli schema get <service.resource.method>` 实测为准，Task 1 探针落真值。
+**Architecture:** 平台操作统一经 integration skill（ADR 0004）；kgent 台账已就位（`MECHANISM_BY_BACKEND["wecom"] = "snapshot-restore"`、`HISTORY_HINT_BY_BACKEND` 无 wecom 项 → 计划里为 `None`，`src/kgent/router/ledger.py:36-47`）。**2026-09-08 修订（维护者签核，见设计裁决节修订案）**：wecom 真机探针证实 `doc contents get` 不返回 `version` 字段——version 轴新鲜度不成立，本 Phase 扩展台账「写后快照」通道（Task 2：`journal end --snapshot-after` + `compensation_plan` 写后快照新鲜度分支），其余只补 WeCom 侧接口层：SKILL.md（agent 走的文档流）+ adapter `read_document`（`compensation_plan` 计划期经 `backends["wecom"].read_document()` 读当前 content 做新鲜度判定，`ledger.py:288-294`；adapter registry 在 `src/kgent/adapters/__init__.py:36` 已注册 `WeComAdapter()` 单例，改默认 cmd 解析即自动接线）。wecom-cli 的调用形态与 lark/dws 都不同——命令是 `wecom-cli <service> [resource...] <method> --json '<JSON 参数>'`（`--json` 是**输入体**旗标，非输出格式旗标），写命令成功返回**空对象**（无 revision 可记），读取返回 `version` 字段——一切命令拼写以 `wecom-cli <path> --help` 与 `wecom-cli schema get <service.resource.method>` 实测为准，Task 1 探针落真值。
 
 **Tech Stack:** Python 3.12 stdlib（adapter/e2e 零新依赖；探针 .docx 经 `zipfile` 生成）、wecom-cli（npm `@wecom/cli`，Rust 核心，MIT，node≥18，Windows x64，**当前未安装**）、pytest/diff-cover/mypy（已有 dev deps）。
 
@@ -25,7 +25,7 @@
 - **速率自设退避**（平台未文档化）：SKILL.md 写明集成层退避纪律（可重试错误 → 1s/2s/4s 指数退避、最多 3 次、超 3 次显式报告部分失败不静默缩量）；adapter `timeout=30.0` 默认（读车道不内置重试——退避归 skill 车道，注释声明）
 - 真机探针命名带 `-probe-`（`kgent-phase3-probe-` 前缀）；teardown 必删——**wecom 平台无文档删除命令**（wecomcli-doc / wecomcli-doc-manage 均无 delete，Task 1 探针复核）→ 最严格等价物 = rename 隔离（`kgent-phase3-probe-DELETE-ME-` 前缀）+ session 末重试 + leftover 点名（docid + URL + 人工清理 runbook）；若 Task 1 探针发现删除命令（disk 域或隐藏 schema），改走真删并在 PROBE-NOTES 记录
 - **两个人工闸（计划显式标注）**：① `npm i -g @wecom/cli` + `npx skills add WeComTeam/wecom-cli -y -g` 是**外部代码执行，需用户/维护者批准**（批准前本计划 WebFetch 已落的 README/docs 真值草案可用，标 ⚠ 待 `--help` 对账）；② `wecom-cli auth init` 交互式扫码（5 分钟窗口）**需维护者本人操作**（或 `--manual` 输 Bot ID/Secret）——auth 未就绪时按凭据阻塞语义推进
-- **凭据阻塞语义**（母 spec 风险节 + Phase 2 裁决形态）：wecom auth 未就绪时，fixture/单元任务（Task 2/3/4）照常推进；Task 1 的 payload fixtures 按 documented-not-captured 模式落盘（`tests/fixtures/wecom-cli/FIXTURES-NOTE.md` 逐键 provenance）；Task 5 e2e 文件照写（skipif 凭据门）；agent evals wecom 腿 skipped；EVIDENCE 逐条声明 blocked，不以 fixture 绿冒充真机验收
+- **凭据阻塞语义**（母 spec 风险节 + Phase 2 裁决形态）：wecom auth 未就绪时，fixture/单元任务（Task 3/4/5）照常推进；Task 1 的 payload fixtures 按 documented-not-captured 模式落盘（`tests/fixtures/wecom-cli/FIXTURES-NOTE.md` 逐键 provenance）；Task 6 e2e 文件照写（skipif 凭据门）；agent evals wecom 腿 skipped；EVIDENCE 逐条声明 blocked，不以 fixture 绿冒充真机验收。**（2026-09-08 更新：auth 已扫码就绪，Task 1 探针已真机跑完，fixtures 已 live-captured——本条保留为机制记录）**
 - 新代码注释风格跟随仓库（中英混排、模块 docstring 带 B/FM/ADR 引用）；**本 PR 新增文件 ruff format 债为零**（Phase 2 Task 7 教训：新增文件必须 clean）
 - 每任务 GREEN 后 commit；gauntlet 的 diff-cover 门是 `--fail-under 100` 显式门（Phase 2 fix round 定谳：`--fail-under` 缺省 0，裸调用任何覆盖率都退 0）
 
@@ -42,6 +42,18 @@
    - **end 必须带 `--revision-after <写后 version>`**（写后读回取得）——B5 happy path（写 A → 写 B → 计划 ok → 快照写回 → 读回 A）只有这条路是 GREEN 的：current version == revision_after → ok → skill 把 `plan.plan.snapshot`（A）写回 → 读回 == A；
    - **FM3 的真实角色**：(a) 无 version 证据的 entry 的 fail-closed 兜底（e2e 有专门变体钉死它：end 不带 revision-after → rejected「snapshot no longer matches」）；(b) skill 侧写回前的内容复核纪律（执行前重读，与快照/写后状态不符即拒）。FM3-ok 分支（current == 写前快照）语义是「文档已在写前状态，写回幂等」——不伪装成能恢复已漂移内容的通道。
 4. **⚠ 探针门控事实（Task 1 必须定谳）**：`doc contents get` 的 `version` 是否**每次编辑递增**（三次写 → 三次读，V1<V2<V3）。若递增 → 本裁决成立；若不递增/非数值 → version 轴不能作新鲜度证据，B5 happy path 在不改 ledger 的前提下不可满足——**停下上报控制器**（这是 ledger 语义级缺口：FM3-ok 要求 current==写前快照，内容已变的 update 不可达；需要设计裁决扩台账「写后内容」通道），不得静默改用其它口径冒充。
+
+### 修订案（2026-09-08，维护者签核「方案 A：扩台账写后快照」）
+
+门控事实已定谳为**否定**：真机探针（auth 16:54:57 扫码就绪）三次写读证实 `doc contents get` **不返回 `version` 字段**——编辑确已生效（`AAA-CONTENT` → `AAA-CONTENTBBB-APPEND` → `CCC-CONTENT`，text/markdown/ooxml 三档一致），但 version 键整族缺席。version 轴新鲜度不成立，第 3 条的「end 带 `--revision-after`（来自读）」通道不存在。
+
+**替代裁决（维护者签核）**：扩台账「写后快照」通道——
+
+- `journal end` 新增 `--snapshot-after <写后全文>`：落 0600 快照文件（`snapshots/<op_id>.after.txt`，FM5 纪律同 begin）；
+- `compensation_plan` 新鲜度优先级 = **revision 路（lark/dingtalk 不变）→ 写后快照路（wecom：`current.content` == 写后快照才 ok；不符 = 第三方编辑 → rejected，FM2-wecom 形状）→ FM3 begin 快照兜底（不变）**；
+- wecom 写流程纪律变为：begin 强制 `--snapshot-content <写前全文 A>`（补偿载荷）→ 写 → **end 强制 `--snapshot-after <写后全文 B>`**（新鲜度证据）。B5 happy path：current==B → ok → 快照写回 A → 读回 == A；第三方编辑 → current≠B → rejected；end 不带 snapshot-after → 落 FM3 → current(B)≠A → rejected（fail-closed，e2e 专门变体钉死）。
+
+这正是母 spec FM2「wecom 当前内容比对快照」的本义。落地：Task 2（ledger/cli 扩展）→ Task 3 SKILL.md 纪律 → Task 6 e2e。Task 4 adapter 的 `read_document` 返回 content（`version=None`——无轴可报）。被否方案沉淀：内容摘要冒充 version 轴（归一化脆弱 + 冒充口径，违门控禁令）。
 
 ---
 
@@ -91,7 +103,7 @@ where wecom-cli        # win32：期望三 shim 并存（wecom-cli / wecom-cli.c
 wecom-cli --help       # 服务树：message/mail/doc/sheet/smartsheet/calendar/meeting/todo/disk/contact/media/identity
 ```
 
-批准前/安装失败时：不改任何代码，转 Step 3 用 `WebFetch github.com/WeComTeam/wecom-cli`（README、docs/cli-reference.md、docs/skills.md、skills/wecomcli-*/SKILL.md）已落的文档真值推进 Task 2/3，全部标 ⚠ 待对账（本计划表中已含该草案）。
+批准前/安装失败时：不改任何代码，转 Step 3 用 `WebFetch github.com/WeComTeam/wecom-cli`（README、docs/cli-reference.md、docs/skills.md、skills/wecomcli-*/SKILL.md）已落的文档真值推进 Task 3/4，全部标 ⚠ 待对账（本计划表中已含该草案）。
 
 - [ ] **Step 2: 身份与配置核查（人工闸②——维护者本人扫码）**
 
@@ -131,7 +143,7 @@ wecom-cli auth show --help
 
 ```bash
 mkdir -p /tmp/wecom-probe && cd /tmp/wecom-probe
-# 探针 .docx 由 stdlib 生成（与 Task 5 e2e 的 _write_probe_docx 同一形态）
+# 探针 .docx 由 stdlib 生成（与 Task 6 e2e 的 _write_probe_docx 同一形态）
 python - <<'PY'
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -220,7 +232,117 @@ git commit -m "test: wecom-cli 真值探针 fixtures + 命令真值表（Phase 3
 ```
 
 ---
-### Task 2: docs-conformance 扩容 + `skills/wecom-integration/SKILL.md` + 编排 skills 的 WeCom URL 行
+### Task 2: 台账写后快照通道（`journal end --snapshot-after` + compensation_plan 写后快照新鲜度分支；维护者签核 2026-09-08）
+
+**Files:**
+- Modify: `src/kgent/router/ledger.py`（`end()` 增 `snapshot_after` 参数 + 0600 快照落盘；`compensation_plan` 增写后快照新鲜度分支；plan dict 增 `snapshot_after` 字段）
+- Modify: `src/kgent/cli.py`（`journal end` 增 `--snapshot-after` 旗标；`_cmd_journal_end` 透传）
+- Test: `tests/test_ledger.py`（快照通道生命周期用例）、`tests/test_undo_ledger.py`（写后快照新鲜度三分支）、`tests/test_cli.py`（journal end 旗标解析）
+
+**Interfaces:**
+- Consumes: `ledger.begin`（不变）、`Journal.append/get/entries`（不变）、`_snapshot_file_content`（既有帮助函数）
+- Produces（Task 3 SKILL.md 纪律、Task 4 adapter、Task 6 e2e 消费）:
+  - `ledger.end(journal, op_id, *, status, revision_after=None, doc_uri=None, snapshot_after=None) -> dict`——`snapshot_after` 非空时写 `snapshots/<op_id>.after.txt`（0600，目录 0700，FM5 同 begin），entry 增 `snapshot_after` 字段（文件路径）
+  - `compensation_plan` 新鲜度优先级：`revision_after`（既有）→ **`snapshot_after`（新；operation != create）**→ FM3 begin 快照兜底（既有）；plan dict 增 `"snapshot_after": <path|None>`；写后快照不符的 reason 形状 = `"document content changed since the journaled write (post-write snapshot no longer matches); current revision {revision_current}"`
+  - CLI：`kgent journal end --op-id <id> --status ok --snapshot-after <写后全文>`
+
+- [ ] **Step 1: 写失败测试**
+
+```python
+# tests/test_undo_ledger.py 追加（fake backend 复用本文件既有件；Document/DocumentMetadata 从 kgent.types）
+def test_compensation_plan_post_write_snapshot_ok(tmp_home, fake_backend_for):
+    """end 带 snapshot_after 且 current==写后内容 → ok（B5 happy path 的新鲜度通道）。"""
+    # begin(A) → end(status ok, snapshot_after="B") → backend 读回 content=="B"
+    plan = compensation_plan(op_id, backends={"wecom": fake_backend_for("B")}, journal=journal)
+    assert plan["status"] == "ok"
+    assert plan["plan"]["mechanism"] == "snapshot-restore"
+    assert plan["plan"]["snapshot_after"].endswith(".after.txt")
+
+
+def test_compensation_plan_post_write_snapshot_third_party_edit_rejected(tmp_home, fake_backend_for):
+    """写后被第三方改过（current!="B"）→ rejected，reason 指 post-write snapshot（FM2-wecom 形状）。"""
+    plan = compensation_plan(op_id, backends={"wecom": fake_backend_for("C")}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert "post-write snapshot no longer matches" in plan["reason"]
+
+
+def test_compensation_plan_snapshot_after_file_missing_fail_closed(tmp_home, fake_backend_for):
+    """写后快照文件不可读 → rejected（fail closed，不盲恢复）。"""
+    ...
+```
+
+```python
+# tests/test_ledger.py 追加
+def test_end_snapshot_after_writes_after_file(tmp_journal):
+    """end(snapshot_after=...) 落 0600 的 .after.txt（FM5 纪律；POSIX-only 断言跟既有快照用例同款 skip 语义）。"""
+    entry = end(journal, op_id, status="ok", snapshot_after="B-CONTENT")
+    path = Path(entry["snapshot_after"])
+    assert path.name.endswith(".after.txt") and path.read_text(encoding="utf-8") == "B-CONTENT"
+```
+
+`tests/test_cli.py` 追加 journal end `--snapshot-after` 解析用例（仿既有 journal end 旗标用例形状）。
+
+- [ ] **Step 2: 跑测试确认失败**
+
+Run: `.venv/Scripts/python.exe -m pytest tests/test_undo_ledger.py tests/test_ledger.py tests/test_cli.py -v`
+Expected: 新用例 FAIL（`end()` 无 `snapshot_after` 参数 / plan 无 `snapshot_after` 键 / CLI 不认旗标）。
+
+- [ ] **Step 3: 最小实现**
+
+`ledger.py`——快照写盘抽帮助函数（begin 复用，DRY）：
+
+```python
+def _write_snapshot_file(journal: Journal, op_id: str, content: str, suffix: str) -> str:
+    """0600 快照文件（FM5：目录 0700、文件 0600；POSIX-only 收紧，Windows 无害 no-op）。"""
+    path = _snapshot_path(journal, op_id).with_suffix(suffix)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    os.chmod(path, 0o600)
+    return str(path)
+```
+
+`end()` 增参与落盘；`compensation_plan` 在 `elif revision_after is not None:` 与既有 `elif operation != "create":`（FM3）之间插入：
+
+```python
+    elif snap_after_path is not None and operation != "create":
+        after_content = _snapshot_file_content(snap_after_path)
+        if after_content is None:
+            reason = (
+                "cannot verify freshness: post-write snapshot file is unreadable; "
+                "refusing to plan a blind restore"
+            )
+        elif current is None:
+            reason = (
+                f"document {target} is gone; post-write snapshot freshness cannot be "
+                "verified" + (f" ({read_error})" if read_error else "")
+            )
+        elif str(current.content) != after_content:
+            reason = (
+                "document content changed since the journaled write (post-write "
+                f"snapshot no longer matches); current revision {revision_current}"
+            )
+```
+
+`cli.py`：`p_end.add_argument("--snapshot-after", dest="snapshot_after", default=None)`；`_cmd_journal_end` 原样透传字符串（不做 int 化）。
+
+- [ ] **Step 4: 跑测试确认通过 + 全套无新增失败**
+
+Run: `.venv/Scripts/python.exe -m pytest tests/test_undo_ledger.py tests/test_ledger.py tests/test_cli.py -v && .venv/Scripts/python.exe -m pytest tests -q 2>&1 | tail -3`
+Expected: 新用例 PASS；全套失败数 ≤ baseline（579/6/0 量级）。
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/kgent/router/ledger.py src/kgent/cli.py tests/test_ledger.py tests/test_undo_ledger.py tests/test_cli.py
+git commit -m "feat(ledger): journal end --snapshot-after 写后快照通道 + compensation_plan 写后快照新鲜度分支（wecom undo 地基，维护者签核）"
+```
+
+---
+
+### Task 3: docs-conformance 扩容 + `skills/wecom-integration/SKILL.md` + 编排 skills 的 WeCom URL 行
 
 **Files:**
 - Modify: `tests/test_docs_conformance.py:22-38`（DOC_FILES 追加；`_LINE`/`_SPAN` 扩 `wecom-cli`；binary 解析与活断言）
@@ -228,7 +350,7 @@ git commit -m "test: wecom-cli 真值探针 fixtures + 命令真值表（Phase 3
 - Modify: `skills/knowledge-storage/SKILL.md:234`、`skills/question-answering/SKILL.md:137`（WeCom URL 行改指 integration skill）、`skills/wiki-setup/SKILL.md:78`（同语义）
 
 **Interfaces:**
-- Consumes: Task 1 命令真值表 + 原生 URL 形状 + version 轴结论
+- Consumes: Task 1 命令真值表 + 原生 URL 形状 + Task 2 写后快照通道（`journal end --snapshot-after`）+ version 键缺席结论（design ruling 修订案）
 - Produces: `skills/wecom-integration/SKILL.md`——六个编排 skills 已按名引用 `<platform>-integration`（B9 静态检查 `INTEGRATION_REF` 正则对 wecom 已生效，无需改 `tests/test_skill_docs_integration_routing.py`）；agent evals 的委派断言以本文档章节名为准（Search / Read / Write / Undo Compensation / Native URL / Known Limitations）
 
 - [ ] **Step 1: 扩容 docs-conformance（先改测试，见 RED）**
@@ -429,7 +551,7 @@ git commit -m "feat(skills): wecom-integration skill — wecom-cli 调用矩阵 
 ```
 
 ---
-### Task 3: WeComAdapter 读车道接真 wecom-cli（FM3/version 新鲜度读 + B11-wecom search 保真）
+### Task 4: WeComAdapter 读车道接真 wecom-cli（FM3/写后快照新鲜度读 + B11-wecom search 保真）
 
 **Files:**
 - Modify: `src/kgent/adapters/wecom.py`（整文件重写——wire-v1 基类保留给未覆盖方法）
@@ -883,7 +1005,7 @@ git commit -m "feat(adapters): WeComAdapter 接真 wecom-cli——undo 新鲜度
 
 ---
 
-### Task 4: agent evals runner 放行 wecom-cli + evals fixtures wecom 腿
+### Task 5: agent evals runner 放行 wecom-cli + evals fixtures wecom 腿
 
 **Files:**
 - Modify: `tools/run-agent-evals.py:186-187`（allowedTools 追加 `Bash(wecom-cli:*)`；grader 三平台兜底正则 `(?:lark|dingtalk|wecom)-integration` Phase 2 Task 4 已覆盖 wecom——**勿重复改**）
@@ -990,7 +1112,7 @@ git commit -m "test(evals): wecom 腿接线——runner 放行 wecom-cli + knowl
 ```
 
 ---
-### Task 5: B5/B8 真机 e2e（wecom 快照写回闭环 + FM2/FM3 拒绝变体 + 内容完整性）
+### Task 6: B5/B8 真机 e2e（wecom 快照写回闭环 + FM2/FM3 拒绝变体 + 内容完整性）
 
 **Files:**
 - Test: `tests/e2e/test_wecom_undo_real.py`（Create；结构沿用 `tests/e2e/test_dingtalk_undo_real.py` 的全部修正：`sys.executable -m kgent`、kgent `--json` 叶子位、win32 `.cmd` 解析、`except BaseException` 前缀保护 + 幂等 `_teardown`、session 末 leftover 重试点名、UTF-8 stdio、有界轮询、常量区集中命令真值）
@@ -1708,7 +1830,7 @@ git commit -m "test: B5/B8 真机 e2e——wecom undo 快照写回闭环 + FM2/F
 ```
 
 ---
-### Task 6: gauntlet 全绿 + agent evals（wecom 腿）+ EVIDENCE 收尾
+### Task 7: gauntlet 全绿 + agent evals（wecom 腿）+ EVIDENCE 收尾
 
 **Files:**
 - Create: `specs/2026-09-08-phase3-wecom-integration-evidence.md`（照 Phase 2 EVIDENCE 结构：凭据阻塞声明先行 → Baseline 演进 → gauntlet 各层数字 → B5/B8/B11 → 测试映射 → agent evals → 已知限制 → skip 层理由 → deferred minors → 复现入口）
