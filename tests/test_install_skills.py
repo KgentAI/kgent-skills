@@ -348,3 +348,64 @@ def test_s1_install_creates_hub_and_claude_links(tmp_path: Path, fake_uv: Path) 
         _assert_live_link(hub / name, REPO_ROOT / "skills" / name)
         # claude hop: resolvable through both links
         _assert_live_link(home / ".claude" / "skills" / name, REPO_ROOT / "skills" / name)
+
+
+# ---------------------------------------------------------------------------
+# S8 - CodeBuddy (Workbuddy) hop: ~/.codebuddy/skills, same contract as the
+# claude hop (present-dir detection, link to the HUB entry, verify, uninstall)
+# ---------------------------------------------------------------------------
+
+
+def test_s8a_codebuddy_hop_installed_when_dir_present(tmp_path: Path, fake_uv: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".codebuddy").mkdir()  # CodeBuddy CLI present -> codebuddy hop expected
+
+    result = _run(home, extra_path=str(fake_uv.parent))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    for name in EXPECTED_SKILLS:
+        _assert_live_link(home / ".codebuddy" / "skills" / name, REPO_ROOT / "skills" / name)
+
+
+def test_s8b_no_codebuddy_dir_left_untouched(tmp_path: Path, fake_uv: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()  # only claude present
+
+    result = _run(home, extra_path=str(fake_uv.parent))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (home / ".codebuddy").exists(), "installer must not create ~/.codebuddy"
+
+
+def test_s8c_copy_mode_codebuddy_links_to_frozen_hub(tmp_path: Path, fake_uv: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".codebuddy").mkdir()
+
+    result = _run(home, "--copy", extra_path=str(fake_uv.parent))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    hub = home / ".agents" / "skills"
+    for name in EXPECTED_SKILLS:
+        entry = home / ".codebuddy" / "skills" / name
+        assert (entry / "SKILL.md").exists()
+        # the hop links to the HUB entry (single source of truth), not the repo
+        assert Path(os.path.realpath(entry)) == Path(os.path.realpath(hub / name))
+        assert Path(os.path.realpath(entry)) != Path(os.path.realpath(REPO_ROOT / "skills" / name))
+
+
+def test_s8d_uninstall_removes_codebuddy_entries(tmp_path: Path, fake_uv: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".codebuddy").mkdir()
+    assert _run(home, extra_path=str(fake_uv.parent)).returncode == 0
+
+    result = _run(home, "--uninstall", extra_path=str(fake_uv.parent))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    for name in EXPECTED_SKILLS:
+        assert not (home / ".codebuddy" / "skills" / name).exists()
+    for name in EXPECTED_SKILLS:
+        assert (REPO_ROOT / "skills" / name / "SKILL.md").exists(), f"repo skill {name} damaged!"

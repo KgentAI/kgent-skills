@@ -22,11 +22,12 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
-### Claude Code Skills
+### Agent Skills
 
-One command installs everything — all skills (as live links into
-`~/.agents/skills`, mirrored into `~/.claude/skills` when Claude Code is
-present), the `kgent` CLI itself, and a health check of the whole chain:
+One command installs everything — all skills (as live links into the
+cross-agent hub `~/.agents/skills`, mirrored into `~/.claude/skills` and
+`~/.codebuddy/skills` when those agents are present), the `kgent` CLI itself,
+and a health check of the whole chain:
 
 ```bash
 bash tools/install-skills.sh
@@ -42,9 +43,9 @@ bash tools/install-skills.sh --backup     # keep replaced dirs in ~/.agents/skil
 ```
 
 Under the hood, the script discovers every `skills/*/SKILL.md`, links it into
-the hub, mirrors the link into `~/.claude/skills`, and installs the CLI
-(preferring `uv tool install`, falling back to a dedicated venv, then ambient
-pip). The manual equivalent:
+the hub, mirrors the link into each detected agent directory, and installs the
+CLI (preferring `uv tool install`, falling back to a dedicated venv, then
+ambient pip). The manual equivalent:
 
 ```bash
 ln -s $(pwd)/skills/knowledge-storage ~/.agents/skills/knowledge-storage
@@ -52,8 +53,23 @@ ln -s $(pwd)/skills/question-answering ~/.agents/skills/question-answering
 ln -s $(pwd)/skills/wiki-setup ~/.agents/skills/wiki-setup
 ```
 
-After installation (and a Claude Code session restart), you can use natural
-language:
+#### Installation per agent
+
+How each agent finds the skills differs — Codex, OpenCode, OpenClaw, and pi
+scan the `~/.agents/skills` hub natively; Claude Code and Workbuddy (CodeBuddy
+CLI) need the installer's mirror hop. Per-agent guides cover discovery paths,
+manual fallback, and verification:
+
+| Agent | Guide |
+|---|---|
+| Claude Code | [docs/install/claude-code.md](docs/install/claude-code.md) |
+| Codex (OpenAI) | [docs/install/codex.md](docs/install/codex.md) |
+| OpenCode | [docs/install/opencode.md](docs/install/opencode.md) |
+| OpenClaw | [docs/install/openclaw.md](docs/install/openclaw.md) |
+| pi | [docs/install/pi.md](docs/install/pi.md) |
+| Workbuddy (CodeBuddy CLI) | [docs/install/codebuddy.md](docs/install/codebuddy.md) |
+
+After installation (and an agent restart), you can use natural language:
 
 - "Save this to the knowledge base" → invokes `knowledge-storage` skill
 - "What does X mean?" → invokes `question-answering` skill

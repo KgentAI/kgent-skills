@@ -352,3 +352,31 @@ Implementation is production-ready for kgent packaging.
 
 **Reproduce**: 仓库根 `bash tools/gauntlet.sh`（wecom e2e 需 640459 配额窗；dingtalk e2e 需 `DWS_PROBE_CONFIRM=yes`——两者环境门在 full report §0/§7）；agent evals 三条命令在 full report §5；分层读数命令在 full report §2/§9。
 
+
+---
+
+# Evidence Addendum — Per-agent installation guides + installer CodeBuddy hop 2026-09-09
+
+**Status**: 分层读数——本工作触碰的各层全绿；完整单命令 gauntlet 绿灯被 **两例 pre-existing 真机 dingtalk e2e 失败** 阻断（与本工作无关，见下）。
+
+**Scope**: 六 agent（Claude Code / Codex / OpenCode / OpenClaw / pi / Workbuddy=CodeBuddy CLI）安装指南 `docs/install/*.md`（7 文件含索引）+ README「Installation per agent」表 + `install-skills.sh` 新增 CodeBuddy 镜像跳（`~/.codebuddy/skills`，与 claude 跳同契约：`~/.codebuddy` 存在才建、链到 hub 入口、verify/uninstall 同步）+ `artifact-smoke.sh` CRLF 修复 + `surface-manifest.txt` eol=lf 固化。
+
+**Key discovery**: hub `~/.agents/skills` 被 4/6 agent 原生扫描——Codex（`$HOME/.agents/skills`，官方 skills 文档）、OpenCode（六位置之一）、pi（global 两位置之一）、OpenClaw（source `agents-skills-personal`）。仅 Claude Code 与 CodeBuddy 需要镜像跳。装新 agent = 判型（hub-native vs mirror），不是逐个接胶水。
+
+**Tests (TDD RED→GREEN)**: `tests/test_install_skills.py` S8a–S8d（S8a/S8c watched-FAIL：无 codebuddy 跳时 SKILL.md 不可解析；S8b/S8d 存在性检测与卸载契约 pin）——14 passed。`tests/test_artifact_smoke.py` 新建 2 测（CRLF manifest：stub artifact 模拟 argparse 对 `--help\r` 拒收，RED 复现 17/18 FAIL；LF sanity PASS）→ 脚本 `line="${line%$'\r'}"` 修复后 GREEN。
+
+**Live verification matrix（真机，2026-09-09）**:
+- **OpenClaw** ✓ `openclaw skills list` 六 kgent skills 全 `✓ ready`（source agents-skills-personal）；`skills info` Path 解析穿 hub 到 repo。
+- **OpenCode** ✓ `opencode debug skill` 97 skills 含全部六个（注意：该命令输出巨大，勿用 `head` 截管道——会 mid-JSON 截断造成「只见部分 skills」假象，写文件再 grep）。
+- **Codex** ✓ codex-cli 0.153.4（本机 npm 装）——`codex debug prompt-input "hello"` 无需登录即渲染 model-visible prompt：skill root `r0=~/.agents/skills` + 六 skills 全名单（比 REPL `/skills` 更好的非交互验收命令，已写进 codex.md）。
+- **pi** ✓ `pi -p --provider opencode-go --model deepseek-v4-flash --no-session "list your skills"`（一次廉价真调用）名单含全部六个。
+- **Claude Code** ✓ 本会话即证据（`~/.claude/skills` 四/六 skills 加载进系统上下文）+ installer verify `(claude)` 行全 OK。
+- **Workbuddy (CodeBuddy)** △ 文件侧全证：`~/.codebuddy` 不存在 → installer 正确跳过；`mkdir -p ~/.codebuddy` 后重跑 → verify `(codebuddy)` 行全 OK、junction realpath 解析回 repo SKILL.md。**模型侧验收 auth-gated**：`codebuddy -p` 要求 `/login`（Tencent 账号）——维护者登录后在 REPL 跑 `/skills` 即闭环（codebuddy.md 已注明）。
+
+**CRLF 定谳（Windows 真机事实回流）**: `tools/surface-manifest.txt` 无 .gitattributes 保护（仅 `*.sh` 有 `eol=lf`），autocrlf checkout 落地 CRLF → artifact-smoke 探针 argv 带 `\r`：`--help` 尾探针 argparse 拒收 exit 2 → **17/18 FAIL**（功能行 `\r` 落进字符串 value 反而 PASS——与该脚本 Phase 3 注释的设计意图完全倒置，正是这个倒置定位到 CRLF）。双层修复：脚本内 strip CR（对任意 checkout 免疫）+ `.gitattributes` 补 `tools/surface-manifest.txt text eol=lf` 并把工作树文件归 LF。修复后 **18/18 surface probes passed**。
+
+**Gauntlet 分层读数（本工作后）**: artifact-smoke **18/18**；mypy strict **0 错**（52 files）；ruff/format **本工作触碰文件 0 债**（branch baseline 41 errors / 16 files 与 stash 对照证实为 pre-existing）；pytest **623 passed / 2 failed / 4 skipped**——两失败均在 `tests/e2e/test_dingtalk_undo_real.py`（B6 undo/B6 FM2），定谳为 **pre-existing 真机 dws 契约漂移**：条件写预期 `doc_write_verification_failed`、实际 `confirmation_required`（`dws doc +update` 非交互环境要求显式 `--yes`），与本工作零交集（本工作未触碰 src/、adapters、dingtalk e2e）。mutation 同前 report-only。
+
+**遗留（如实声明）**: dingtalk e2e 诊断复跑在真机租户留下一个 probe doc `Exel2BLV5zZZ7096CpX9zgKPJgk9rpMq`（teardown 因同一 `confirmation_required` 删除失败，e2e 输出自带 live-verified 删除命令：`dws drive +delete --node Exel2BLV5zZZ7096CpX9zgKPJgk9rpMq -y -f json`）——**未由本工作代删**（真机租户删除留给维护者/所属 dingtalk 会话裁决）。
+
+**Reproduce**: 仓库根 `bash tools/install-skills.sh`（跑前 `mkdir -p ~/.codebuddy` 则带 codebuddy 跳）；`.venv/Scripts/python.exe -m pytest tests/test_install_skills.py tests/test_artifact_smoke.py -q`；逐 agent 验收命令在各 `docs/install/*.md` Verify 节；artifact-smoke `bash tools/artifact-smoke.sh`。
