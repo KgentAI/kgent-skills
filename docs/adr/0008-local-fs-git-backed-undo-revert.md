@@ -1,6 +1,8 @@
-# 0008 — local-fs store 是 git 仓库，undo 是 revert
+# 0008 — local-fs store 是 git 仓库，undo 是 revert（git-backed 模式）
 
-local-fs 的 `<root>` 是一个 git 仓库：setup 幂等 `git init` + 种子提交 + `.gitattributes`（`* -text`，git 永不改写换行，落盘统一 LF）。skill 的每次写操作（create / update / delete / archive / unarchive）= **恰好一个 commit**：只 stage 触碰的路径（外来文件永不入库），message 固定格式 `kgent(<op_id>): <op> <uri> (vN→vM)`——`git log` 即人可读的全库 op 历史。
+> **修订**：git 不再是硬依赖——git 不可用（或 root 嵌于他人仓库）时 local-fs 降档为快照兜底模式，见 **ADR 0009**。本 ADR 描述 git-backed 模式。
+
+git 可得时，local-fs 的 `<root>` 是一个 git 仓库：setup 幂等 `git init` + 种子提交 + `.gitattributes`（`* -text`，git 永不改写换行，落盘统一 LF）。skill 的每次写操作（create / update / delete / archive / unarchive）= **恰好一个 commit**：只 stage 触碰的路径（外来文件永不入库），message 固定格式 `kgent(<op_id>): <op> <uri> (vN→vM)`——`git log` 即人可读的全库 op 历史。
 
 台账零 schema 改动：`journal begin/end` 的 `--revision-before/after` 本就是后端无关字符串，local-fs 存 **git commit SHA**。ADR 0005 的新鲜度规则（当前 revision ≠ 台账写后 revision → 拒绝）对 local-fs 原生成立：**HEAD == 写后 SHA**。
 
@@ -19,7 +21,7 @@ undo 与三平台同形（0004/0005）：`kgent undo` 的 adapter 执行路径�
 
 ## Consequences
 
-- git 是硬依赖：缺失时 local-fs 不可启用（enable 时 fail closed）；setup/doctor 检查。
+- git-backed 模式下 git 是硬依赖：缺失时 local-fs 降档 snapshot 模式（0009），不拒启；setup/doctor 检查并报告有效模式。
 - **remote 可选，默认无**（local-fs 的目的之一即不出本机）：`backends.local-fs.remote` 未配置时仓库仅本机、永不 push。用户显式配置 remote（如自建 git 服务，私密信息获准上行的场景）后，每次 skill 执行的 commit（写与 undo revert 同）之后**尽力而为 push**：push 失败不判定写失败、不回滚、journal 照常落账——失败显式申报；非快进拒绝（他机分叉）只申报，不自动 pull/rebase/merge（多机同步语义属后续 spec）。push 复制的是全部已提交内容，配置 remote 即用户对复制范围的明示同意。
 - 用户自己的 commit 会令 undo 显式检查拒绝——正确行为（不可埋掉用户的提交），记入 skill 已知限制。
 - `git gc --prune=now` 类操作可毁历史、断掉 revert：skill 文档明示勿做；正常 gc 不影响可达 commit。

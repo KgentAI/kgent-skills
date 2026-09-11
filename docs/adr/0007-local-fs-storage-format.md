@@ -8,7 +8,7 @@ local-fs 的存储模型三件套：
 
 frontmatter 的 `version` 行兼任 git revert 的冲突哨兵：任何后续 skill 写都会改动该行，使对旧写 commit 的 revert 必然冲突——这是 0008 freshness 的结构性一层。
 
-删除与 undo 属于 store 的版本化机制，见 **ADR 0008**（store 是 git 仓库，undo 是 revert）；0007 初稿的 `.trash/` 方案被 0008 取代。
+删除与 undo 属于 store 的版本化机制，按有效模式两档：**ADR 0008**（git-backed：store 是 git 仓库，undo 是 revert）与 **ADR 0009**（snapshot：git 不可用时的快照兜底，`.trash` 回归）。
 
 ## Considered Options
 

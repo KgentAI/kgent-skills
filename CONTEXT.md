@@ -36,6 +36,10 @@ _Avoid_: 本地存储、离线后端
 本地后端家族的首个成员：纯文件系统知识库——markdown + frontmatter、wiki 形目录树、grep 式检索。config 名 `local-fs`，URI 形如 `kgent://local-fs/<相对路径>`。
 _Avoid_: local backend（那是家族名）、文件后端
 
+**store 模式 (store mode)**:
+local-fs 的版本化能力档位，由环境自动定档：**git-backed**（root 为 git 仓库，undo = git revert，恢复窗口无限）与 **snapshot**（git 不可用或 root 嵌于他人仓库，undo = 台账快照写回 + `.trash`，快照窗口受 retention 约束）。两模式同一 skill、同一 frontmatter、同一 fail-closed 新鲜度纪律。
+_Avoid_: git 模式/非 git 模式（档位名固定为 git-backed / snapshot）
+
 **kgent hosted backend**:
 kgent 自有的云端托管知识库后端，与 lark / dingtalk / wecom 并列的另一种后端选择（尚未实现）；kgent CLI 平台操作（store / wiki / update / create / read / search）的唯一保留对象。三大平台的操作不经它。
 _Avoid_: 本地后端、内置后端、主后端
