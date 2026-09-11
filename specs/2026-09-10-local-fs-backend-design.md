@@ -28,7 +28,9 @@ kgent 目前仅有三个 SaaS 平台后端。新增 **local-fs**：存储在本�
 - **存储**：md + YAML frontmatter；wiki 形目录树（空间=顶层目录、节点=嵌套目录、
   文档=.md）；路径即 id；归档=frontmatter 标志（ADR 0007）。
 - **git 使能**：`<root>` 是 git 仓库；每次写一个 commit；undo = `git revert`；
-  台账 revision 字段存 commit SHA；无 `.trash`（ADR 0008）。
+  台账 revision 字段存 commit SHA；无 `.trash`（ADR 0008）。**remote 可选，默认
+  无**：`backends.local-fs.remote` 配置后每次 commit 尽力而为 push（失败只申报，
+  不影响写/journal；非快进不自动合并）。
 - **config 零 schema 改动**：`backends.local-fs.type: skill`、
   `skill_name: local-fs-integration`、`trust_zone: internal`、`root`（可选，
   默认 `~/.kgent/local-fs/`；`KGENT_LOCAL_FS_ROOT` 覆盖一切）。
@@ -91,6 +93,9 @@ frontmatter bump：version+1、hash、updated、archived
 git add <仅触碰路径> && git commit -m "kgent(<op_id>): <op> <uri> (vN→vM)"
 kgent journal end                # status ok/failed + --revision-after=<写后 SHA>
 读回校验                          # 正文 hash 比对
+push（可选）                      # 仅当 backends.local-fs.remote 已配置；尽力而为：
+                                 # 失败只申报，不影响 journal 结论；undo 的 revert
+                                 # commit 同样走此步
 ```
 
 - create：version=1 起；父目录自动创建（建节点=`mkdir -p`，建空间=顶层 `mkdir`）；
@@ -156,7 +161,8 @@ ADR 0008）；`kgent route --dry-run` 对 local-fs 可用：config 声明的 `ca
 | URI 逃逸 root | id 校验拒绝绝对路径/`..` | —（负向约束，无残余） |
 | 用户手放文件被破坏 | 外来文件写入拒绝 + 永不 stage | 检索仍可读（只读无害） |
 | 静默启用改变既有 fanout | setup 不自动 enable；示例注释态 | — |
-| 隐私外泄 | 永不配置 remote、永不 push | 用户自行加 remote 属其决定，skill 文档警示 |
+| 隐私外泄 | remote 默认无；配置后 push 复制全部已提交内容 = 用户明示同意（skill 文档警示） | push 目标主机被攻破——超出 local-fs 威胁模型，属用户所选 git 服务的安全域 |
+| push 失败/非快进 | 尽力而为：不判写失败、不回滚、journal 照常；非快进只申报 | 长期不解决的分叉会累积——申报可见，解决属多机同步 spec |
 
 ## 验收标准（可执行）
 
@@ -189,7 +195,11 @@ begin/end 成对、op_id 含 uuid、revision-after 为有效 SHA。
 **A5 幂等与隔离（负向）**：URI `kgent://local-fs/../etc/passwd` 与
 `kgent://local-fs/C:/x.md` → 拒绝；无 frontmatter 文件植入 root → search 跳过、
 write 拒绝、**git status 无该文件的任何 staged 痕迹**；`.git/` 不出现在任何检索
-结果；store 仓库无 remote（`git remote` 空）。
+结果；默认配置 store 无 remote（`git remote` 空）。
+
+**A5b remote push（可选路径，pytest/gauntlet，remote fixture = 本地 bare 仓库）**：
+配置 remote 后写一笔 → push 到位（bare 仓库含该 commit）；remote 不可写 → 写仍
+成功、journal ok、push 失败显式申报；人为制造非快进 → 申报且不产生自动合并提交。
 
 **A6 表面**：`tools/surface-manifest.txt` 与安装后工件含 local-fs-integration；
 `kgent skills list` 类检查（artifact-smoke）可见该 skill。
@@ -206,5 +216,6 @@ write 拒绝、**git status 无该文件的任何 staged 痕迹**；`.git/` 不�
 
 ## Out of scope（后续 spec）
 
-平台 publish/同步（目的 4）、local-obsidian 等家族成员、语义检索、git gc 策略与
-远端（备份）同步、多机同步、frontmatter 之外的内容类型映射。
+平台 publish/同步（目的 4）、local-obsidian 等家族成员、语义检索、git gc 策略、
+多机同步语义（pull/rebase/冲突解决——remote 现为纯尽力而为备份）、敏感级门控的
+push（按内容级别拒绝上行的策略路由）、frontmatter 之外的内容类型映射。

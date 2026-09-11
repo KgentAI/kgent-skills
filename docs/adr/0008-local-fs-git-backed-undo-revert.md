@@ -20,7 +20,7 @@ undo 与三平台同形（0004/0005）：`kgent undo` 的 adapter 执行路径�
 ## Consequences
 
 - git 是硬依赖：缺失时 local-fs 不可启用（enable 时 fail closed）；setup/doctor 检查。
-- 永不配置 remote、永不 push——隐私边界（local-fs 的目的之一即不出本机）；仓库仅本机。
+- **remote 可选，默认无**（local-fs 的目的之一即不出本机）：`backends.local-fs.remote` 未配置时仓库仅本机、永不 push。用户显式配置 remote（如自建 git 服务，私密信息获准上行的场景）后，每次 skill 执行的 commit（写与 undo revert 同）之后**尽力而为 push**：push 失败不判定写失败、不回滚、journal 照常落账——失败显式申报；非快进拒绝（他机分叉）只申报，不自动 pull/rebase/merge（多机同步语义属后续 spec）。push 复制的是全部已提交内容，配置 remote 即用户对复制范围的明示同意。
 - 用户自己的 commit 会令 undo 显式检查拒绝——正确行为（不可埋掉用户的提交），记入 skill 已知限制。
 - `git gc --prune=now` 类操作可毁历史、断掉 revert：skill 文档明示勿做；正常 gc 不影响可达 commit。
 - 每写一 commit 是预期形态，不 squash；`.git` 随文档量增长属可接受成本。
