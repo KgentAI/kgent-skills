@@ -2,9 +2,9 @@
 
 Owned by Task 2.1. ``load_config_dict`` validates the top-level shape and
 ``version``, deep-merges raw values into per-section defaults, and validates
-allowed values for ``routing_mode``, ``trust_zone``, ``type``, and the positive
-integer fields — raising :class:`~kgent.errors.ConfigError` naming the offending
-key on failure.
+allowed values for ``routing_mode``, ``trust_zone``, ``type``, per-backend
+``mode``/``remote``, and the positive integer fields — raising
+:class:`~kgent.errors.ConfigError` naming the offending key on failure.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ ALLOWED_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
 _ROUTING_MODES: frozenset[str] = frozenset({"explicit", "configured", "smart"})
 _BACKEND_TYPES: frozenset[str] = frozenset({"skill", "cli", "mcp"})
 _TRUST_ZONES: frozenset[str] = frozenset({"internal", "external"})
+_STORE_MODES: frozenset[str] = frozenset({"git-backed", "snapshot"})
 
 _DEFAULT_DEFAULTS: dict[str, Any] = {
     "routing_mode": "configured",
@@ -53,6 +54,8 @@ _BACKEND_DEFAULTS: dict[str, Any] = {
     "capabilities": {},
     "content_types": [],
     "priority": None,
+    "mode": "git-backed",  # local-fs store mode (ADR 0009); platform backends ignore it
+    "remote": None,  # optional git remote URL; local-fs only (ADR 0008 rev 3)
 }
 
 
@@ -229,6 +232,14 @@ def _validate_backend(name: str, merged: dict[str, Any]) -> None:
         raise ConfigError(
             f"invalid backends.{name}.trust_zone: {trust_zone!r} (allowed: internal, external)"
         )
+    mode = merged.get("mode")
+    if mode is not None and mode not in _STORE_MODES:
+        raise ConfigError(
+            f"invalid backends.{name}.mode: {mode!r} (allowed: git-backed, snapshot)"
+        )
+    remote = merged.get("remote")
+    if remote is not None and not isinstance(remote, str):
+        raise ConfigError(f"invalid backends.{name}.remote: must be a string or null")
 
 
 def _build_routing_rules(raw_rules: Any) -> list[dict[str, Any]]:
