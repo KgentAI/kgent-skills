@@ -66,7 +66,12 @@ CONTEXT.md「知识依赖」词条、ADR 0006/0007 随实现首 commit 落盘。
   - 首轮：`9bN7RYPWdMzz1wy9cjZLbM3LVZd1wyK0`、`9E05BDRVQ2oo1EROtPGRy1n3J63zgkYA`
   - 二轮：`3NwLYZXWyn112PxyUGoP5xpzVkyEqBQm`、`vNG4YZ7JnP334gxzCA1a57kMW2LD0oRE`
   - 清理命令：`dws drive +delete --node <DOC_ID> -y -f json`（进回收站，可恢复；需操作者同意 -y）
-- **wecom 探针残留（5 个，CLI 无删除命令）**：`dc9IBcj5…`、`dcEVtIviaB…`、`dcPtyk41e5…`、`dcbmGt_1Pg…`、`dcr26L1Aj4…`（完整 id 见 `gauntlet-run.log` 的 `"docid"` 记录）。平台侧无文档删除命令（Phase 3 真值单）；需平台后台手动清理或保留至过期策略。
+- **wecom 探针残留（5 个，CLI 无删除命令）**：完整 docid——
+  `dc9IBcj5eVbiSO4OOehgvf3DEa28U5yzUlwYdkG1DUpGQi3kaueeBu_9bWqFfVYsmw786eTmotYV_NHLO3TjZmCg`、
+  `dcEVtIviaBOE29U0uELfV4t0svV29giUgPoEFibWD8SQ_17xjWPdircd_UyMqFb6mGnJstHXd2q_JMy95lI8zSJw`、
+  `dcPtyk41e5p5DVsg_Ke_hG8PHunhZ6OJFi_p_E9Fa9pDZrnvwMKqe7BrycYEnIWKN-QfbiP2Ag7wHK0psjtPidxw`、
+  `dcbmGt_1PgVM4GFj697SY88C0GzjIgcOxSbuOP4Ok0CFbUJbN4E5FqfPc6lVbR4ito0AlR7cFkhoIIpNZQDZmbMA`、
+  `dcr26L1Aj4h18eSkoOBvGMl4YW8Sn1JDYoZACcFftCW2yzMI6hF65nAaZAZJP4rVqqI-cykxoJ3WAGCnIYTjwPvA`。平台侧无文档删除命令（Phase 3 真值单）；需平台后台手动清理或保留至过期策略。
 - 首轮 gauntlet 因上述 7 个真机失败在 coverage 层 set -e 中止（diff-cover/mypy/mutation 未达）——二轮（排除 `real`）全绿收口。
 
 ## 6. Conclusion
