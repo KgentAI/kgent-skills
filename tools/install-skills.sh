@@ -81,6 +81,76 @@ PYEOF
   fi
 }
 
+# sweep_dangling_self
+# After a skill rename (e.g. question-answering -> query-knowledge), old links
+# in the hub / agent dirs point at repo skill dirs that no longer exist; the
+# install and uninstall loops both iterate only CURRENT repo dirs, so those
+# entries would linger forever. Reclaim ONLY entries we own, by three
+# conditions that must ALL hold: the entry is a link/junction, its target
+# resolves under this repo's skills/ dir, and the target no longer exists.
+# Real dirs (e.g. --copy leftovers) and anything pointing elsewhere are never
+# touched - the hub is shared across agents and tools.
+sweep_dangling_self() {
+  local py dir dir_arg src_arg dangling entry
+  py="$(command -v python || command -v python3)" || return 0
+  for dir in "$HUB" "$CLAUDE_DIR" "$CODEBUDDY_DIR"; do
+    [ -d "$dir" ] || continue
+    if [ "$is_windows" -eq 1 ]; then
+      dir_arg="$(cygpath -w "$dir")"
+      src_arg="$(cygpath -w "$SKILLS_SRC")"
+    else
+      dir_arg="$dir"
+      src_arg="$SKILLS_SRC"
+    fi
+    dangling="$("$py" - "$dir_arg" "$src_arg" <<'PYEOF'
+import os
+import stat
+import sys
+
+scan, skills_src = sys.argv[1], sys.argv[2]
+try:
+    entries = os.listdir(scan)
+except OSError:
+    raise SystemExit(0)
+for name in entries:
+    p = os.path.join(scan, name)
+    try:
+        st = os.lstat(p)
+    except OSError:
+        continue
+    is_reparse = bool(getattr(st, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+    if not (os.path.islink(p) or is_reparse):
+        continue  # a real dir/copy - ownership is unknowable, leave it
+    try:
+        target = os.readlink(p)
+    except OSError:
+        continue
+    # junctions read back with the \\?\ extended-length prefix (and \\?\UNC\
+    # for UNC targets) - strip it or the commonpath ownership check fails
+    if target.startswith("\\\\?\\UNC\\"):
+        target = "\\\\" + target[8:]
+    elif target.startswith("\\\\?\\"):
+        target = target[4:]
+    if not os.path.isabs(target):
+        target = os.path.join(scan, target)
+    target = os.path.normpath(target)
+    src = os.path.normpath(skills_src)
+    try:
+        inside = os.path.commonpath([target, src]) == src
+    except ValueError:
+        inside = False
+    if inside and not os.path.exists(target):
+        print(p)
+PYEOF
+)"
+    while IFS= read -r entry; do
+      [ -n "$entry" ] || continue
+      echo "removing dangling entry: $entry (target gone from this repo's skills/)"
+      remove_entry "$entry"
+    done <<<"$dangling"
+  done
+}
+
 # backup_entry <path> <name>
 # Moves a replaced REAL dir into ~/.agents/skills-backups/<name>-<ts> (outside
 # the skills dir, so agents never index backups). Links are just removed - the
@@ -214,6 +284,7 @@ install_cli() {
 # then the CLI through the recorded backend. Without recorded provenance the
 # CLI is left in place (we did not install it).
 uninstall_all() {
+  sweep_dangling_self
   for skill_dir in "$SKILLS_SRC"/*/; do
     [ -f "${skill_dir}SKILL.md" ] || continue
     name="$(basename "$skill_dir")"
@@ -309,6 +380,8 @@ echo "verify: bash tools/artifact-smoke.sh  (install OK does not check freshness
   fi
   [ "$ok" -eq 1 ]
 }
+
+sweep_dangling_self
 
 for skill_dir in "$SKILLS_SRC"/*/; do
   [ -f "${skill_dir}SKILL.md" ] || continue

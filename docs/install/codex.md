@@ -33,10 +33,10 @@ Populate the hub yourself (junction on Windows needs no admin):
 
 ```bash
 # POSIX
-ln -sfn "$(pwd)/skills/knowledge-storage" ~/.agents/skills/knowledge-storage
+ln -sfn "$(pwd)/skills/ingest-knowledge" ~/.agents/skills/ingest-knowledge
 
 # Windows
-cmd /c mklink /J "%USERPROFILE%\.agents\skills\knowledge-storage" "%CD%\skills\knowledge-storage"
+cmd /c mklink /J "%USERPROFILE%\.agents\skills\ingest-knowledge" "%CD%\skills\ingest-knowledge"
 ```
 
 ## Verify
@@ -46,11 +46,11 @@ cmd /c mklink /J "%USERPROFILE%\.agents\skills\knowledge-storage" "%CD%\skills\k
   skills should be named (verified on codex-cli 0.153.4):
 
   ```bash
-  codex debug prompt-input "hello" | grep -E "knowledge-storage|question-answering|wiki-setup|dingtalk-integration|lark-integration|wecom-integration"
+  codex debug prompt-input "hello" | grep -E "ingest-knowledge|query-knowledge|wiki-setup|dingtalk-integration|lark-integration|wecom-integration"
   ```
 
 - In the Codex REPL: run `/skills` (or type `$` to open the skill selector).
-- Explicit invocation: `$knowledge-storage`, or just describe a matching task
+- Explicit invocation: `$ingest-knowledge`, or just describe a matching task
   (implicit invocation is on by default).
 
 ## Update / Uninstall

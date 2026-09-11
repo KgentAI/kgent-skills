@@ -1,5 +1,5 @@
 {
-  "skill_name": "knowledge-storage",
+  "skill_name": "ingest-knowledge",
   "evals": [
     {
       "id": 1,
@@ -7,7 +7,7 @@
       "expected_output": "The skill should search for existing Q4 planning documents, propose updating if found or creating new if not. Must show a proposal before executing, then confirm with a native URL (not kgent:// URI).",
       "files": [],
       "expectations": [
-        "The skill runs 'kgent search' before proposing any write",
+        "The skill discovers existing content through the query-knowledge flow before proposing any write — not bare 'kgent search'",
         "The skill presents a proposal to the user and waits for approval before executing",
         "The proposal includes a title derived from the meeting content",
         "The content is formatted as clean markdown with structured headings/lists",
@@ -168,6 +168,19 @@
         "The skill runs 'kgent route --dry-run' before executing any write",
         "The skill wraps the write with 'kgent journal begin' and 'kgent journal end'",
         "For WeCom targets the skill delegates execution via wecom-integration, not 'kgent update'"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Save this: 'Release sign-off now requires both the QA lead and the on-call SRE to approve a deployment.'",
+      "expected_output": "Pre-write discovery is the read lane (ADR 0007): the skill invokes the query-knowledge skill to find existing content matching the topic, consumes its match candidates (URI, node_type, title, recency, content type), and proposes update or create accordingly — it does not inline its own ad-hoc search steps.",
+      "files": [],
+      "expectations": [
+        "The skill invokes the query-knowledge skill for update-first discovery (its flow is followed: search via the enabled backends' integration skills)",
+        "The skill does not run its own inline search steps for content discovery (no ad-hoc 'lark-cli docs +search' outside the query-knowledge flow, and never bare 'kgent search')",
+        "Match candidates carry URI and node_type — a wiki match is updated as a wiki node, in place",
+        "The proposal (update or create) is presented before any write, with provenance recording what the discovery found",
+        "The write sequence is intact: route --dry-run, journal begin, write delegated via the platform integration skill, journal end, read back"
       ]
     }
   ]

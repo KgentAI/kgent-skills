@@ -21,12 +21,12 @@ only when `~/.claude` already exists (i.e. Claude Code is installed).
 
 ```bash
 # POSIX
-ln -sfn "$(pwd)/skills/knowledge-storage" ~/.agents/skills/knowledge-storage
-ln -sfn ~/.agents/skills/knowledge-storage ~/.claude/skills/knowledge-storage
+ln -sfn "$(pwd)/skills/ingest-knowledge" ~/.agents/skills/ingest-knowledge
+ln -sfn ~/.agents/skills/ingest-knowledge ~/.claude/skills/ingest-knowledge
 
 # Windows (junctions — no admin required)
-cmd /c mklink /J "%USERPROFILE%\.agents\skills\knowledge-storage" "%CD%\skills\knowledge-storage"
-cmd /c mklink /J "%USERPROFILE%\.claude\skills\knowledge-storage" "%USERPROFILE%\.agents\skills\knowledge-storage"
+cmd /c mklink /J "%USERPROFILE%\.agents\skills\ingest-knowledge" "%CD%\skills\ingest-knowledge"
+cmd /c mklink /J "%USERPROFILE%\.claude\skills\ingest-knowledge" "%USERPROFILE%\.agents\skills\ingest-knowledge"
 ```
 
 Repeat per skill (see `skills/` for the full list). Link to the hub, not the
@@ -37,14 +37,14 @@ repo, so `--copy` mode still has a single source of truth.
 1. The installer's health check prints one line per skill:
 
    ```
-   OK   knowledge-storage (hub)
-   OK   knowledge-storage (claude)
+   OK   ingest-knowledge (hub)
+   OK   ingest-knowledge (claude)
    ```
 
 2. Start a new Claude Code session (skills are scanned at startup) and check
    that the kgent skills appear — e.g. ask "what skills do you have" or use
    natural language: "Save this to the knowledge base" should trigger
-   `knowledge-storage`.
+   `ingest-knowledge`.
 
 ## Update / Uninstall
 

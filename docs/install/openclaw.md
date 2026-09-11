@@ -20,10 +20,10 @@ Populate the hub yourself (junction on Windows needs no admin):
 
 ```bash
 # POSIX
-ln -sfn "$(pwd)/skills/knowledge-storage" ~/.agents/skills/knowledge-storage
+ln -sfn "$(pwd)/skills/ingest-knowledge" ~/.agents/skills/ingest-knowledge
 
 # Windows
-cmd /c mklink /J "%USERPROFILE%\.agents\skills\knowledge-storage" "%CD%\skills\knowledge-storage"
+cmd /c mklink /J "%USERPROFILE%\.agents\skills\ingest-knowledge" "%CD%\skills\ingest-knowledge"
 ```
 
 (Avoid `openclaw skills install` from a local directory for this repo — it
@@ -33,7 +33,7 @@ copies, freezing today's content; the hub link tracks the repo.)
 
 ```bash
 openclaw skills list                # all six kgent skills should show ✓ ready
-openclaw skills info knowledge-storage   # Source: agents-skills-personal
+openclaw skills info ingest-knowledge   # Source: agents-skills-personal
 ```
 
 `openclaw skills check` additionally reports which skills are missing

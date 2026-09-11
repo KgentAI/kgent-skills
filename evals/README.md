@@ -36,7 +36,7 @@ nohup python tools/run-agent-evals.py --execute --parallel 3 \
 ## 并行原则（为什么能并行、怎么切）
 
 - **分区单位 = eval 文件**（`--parallel` 自动按文件分组）。写域不相交的概率
-  最高：只读组（question-answering，零台账写入）与创建组（wiki-setup，新建
+  最高：只读组（query-knowledge，零台账写入）与创建组（wiki-setup，新建
   独立页）可安全并行。
 - **共享状态**：`~/.kgent/journal/journal.ndjson` 被 worker 追加共享——避免
   两个 worker 同时写**同一 target**（新鲜度检查会兜底，但别主动撞）。

@@ -5,7 +5,7 @@ description: "Equip kgent operations with Lark-specific knowledge: native URL co
 
 # Lark Integration
 
-Equip the kgent skills (question-answering, knowledge-storage, wiki-setup) with the Lark layer of their operations: how to cite Lark content with native URLs, how to reach non-docx Lark content through the lark skills, and how Lark-side errors route. Single source of truth — the kgent skills carry no copies of these rules.
+Equip the kgent skills (query-knowledge, ingest-knowledge, wiki-setup) with the Lark layer of their operations: how to cite Lark content with native URLs, how to reach non-docx Lark content through the lark skills, and how Lark-side errors route. Single source of truth — the kgent skills carry no copies of these rules.
 
 ## The Gate
 

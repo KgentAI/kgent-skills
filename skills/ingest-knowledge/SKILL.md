@@ -1,14 +1,14 @@
 ---
-name: knowledge-storage
-description: "Persist knowledge from conversations into the knowledge base using kgent CLI. Activate whenever the user wants to save, store, persist, or remember information — including 'add this to the wiki', 'put this in our docs', 'update the guidelines with this', or any intent to write conversation content to a backend. Supports multiple backends (Lark, DingTalk, WeCom). Update-first: searches for matching docs before creating new ones. Even if the user just says 'save this', invoke this skill."
+name: ingest-knowledge
+description: "Ingest knowledge from conversations into the knowledge base using kgent CLI. Activate whenever the user wants to save, store, persist, or remember information — including 'add this to the wiki', 'put this in our docs', 'update the guidelines with this', or any intent to write conversation content to a backend. Supports multiple backends (Lark, DingTalk, WeCom). Update-first: discovers matching existing content through the query-knowledge skill before creating new ones. Even if the user just says 'save this', invoke this skill."
 metadata:
   requires:
     bins: ["python"]
 ---
 
-# Knowledge Storage
+# Knowledge Ingestion
 
-Save knowledge from conversations to the knowledge base. This skill orchestrates the write with update-first semantics, provenance tracking, and native URL presentation. Content living on Lark, DingTalk, or WeCom is searched, read, and written only through that platform's integration skill (`<platform>-integration`; Lark: `lark-integration`). The kgent CLI's own `search` / `read` / `create` / `update` / `store` operations stay reserved for the kgent hosted backend, which is not yet implemented (ADR 0004).
+Ingest knowledge from conversations into the knowledge base. This skill orchestrates the write with update-first semantics, provenance tracking, and native URL presentation. Pre-write discovery — finding existing content that the incoming knowledge should update — is delegated to the **query-knowledge** skill, the read lane (ADR 0007); this skill owns the proposal, the write sequence, and the confirmation. Content living on Lark, DingTalk, or WeCom is searched, read, and written only through that platform's integration skill (`<platform>-integration`; Lark: `lark-integration`). The kgent CLI's own `search` / `read` / `create` / `update` / `store` operations stay reserved for the kgent hosted backend, which is not yet implemented (ADR 0004).
 
 ## When to Use
 
@@ -20,7 +20,7 @@ Activate this skill when the user expresses any intent to write knowledge to a b
 - "create a doc about...", "make a new page for..."
 - Implicit intent: the user shares structured knowledge and context suggests it should be persisted
 
-When in doubt between this skill and question-answering: if the user's goal is to **write**, use this skill. If the goal is to **read/retrieve**, use question-answering.
+When in doubt between this skill and query-knowledge: if the user's goal is to **write**, use this skill. If the goal is to **read/retrieve**, use query-knowledge.
 
 ## Workflow
 
@@ -60,17 +60,23 @@ From the conversation context, identify:
 
 If the user didn't specify and the default isn't obvious, ask — but only if there are multiple enabled backends. If only one is configured, use it.
 
-### 2. Check for Existing Content (Update-First)
+### 2. Discover Existing Content (Update-First, via query-knowledge)
 
-Before creating a new document, search for existing similar content on the target backend(s). This is the **update-first bias** (N18, S61) — the system always prefers updating existing knowledge over creating duplicates.
+Before proposing a create, discover what already exists on the target backend(s). This is the **update-first bias** (N18, S61) — the system always prefers updating existing knowledge over creating duplicates — and the discovery itself belongs to the read lane: **invoke the `query-knowledge` skill and follow its flow (steps 0–3)** to find existing content matching the title/topic (ADR 0007). Scope the query-knowledge invocation to the target backend(s) from Step 1 — this is a targeted probe, not an open-ended grounding pass.
 
-Run the search through the target backend's integration skill. For Lark, invoke the `lark-integration` skill and follow its Search section — `lark-cli docs +search --query "<title keywords>" --json` (doc + wiki in one pass; add `lark-cli drive +search` when Drive files are in scope). The DingTalk and WeCom integration skills carry the equivalent search steps for their content. `kgent search` stays reserved for the kgent hosted backend, which is not yet implemented.
+Consume the **match candidates** query-knowledge returns — for each relevant hit, the five things this skill needs to build a proposal:
 
-The search covers **both flat docs and wiki nodes**; each hit carries a `node_type` field (`doc` vs `wiki_node`) — a wiki match is just as valid an update target as a doc match.
+1. **URI** — the `kgent://` URI (becomes the update target and the journal's undo anchor)
+2. **node_type** — `doc` vs `wiki_node`; a wiki match is just as valid an update target as a doc match, and is updated as a wiki node, in place
+3. **Title** — for match display and per-copy options
+4. **Recency** — last-updated info, to prefer fresh copies and break ties
+5. **Content type** — docx vs non-docx (bitable 多维表格, sheet, slides)
 
 A match whose content is a bitable 多维表格, sheet, or other non-docx Lark type is a **record-write target**, not a docx update — `kgent update` on it fails. With the Lark backend enabled, invoke the `lark-integration` skill and follow its write delegation matrix for that target.
 
-Analyze results:
+If query-knowledge surfaces conflicts or gaps during discovery (S55/N11), carry them into the proposal — don't silently absorb them into "no match" or "match".
+
+Analyze the candidates:
 
 **Single strong match** — a document or wiki node with the same or very similar title exists:
 → Propose **updating** that document. Show its URI, node type, and current content preview.
@@ -187,7 +193,7 @@ Which? (a/b/c/d/no/edit)
 
 ### 4. Execute (After User Approval)
 
-Execution follows one fixed sequence — routing decision, ledger, platform write, ledger close, read-back. The skill has already performed update-first search in Step 2, so don't use `kgent store` (which would search again), and never write platform content with `kgent create` / `kgent update` — those stay reserved for the kgent hosted backend (not yet implemented, ADR 0004).
+Execution follows one fixed sequence — routing decision, ledger, platform write, ledger close, read-back. The query-knowledge invocation in Step 2 has already discovered existing content, so don't use `kgent store` (which would search again), and never write platform content with `kgent create` / `kgent update` — those stay reserved for the kgent hosted backend (not yet implemented, ADR 0004).
 
 ```bash
 # 1. Routing decision (路由裁决) — read-only; the ruling must come back clean first
@@ -307,7 +313,8 @@ If the user says "edit" or wants to change the title/content at the proposal sta
 ## Important
 
 - **Never store without explicit user approval.** Always present the proposal first and wait for yes/no.
-- **Update-first bias:** Always search before creating. Propose UPDATE when a match exists, never CREATE (N18, S61). Search covers wiki nodes and flat docs — a wiki match is updated as a wiki node, in place.
+- **Update-first bias:** Always discover before creating — through the query-knowledge skill (ADR 0007). Propose UPDATE when a match exists, never CREATE (N18, S61). Discovery covers wiki nodes and flat docs — a wiki match is updated as a wiki node, in place.
+- **Discovery is the read lane:** don't inline your own search steps for content discovery; invoke query-knowledge and consume its match candidates (URI, node_type, title, recency, content type).
 - **Wiki placement matters:** When creating wiki nodes, find the right parent in the wiki structure rather than dumping at the space root. Show the chosen parent in the proposal.
 - **Ask wiki vs doc when ambiguous:** If no factor determines the target type on Lark, ask the user — don't silently pick (see "Wiki vs Doc Preference").
 - **Native URLs only:** Convert `kgent://` URIs to native platform URLs (N20). Lark conversion rules live in the `lark-integration` skill — invoke it when the Lark backend is enabled.
@@ -328,8 +335,8 @@ Skill:
 1. Extract: title="Authentication Flow Discussion"
    content="## Key Decisions\n- Using OAuth 2.0 with PKCE\n- Token refresh every 15 minutes..."
    backend: config default → lark
-2. Search: lark-integration search step — lark-cli docs +search --query "Authentication Flow" --json
-3. Found: "Authentication Flow v1" (kgent://lark/old123)
+2. Discover via query-knowledge (lark leg): candidates — "Authentication Flow v1" (kgent://lark/old123, doc, docx)
+3. Single strong match
 4. Propose update:
    "I found an existing doc 'Authentication Flow v1'. I'll update it with the new content.
     Proceed? (yes/no/edit)"
@@ -349,8 +356,8 @@ User: "Save the new API guidelines to DingTalk."
 
 Skill:
 1. Extract: title="API Guidelines", backend=dingtalk (explicit user input)
-2. Search: dingtalk-integration search step (same shape as the lark-integration Search section)
-3. No matches found
+2. Discover via query-knowledge (dingtalk leg): no candidates
+3. No matches → create
 4. Propose create:
    "I'll create 'API Guidelines' on DingTalk.
     Provenance: target=dingtalk ← explicit user input
@@ -367,7 +374,7 @@ User: "Save the updated retro notes."
 
 Skill:
 1. Extract: title="Retrospective Notes"
-2. Search via each enabled platform's integration skill
+2. Discover via query-knowledge across the enabled backends
 3. Found: "Retrospective Notes" on lark AND "Retrospective Notes" on dingtalk
 4. Propose per-copy options:
    "Found 2 matching docs:
@@ -386,8 +393,8 @@ User: "Save this deploy runbook to the knowledge base."
 
 Skill:
 1. Extract: title="Deploy Runbook"
-2. Search: lark-integration search step — lark-cli docs +search --query "deploy runbook" --json
-   → No matches (results would include wiki nodes if any existed)
+2. Discover via query-knowledge (lark leg): no candidates
+   (candidates would include wiki nodes if any existed)
 3. Target type ambiguous (no explicit wiki/doc mention, no match) → ask:
    "Where should I put this on Lark?
     [a] Wiki node — inside a knowledge space, organized in the wiki hierarchy

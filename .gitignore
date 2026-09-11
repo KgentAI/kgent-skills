@@ -4,6 +4,7 @@
 .mypy_cache
 __pycache__
 .coverage
+gauntlet-run*.log
 htmlcov
 *.egg-info
 skills-workspace/
