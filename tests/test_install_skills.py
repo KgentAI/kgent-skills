@@ -19,7 +19,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "tools" / "install-skills.sh"
-EXPECTED_SKILLS = ("knowledge-storage", "question-answering", "wiki-setup")
+EXPECTED_SKILLS = ("knowledge-storage", "question-answering", "wiki-setup", "decision-navigator")
 
 
 def _find_bash() -> str | None:

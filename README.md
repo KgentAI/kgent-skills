@@ -51,6 +51,7 @@ ambient pip). The manual equivalent:
 ln -s $(pwd)/skills/knowledge-storage ~/.agents/skills/knowledge-storage
 ln -s $(pwd)/skills/question-answering ~/.agents/skills/question-answering
 ln -s $(pwd)/skills/wiki-setup ~/.agents/skills/wiki-setup
+ln -s $(pwd)/skills/decision-navigator ~/.agents/skills/decision-navigator
 ```
 
 #### Installation per agent
@@ -74,6 +75,7 @@ After installation (and an agent restart), you can use natural language:
 - "Save this to the knowledge base" → invokes `knowledge-storage` skill
 - "What does X mean?" → invokes `question-answering` skill
 - "Set up a wiki" → invokes `wiki-setup` skill
+- "Should we pick A or B? Give me a recommendation" → invokes `decision-navigator` skill
 
 **Note**: The skills require the `kgent` CLI (installed by the script), an
 initial `kgent setup` (see below), and a configured backend (see Configuration
