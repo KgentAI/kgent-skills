@@ -20,7 +20,7 @@
     {
       "id": 2,
       "prompt": "我们的密码轮换政策是什么？",
-      "expected_output": "Anti-trigger (B1/FM4): this is a pure lookup. The skill must NOT run the decision flow (no DAG, no criteria/weights, no ranking); it should answer like question-answering: search the KB, synthesize with native-URL citations.",
+      "expected_output": "Anti-trigger (B1/FM4): this is a pure lookup. The skill must NOT run the decision flow (no DAG, no criteria/weights, no ranking); it should answer like query-knowledge: search the KB, synthesize with native-URL citations.",
       "files": [],
       "expectations": [
         "The skill does not produce a sub-question DAG, criteria/weights table, or option ranking",

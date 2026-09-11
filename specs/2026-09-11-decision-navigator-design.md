@@ -5,7 +5,15 @@
 - **Priority:** medium — 新能力，无事故驱动；价值主张是「把 kgent 已有的联邦检索变成可选方案的决策支持」
 - **Discovered while:** 维护者提出 Decision-Guidance Agent Skill Architecture 设计稿
   （2026-09-10），经 grill-with-docs 四轮 stress-test 收敛为本 spec；统一语言落
-  `CONTEXT.md`，检索层裁决落 `docs/adr/0006`，流程裁决落 `docs/adr/0007`
+  `CONTEXT.md`，检索层裁决落 `docs/adr/0010`，流程裁决落 `docs/adr/0011`
+
+> **修订（2026-09-11，merge origin/main #12/#13）**：知识两车道更名
+> question-answering → **query-knowledge**、knowledge-storage → **ingest-knowledge**，
+> 本文与 SKILL.md/evals 相应更新；本 spec 原编号 ADR 0006/0007 与 #12/#13 落下的
+> 新 ADR 撞号，改编号为 **0010/0011**（正文引用已同步）。⚠️ 上游遗留：main 的
+> #12 与 #13 各自落了 0006 与 0007（`0006-query-knowledge-*` vs
+> `0006-local-backend-family-*`、`0007-ingest-knowledge-*` vs
+> `0007-local-fs-storage-format`），编号重复属 main 自身问题，本分支不代为重编。
 
 ## 设计稿 → 本 spec 的修正（grill 记录）
 
@@ -13,12 +21,12 @@
 
 | 原设计稿 | 本 spec | 依据 |
 |---|---|---|
-| 向量库 + 知识图谱 + 内部数据库连接器 | 检索级联：kgent 联邦知识库 → 能力盘点发现的内部源 → 宿主 web（机会性）；向量库否决，知识图谱**延后**（经能力盘点接入） | ADR 0006 |
-| 线性四阶段（检索→分解） | 分解⇄检索收敛循环（分解先行、定点收敛） | ADR 0007 |
+| 向量库 + 知识图谱 + 内部数据库连接器 | 检索级联：kgent 联邦知识库 → 能力盘点发现的内部源 → 宿主 web（机会性）；向量库否决，知识图谱**延后**（经能力盘点接入） | ADR 0010 |
+| 线性四阶段（检索→分解） | 分解⇄检索收敛循环（分解先行、定点收敛） | ADR 0011 |
 | 「非阻塞」澄清 | 批间合并澄清：每轮至多一批、每批 ≤5 问、每问带推荐答案；「非阻塞」重定义为「合并批、不逐问串行」 | grill R1-Q3 / R2-Q10 |
 | 产出未定义 | 决策简报：聊天内唯一交付物，v1 不落盘 | grill R1-Q4 |
 | 「历史案例相似检索」 | 先例 = kgent 原生 search + 「可能相关」纪律；决策日志随写回能力延后 | grill R1-Q6 |
-| 「动态更新权重」 | 节点重开 + 下游传播；澄清批轮界合并 | ADR 0007 Consequences |
+| 「动态更新权重」 | 节点重开 + 下游传播；澄清批轮界合并 | ADR 0011 Consequences |
 
 ## 决策
 
@@ -34,13 +42,13 @@ skill（ADR 0004）；skill 自身无写路径，故不触台账 / undo / 路由
    宿主 web（宿主没有就跳过）；每 run 盘点一次；简报列「已检数据源」
 3. **分解⇄检索**：收敛循环——strawman 子问题图 → 按开放节点信息需求定向检索 →
    检索成果推进分解 → 直至某轮零新增/零重开/零新增引用解算；硬上限 3 轮，
-   达限征询用户延长（N 用户定，默认 3）；假设级变化不计为进展（ADR 0007）
+   达限征询用户延长（N 用户定，默认 3）；假设级变化不计为进展（ADR 0011）
 4. **解算归一**：每个开放节点恰一路由——用户（→澄清批）/ 来源（→检索）/
    假设（→标注）；只有用户路由节点可构成澄清批
 5. **评价准则**：skill 提议准则集 + 权重，用户确认/修改；用户显式权重优先
 6. **触发**：决策意图（必须在候选间抉择/承诺行动方向）触发本 skill；纯查询走
-   question-answering；SKILL.md 带双向示例
-7. **简报语言跟随请求**（沿 question-answering 语言规则）；仓内文档中文为主
+   query-knowledge；SKILL.md 带双向示例
+7. **简报语言跟随请求**（沿 query-knowledge 语言规则）；仓内文档中文为主
 8. **高风险域**（法律/财务/医疗/人身安全/人事）：不拒绝；强制注记
    「本简报是决策支持，不构成专业意见」+ 材料性主张必须引用
 9. **零证据降级**：级联全空 → 不拒绝；纯假设推演，置信度钉
@@ -51,7 +59,7 @@ skill（ADR 0004）；skill 自身无写路径，故不触台账 / undo / 路由
 
 ```
 决策意图触发
-  ├─ 0. kgent config validate / setup（沿 question-answering §0；配置读取先征同意）
+  ├─ 0. kgent config validate / setup（沿 query-knowledge §0；配置读取先征同意）
   ├─ 1. 澄清：从请求找缺口 → 澄清批（≤5 问、每问带推荐答案）
   ├─ 2. strawman 子问题图（仅凭澄清后的请求；节点 = 子问题，边 = 解算依赖）
   └─ 3. 收敛循环（≤3 轮；达限征询延长，默认再 3 轮）
@@ -80,9 +88,9 @@ skill（ADR 0004）；skill 自身无写路径，故不触台账 / undo / 路由
 
 > 触发：用户必须在多个候选方案间做选择或承诺行动方向——「该选 A 还是 B」
 > 「要不要迁到 X」「该裁掉哪条产品线」「帮我在这些 offer 里挑」。会在回复里给
-> 出带权衡的排序建议。不触发：纯查询/找文档（question-answering）；写入/保存
-> （knowledge-storage）；建空间（wiki-setup）。灰色地带：决策中的事实子问题
-> （「X 的续约价是多少」）按 question-answering 纪律检索后作为本 skill 的节点
+> 出带权衡的排序建议。不触发：纯查询/找文档（query-knowledge）；写入/保存
+> （ingest-knowledge）；建空间（wiki-setup）。灰色地带：决策中的事实子问题
+> （「X 的续约价是多少」）按 query-knowledge 纪律检索后作为本 skill 的节点
 > 解算，不整体移交。
 
 ## 组件改动
@@ -94,15 +102,15 @@ skill（ADR 0004）；skill 自身无写路径，故不触台账 / undo / 路由
 | `tests/test_dn_brief_check.py`（新） | 断言器自身的单元测试：合规简报通过；图-表分叉、环、状态缺失、伪 mermaid、轮次超限 各负控必败 |
 | `evals/skills/decision-navigator-evals.json`（新） | 只读 eval 腿：B1/B2/B8/B10/B11/B14 场景；澄清行为用 canned answers（runner `--continue` 沿例），免批路径用 `--no-followup` |
 | `README.md` | 技能清单两处补 decision-navigator（手动 `ln -s` 示例 + 触发示例） |
-| `evals/README.md` | 并行分区说明补：decision-navigator 属只读组（零台账写入，与 question-answering 同组可并行） |
+| `evals/README.md` | 并行分区说明补：decision-navigator 属只读组（零台账写入，与 query-knowledge 同组可并行） |
 | `tools/surface-manifest.txt` | **不改**——无新 kgent CLI 子命令 |
 | `tools/install-skills.sh` | **不改**——按 `skills/*/SKILL.md` 自动发现 |
 
 ## 非目标（明确不做）
 
 - **无写路径**：不写 KB、不建决策日志、不触台账/undo/路由裁决（写回是后续
-  phase，依赖 knowledge-storage 复用，届时单独立 spec）
-- 不自建向量库/嵌入/索引；不接企业知识图谱（延后接入点 = 能力盘点，ADR 0006）
+  phase，依赖 ingest-knowledge 复用，届时单独立 spec）
+- 不自建向量库/嵌入/索引；不接企业知识图谱（延后接入点 = 能力盘点，ADR 0010）
 - 不接行业行情数据源（宿主 web 机会性覆盖）
 - 不新增 kgent CLI 子命令、不改 MCP 面
 - 不做 rubric LLM-judge（分期后续）
@@ -133,7 +141,7 @@ Tier 3）；但产出影响真实决策，主要风险是**证据完整性**而�
 每条 = 一个具名行为；实现期 RED 阶段逐条见到失败。
 
 - **B1 触发判别**（eval）：决策意图 prompt（「A 还是 B」）触发本 skill；
-  查询 prompt（「X 的政策是什么」）不触发（走 question-answering）。
+  查询 prompt（「X 的政策是什么」）不触发（走 query-knowledge）。
 - **B2 澄清批纪律**（eval，canned answers）：每批 ≤5 问、每问带推荐答案；
   每轮至多一批；批内问题可追溯到用户路由节点。
 - **B3 strawman 先行**（transcript 顺序断言）：子问题图初版出现在任何检索
@@ -161,7 +169,7 @@ Tier 3）；但产出影响真实决策，主要风险是**证据完整性**而�
 
 ### Setup 计划
 
-- **依赖（新增）**：无。运行前置沿 question-answering：`kgent` CLI 已装 +
+- **依赖（新增）**：无。运行前置沿 query-knowledge：`kgent` CLI 已装 +
   ≥1 backend `enabled: true`（KB 腿）；能力盘点与宿主 web 为机会性，缺席合法
   （B4 明示即可）。`dn_brief_check.py` 仅用标准库（mermaid 子集自写解析，
   不引入依赖——理由：断言器必须先于简报可信，依赖越少越不可被绕过）。
@@ -197,7 +205,7 @@ B13 基线对照；负控记录（B6 各负控目睹失败）；skip 层带理�
   best-effort；已检数据源行让缺口可见而非静默。
 - **mermaid 方言漂移**：SKILL.md 限定裸 `flowchart TD`；断言器只认子集，
   超子集按违规处理（fail closed）。
-- **与 question-answering 的灰色复合请求**（「该续约吗？顺便查下现价」）：
+- **与 query-knowledge 的灰色复合请求**（「该续约吗？顺便查下现价」）：
   本 skill 内嵌 QA 纪律做节点解算，不整体移交；若实测触发抖动，反例入
   SKILL.md 触发面。
 - **循环轮次的 token 成本**：3 轮硬上限 + 靶向声明约束单轮宽度；超预算

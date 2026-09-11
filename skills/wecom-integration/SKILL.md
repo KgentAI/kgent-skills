@@ -5,7 +5,7 @@ description: "Equip kgent operations with WeCom-specific knowledge: search and r
 
 # WeCom Integration
 
-Equip the kgent skills (question-answering, knowledge-storage, wiki-setup) with the WeCom layer of their operations: search, read, write, undo compensation, and native URLs for WeCom content, executed through `wecom-cli`. Non-doc content types delegate to the native `wecomcli-*` skills (matrices under Read / Write). Single source of truth — the kgent skills carry no copies of these rules.
+Equip the kgent skills (query-knowledge, ingest-knowledge, wiki-setup) with the WeCom layer of their operations: search, read, write, undo compensation, and native URLs for WeCom content, executed through `wecom-cli`. Non-doc content types delegate to the native `wecomcli-*` skills (matrices under Read / Write). Single source of truth — the kgent skills carry no copies of these rules.
 
 WeCom 平台事实（真机探针定谳，2026-09-08；真值单 `tests/fixtures/wecom-cli/PROBE-NOTES.md`）：**无 version 轴**（`doc contents get` 响应不下发 `version` 键）、**无平台 history**、**无文档删除命令**——快照是补偿与新鲜度的唯一依据，一切命令拼写以 `wecom-cli <path> --help` 为准。
 

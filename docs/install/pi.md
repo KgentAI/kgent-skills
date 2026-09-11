@@ -31,10 +31,10 @@ Populate the hub yourself (junction on Windows needs no admin):
 
 ```bash
 # POSIX
-ln -sfn "$(pwd)/skills/knowledge-storage" ~/.agents/skills/knowledge-storage
+ln -sfn "$(pwd)/skills/ingest-knowledge" ~/.agents/skills/ingest-knowledge
 
 # Windows
-cmd /c mklink /J "%USERPROFILE%\.agents\skills\knowledge-storage" "%CD%\skills\knowledge-storage"
+cmd /c mklink /J "%USERPROFILE%\.agents\skills\ingest-knowledge" "%CD%\skills\ingest-knowledge"
 ```
 
 ## Verify
@@ -47,7 +47,7 @@ cmd /c mklink /J "%USERPROFILE%\.agents\skills\knowledge-storage" "%CD%\skills\k
   ```
 
 - The interactive startup header lists loaded skills, and skills register as
-  `/skill:name` commands: run `/skill:knowledge-storage` to force-load one.
+  `/skill:name` commands: run `/skill:ingest-knowledge` to force-load one.
 - After changing skills on disk, `/reload` rescans without restarting.
 
 ## Update / Uninstall

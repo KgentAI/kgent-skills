@@ -380,3 +380,21 @@ Implementation is production-ready for kgent packaging.
 **遗留（如实声明）**: dingtalk e2e 诊断复跑在真机租户留下一个 probe doc `Exel2BLV5zZZ7096CpX9zgKPJgk9rpMq`（teardown 因同一 `confirmation_required` 删除失败，e2e 输出自带 live-verified 删除命令：`dws drive +delete --node Exel2BLV5zZZ7096CpX9zgKPJgk9rpMq -y -f json`）——**未由本工作代删**（真机租户删除留给维护者/所属 dingtalk 会话裁决）。
 
 **Reproduce**: 仓库根 `bash tools/install-skills.sh`（跑前 `mkdir -p ~/.codebuddy` 则带 codebuddy 跳）；`.venv/Scripts/python.exe -m pytest tests/test_install_skills.py tests/test_artifact_smoke.py -q`；逐 agent 验收命令在各 `docs/install/*.md` Verify 节；artifact-smoke `bash tools/artifact-smoke.sh`。
+
+---
+
+## 知识双车道改名与组合 — 2026-09-10（ADR 0006/0007 · spec 2026-09-10-knowledge-lanes-repurpose）
+
+**Scope**: `question-answering` → `query-knowledge`（触发单位改为任务的知识依赖，直接提问为其特例；单一输出形态保留；冲突/缺口必须随行回给驱动任务；新增 "Called by Other Skills" 子程序契约）；`knowledge-storage` → `ingest-knowledge`（update-first 内容发现委派 query-knowledge：URI/node_type/title/recency/content-type 五要素匹配候选；写序列六步不动；Python 原语不跨 skill 调用，S65）。4× `git mv`（2 skill 目录 + 2 模块，`answer()`→`query_knowledge()`、`store_workflow()`→`ingest_knowledge()`，无别名 shim）；安装器新增悬挂自有条目回收（link ∧ 目标在本仓 skills/ 下 ∧ 目标已不存在，三条件缺一不删；外部/真实目录条目不动）；安装器代码与新回收路径 `\?\` 前缀剥除。全文清单与验收标准见 `specs/2026-09-10-knowledge-lanes-repurpose-design.md`。
+
+**Gauntlet 分层读数（本工作后，worktree 分支 62f323b）**: artifact-smoke **18/18**；pytest **616 passed / 4 skipped / 10 deselected**（`PYTEST_ADDOPTS='-m "not real"'`）+ coverage TOTAL **86%**；diff-cover **100%**（4 changed lines, 0 missing）；mypy strict **0 错**（52 files）；ruff **规则画像与 main 逐条一致**（baseline 40 errors 在案 report-only，零新增）；mutation 同前 report-only；properties 16 passed；adversarial 39 passed。**GAUNTLET PASS**。无过滤完整 suite **624 passed / 2 failed / 4 skipped**——两失败即前节定谳的 pre-existing dingtalk 真机契约漂移（本工作零交集：该文件不 import 任何改名模块）。
+
+**`real` 排除的第二半**: `test_wecom_snapshot_real.py` 5 用例本日第二轮触发 `WecomDailyQuotaExhausted`（640459 日配额被同日首轮 suite 消耗，~09:00 PDT 重置）——环境级阻断，与 2026-09-09 在案结论一致（wecom 腿不硬跑，EVIDENCE 声明）。
+
+**行为→测试映射、skipped 层与理由、残留清单全文**: `specs/2026-09-10-knowledge-lanes-repurpose-evidence.md`。要点：安装器悬挂回收由新增 `tests/test_install_skills.py::test_s2d_…` 覆盖（mklink /J 造悬挂——`_winapi.CreateJunction` 拒收不存在目标，故用 `mklink /J`；`os.readlink` 对 junction 回读 `\?\` 前缀，回收逻辑剥除后再做 commonpath 归属判定）；evals fixture 改名 + 新用例（query #9 任务语境触发、#10 跳过（标 manual review）、ingest #11 组合流）经 runner 同款 discovery 逻辑离线验证（runner 直跑被权限层判为真写拦截；dry 路径仅为 glob+json 解析）；agent evals 真跑 deferred（release gate）。
+
+**worktree 运行注意**: venv editable `.pth` 指向主 checkout `src`；worktree 内任何 pytest/gauntlet 需 `PYTHONPATH="$PWD/src"`（否则 19 用例 import 旧模块名）。
+
+**遗留（如实声明，未由本工作代删）**: 本日两轮真机失败在租户留下 dws probe doc ×4——`9bN7RYPWdMzz1wy9cjZLbM3LVZd1wyK0`、`9E05BDRVQ2oo1EROtPGRy1n3J63zgkYA`、`3NwLYZXWyn112PxyUGoP5xpzVkyEqBQm`、`vNG4YZ7JnP334gxzCA1a57kMW2LD0oRE`（删除句柄同前例：`dws drive +delete --node <DOC_ID> -y -f json`，进回收站）；另有前轮在案 `Exel2BLV5zZZ7096CpX9zgKPJgk9rpMq`。wecom probe doc ×5（docid 见 `gauntlet-run.log`，平台无文档删除命令，需后台处理）。agent 侧代删被权限层正确拦截，留给维护者裁决。
+
+**Reproduce**: `PATH="<repo>/.venv/Scripts:$PATH" PYTHONPATH="$PWD/src" PYTEST_ADDOPTS='-m "not real"' bash tools/gauntlet.sh`；安装器 `pytest tests/test_install_skills.py -q`（15 passed）；B9 静态路由 `pytest tests/test_skill_docs_integration_routing.py -q`。

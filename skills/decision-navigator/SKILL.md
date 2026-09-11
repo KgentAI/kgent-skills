@@ -1,6 +1,6 @@
 ---
 name: decision-navigator
-description: "Guide users through decisions: clarify the goal, decompose the problem into a sub-question dependency graph, retrieve evidence through the kgent knowledge cascade, evaluate weighted options, and deliver a ranked decision brief. Activate when the user must choose among alternatives or commit to a course of action — 'should we pick A or B', '要不要迁到 X', '帮我在这些方案里选一个', 'which vendor should we sign', '该不该裁掉这条产品线'. Produces a chat-only 决策简报 with trade-offs, weights, assumptions, confidence, and citations. Do NOT activate for pure lookups or doc-finding (question-answering), saving/writing content (knowledge-storage), or wiki-space setup (wiki-setup). Decision-intent factual sub-questions (e.g. 续约价是多少) are resolved inside this skill's flow using question-answering retrieval discipline, not handed off wholesale."
+description: "Guide users through decisions: clarify the goal, decompose the problem into a sub-question dependency graph, retrieve evidence through the kgent knowledge cascade, evaluate weighted options, and deliver a ranked decision brief. Activate when the user must choose among alternatives or commit to a course of action — 'should we pick A or B', '要不要迁到 X', '帮我在这些方案里选一个', 'which vendor should we sign', '该不该裁掉这条产品线'. Produces a chat-only 决策简报 with trade-offs, weights, assumptions, confidence, and citations. Do NOT activate for pure lookups or doc-finding (query-knowledge), saving/writing content (ingest-knowledge), or wiki-space setup (wiki-setup). Decision-intent factual sub-questions (e.g. 续约价是多少) are resolved inside this skill's flow using query-knowledge retrieval discipline, not handed off wholesale."
 metadata:
   requires:
     bins: ["python"]
@@ -13,7 +13,7 @@ metadata:
 全程只读，绝不调用任何写路径——无 journal、无 update/create/store、无平台写命令）。
 
 统一语言见仓库 `CONTEXT.md`：决策意图 / 决策简报 / 决策分解 / 评价准则 / 先例 /
-能力盘点。流程裁决见 `docs/adr/0006`（检索级联）与 `docs/adr/0007`（收敛循环）。
+能力盘点。流程裁决见 `docs/adr/0010`（检索级联）与 `docs/adr/0011`（收敛循环）。
 
 ## When to Use
 
@@ -25,18 +25,18 @@ metadata:
 
 **不触发**（反触发示例）：
 
-- 「X 的政策是什么」「帮我们找部署文档」→ 纯查询，走 question-answering
-- 「把这份纪要存进知识库」→ 写入，走 knowledge-storage
+- 「X 的政策是什么」「帮我们找部署文档」→ 纯查询，走 query-knowledge
+- 「把这份纪要存进知识库」→ 写入，走 ingest-knowledge
 - 「建一个新人 wiki 空间」→ wiki-setup
 
-灰色地带：决策中的事实子问题（「现供应商报价是多少」）按 question-answering 的
+灰色地带：决策中的事实子问题（「现供应商报价是多少」）按 query-knowledge 的
 检索纪律取材后作为本 skill 的节点解算——子查询不整体移交。
 
 ## Workflow
 
 ### 0. Ensure kgent Is Set Up
 
-与 question-answering §0 相同：先 `kgent config validate`；`no config file` 则
+与 query-knowledge §0 相同：先 `kgent config validate`；`no config file` 则
 `kgent setup`。没有任何启用的后端时，告知用户在 `~/.kgent/config.yaml` 打开
 `enabled: true` 后再跑 KB 腿（此时仍可走能力盘点与 web 腿，见收敛循环）。
 读取 kgent 配置文件前先向用户说明并征得同意（CLI 内部读配置不受此限）。
@@ -60,7 +60,7 @@ metadata:
 - 拆到「没有它就无法在候选间比较」为止——不拆与排序无关的问题
 - 检索会修正这张图（下一节）；简报里呈现的是终版图
 
-### 3. 分解⇄检索收敛循环（≤3 轮；ADR 0007）
+### 3. 分解⇄检索收敛循环（≤3 轮；ADR 0011）
 
 每一轮按固定节拍走：
 
@@ -68,8 +68,8 @@ metadata:
 2. **能力盘点**（仅第 1 轮）：盘点当前环境可用的 skill / MCP / 工具，列出在
    kgent 三后端之外的内部数据源候选。盘点发现的数据源**只读使用**；发现写
    工具也不得调用
-3. **定向检索**（级联，ADR 0006）：每个信息需求独立走级联——先 kgent 知识库
-   （经对应 integration skill 的 search/read，纪律沿 question-answering）→
+3. **定向检索**（级联，ADR 0010）：每个信息需求独立走级联——先 kgent 知识库
+   （经对应 integration skill 的 search/read，纪律沿 query-knowledge）→
    盘点发现的内部源 → 宿主 web 检索（宿主没有就跳过，简报注明）。某腿超时/
    失败必须声明，不静默缩量
 4. **解算节点**：每个被触及的节点落**恰好一个**状态——
@@ -153,7 +153,7 @@ flowchart TD
 - `第3轮达限，经用户批准延长N轮；第M轮收敛`（M ≤ 3+N）
 - `3轮达限，未收敛；余下开放节点按假设处理`
 
-## 检索纪律（沿 question-answering，违反即返工）
+## 检索纪律（沿 query-knowledge，违反即返工）
 
 - **声明缺失覆盖**：某腿超时/部分失败 → 明说「以下只含 X 腿结果」，不缩量不装全
 - **冲突浮出**：来源互相矛盾 → 两侧都引、标注新旧，不悄悄挑一边
@@ -184,7 +184,7 @@ flowchart TD
 ## Edge Cases
 
 - **触发抖动**：「该续约吗？顺便查下现价」→ 本 skill 承接，查价作为节点解算；
-  若发现整条请求其实是查询，改走 question-answering 并告知用户
+  若发现整条请求其实是查询，改走 query-knowledge 并告知用户
 - **准则无法量化**：定性准则照常入表打分（高/中/低映射到权重），但标注主观性
 - **用户中途改前提**：重开对应节点 + 下游传播；下游节点里已被引用过的结论
   要重新解算，不许沿用
@@ -239,7 +239,7 @@ flowchart TD
 ## Important
 
 - **全程只读**：本 skill 永不写盘、永不触发 journal/route/undo；盘点发现的
-  写工具不调用。用户要求「把简报存下来」→ 交给 knowledge-storage 处理
+  写工具不调用。用户要求「把简报存下来」→ 交给 ingest-knowledge 处理
 - **图先于检索**：strawman 图必须出现在第一次检索之前（eval 断言）
 - **每轮先声明靶向**：没有靶向声明的检索轮不合法
 - **状态恰一、图表逐边一致**：产出后跑 `python tools/dn_brief_check.py` 自检

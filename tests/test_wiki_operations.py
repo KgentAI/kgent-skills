@@ -385,7 +385,7 @@ def test_s83_skill_places_wiki_node_under_fitting_parent(wiki_world: World) -> N
     """The proposal names the parent (title + token) chosen against the space
     listing, and no parent token reaches the proposal that was NOT obtained
     from search or space listing (N22)."""
-    from kgent.skills.knowledge_storage import store_workflow
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     lark = wiki_world["backends"]["lark"]
     _seed_space(lark)
@@ -403,7 +403,7 @@ def test_s83_skill_places_wiki_node_under_fitting_parent(wiki_world: World) -> N
         "wiki_space": SPACE_ID,
         "parent_node_token": parent_token,
     }
-    proposal = store_workflow("save Deploy Runbook", context, router)
+    proposal = ingest_knowledge("save Deploy Runbook", context, router)
     assert proposal.operation == "create"
     assert proposal.wiki_space == SPACE_ID
     assert proposal.parent_node_token == parent_token
@@ -413,7 +413,7 @@ def test_s83_skill_places_wiki_node_under_fitting_parent(wiki_world: World) -> N
 def test_s83_skill_rejects_guessed_parent_token(wiki_world: World) -> None:
     """N22: a parent token that was NOT returned by the space listing is never
     used — the skill drops it and falls back to the space root."""
-    from kgent.skills.knowledge_storage import store_workflow
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     lark = wiki_world["backends"]["lark"]
     _seed_space(lark)
@@ -425,7 +425,7 @@ def test_s83_skill_rejects_guessed_parent_token(wiki_world: World) -> None:
         "wiki_space": SPACE_ID,
         "parent_node_token": "totally-guessed-token-9",  # never listed anywhere
     }
-    proposal = store_workflow("save Deploy Runbook", context, router)
+    proposal = ingest_knowledge("save Deploy Runbook", context, router)
     assert proposal.operation == "create"
     assert proposal.parent_node_token is None  # guessed token rejected (N22)
     assert "rejected guessed parent" in proposal.provenance.get("parent", "")
@@ -439,7 +439,7 @@ def test_s83_skill_rejects_guessed_parent_token(wiki_world: World) -> None:
 def test_s84_skill_asks_wiki_vs_doc_when_undetermined(wiki_world: World) -> None:
     """When no factor determines the target type, the skill asks and the
     provenance records 'user choice' for the target type."""
-    from kgent.skills.knowledge_storage import store_workflow
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     lark = wiki_world["backends"]["lark"]
     _seed_space(lark)
@@ -448,14 +448,14 @@ def test_s84_skill_asks_wiki_vs_doc_when_undetermined(wiki_world: World) -> None
     # Undetermined (no wiki/doc mention, no match, no preference) — the user
     # was asked and chose wiki; the caller records the choice.
     context = {"target_type": "wiki", "target_type_source": "user choice"}
-    proposal = store_workflow("save this to Lark", context, router)
+    proposal = ingest_knowledge("save this to Lark", context, router)
     assert proposal.provenance.get("target_type") == "wiki"
     assert proposal.provenance.get("target_type_source") == "user choice"
     assert proposal.wiki_space is not None  # wiki create resolved a space
 
     # The mirror: user chose a flat doc.
     context_doc = {"target_type": "doc", "target_type_source": "user choice"}
-    proposal_doc = store_workflow("save this to Lark", context_doc, router)
+    proposal_doc = ingest_knowledge("save this to Lark", context_doc, router)
     assert proposal_doc.provenance.get("target_type") == "doc"
     assert proposal_doc.provenance.get("target_type_source") == "user choice"
     assert proposal_doc.wiki_space is None  # flat doc create
@@ -483,7 +483,7 @@ def test_s85_native_url_matches_node_type() -> None:
 def test_s85_qa_cites_wiki_hit_with_wiki_url(wiki_world: World) -> None:
     """The QA skill treats a wiki hit as first-class: the citation carries
     node_type so rendering picks the /wiki/ path, not /docx/ (S80, S85)."""
-    from kgent.skills.question_answering import answer
+    from kgent.skills.query_knowledge import query_knowledge
     from kgent.skills.urls import native_url
 
     lark = wiki_world["backends"]["lark"]
@@ -497,10 +497,10 @@ def test_s85_qa_cites_wiki_hit_with_wiki_url(wiki_world: World) -> None:
         SPACE_ID,
         parent_token,
     )
-    result = answer("Runbook", _router_for(wiki_world))
+    result = query_knowledge("Runbook", _router_for(wiki_world))
 
     wiki_claims = [c for c in result.claims if c.node_type == "wiki_node"]
-    assert wiki_claims, "wiki hits must be first-class QA results (S80)"
+    assert wiki_claims, "wiki hits must be first-class query results (S80)"
     for claim in wiki_claims:
         assert claim.source_uri and claim.source_uri.startswith("kgent://lark/")
         url = native_url(claim.source_uri, "mycompany.larksuite.com", node_type=claim.node_type)

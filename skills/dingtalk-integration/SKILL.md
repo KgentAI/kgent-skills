@@ -5,7 +5,7 @@ description: "Equip kgent operations with DingTalk-specific knowledge: search an
 
 # DingTalk Integration
 
-Equip the kgent skills (question-answering, knowledge-storage, wiki-setup) with the DingTalk layer of their operations: search, read, write, undo compensation, and native URLs for DingTalk content. The text-doc (adoc) path executes through `dws` (DingTalk Workspace CLI); every other content type delegates to the native `dingtalk-*` skills (see the matrices under Read / Write). Single source of truth — the kgent skills carry no copies of these rules.
+Equip the kgent skills (query-knowledge, ingest-knowledge, wiki-setup) with the DingTalk layer of their operations: search, read, write, undo compensation, and native URLs for DingTalk content. The text-doc (adoc) path executes through `dws` (DingTalk Workspace CLI); every other content type delegates to the native `dingtalk-*` skills (see the matrices under Read / Write). Single source of truth — the kgent skills carry no copies of these rules.
 
 ## The Gate
 

@@ -19,7 +19,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "tools" / "install-skills.sh"
-EXPECTED_SKILLS = ("knowledge-storage", "question-answering", "wiki-setup", "decision-navigator")
+EXPECTED_SKILLS = ("ingest-knowledge", "query-knowledge", "wiki-setup", "decision-navigator")
 
 
 def _find_bash() -> str | None:
@@ -135,6 +135,56 @@ def _assert_live_link(entry: Path, repo_skill: Path) -> None:
     )
 
 
+def _make_link(dst: Path, target: Path) -> None:
+    """The same link kind the installer creates (junction on Windows).
+
+    mklink /J, not _winapi.CreateJunction: the API requires the target to
+    exist, and the dangling-entry test needs a junction to a gone target.
+    """
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(dst), str(target)],
+            capture_output=True,
+            check=True,
+        )
+    else:
+        os.symlink(target, dst)
+
+
+# ---------------------------------------------------------------------------
+# S2d - dangling self-owned entries reclaimed (skill renames), external untouched
+# ---------------------------------------------------------------------------
+
+
+def test_s2d_dangling_self_entry_reclaimed_external_left_alone(
+    tmp_path: Path, fake_uv: Path
+) -> None:
+    """A link whose target lived under this repo's skills/ and is now gone
+    (the rename case) is removed on the next install; an unrelated external
+    entry - even a dangling one - is never touched."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    hub = home / ".agents" / "skills"
+
+    # pre-rename install: repo skill question-answering existed, now renamed
+    stale_link = hub / "question-answering"
+    _make_link(stale_link, REPO_ROOT / "skills" / "question-answering")
+
+    # an unrelated tool's entry in the shared hub - dangling, but not ours
+    external = hub / "unrelated-tool-skill"
+    _make_link(external, tmp_path / "elsewhere" / "unrelated")
+
+    result = _run(home, extra_path=str(fake_uv.parent))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not os.path.lexists(stale_link), "dangling self-owned entry was not reclaimed"
+    assert os.path.lexists(external), "external hub entry must survive re-install"
+    for name in EXPECTED_SKILLS:
+        _assert_live_link(hub / name, REPO_ROOT / "skills" / name)
+
+
 # ---------------------------------------------------------------------------
 # S2 - idempotent update + stale-copy migration
 # ---------------------------------------------------------------------------
@@ -160,14 +210,14 @@ def test_s2b_stale_copy_replaced_with_live_link(tmp_path: Path, fake_uv: Path) -
     home = tmp_path / "home"
     home.mkdir()
     (home / ".claude").mkdir()
-    stale = home / ".agents" / "skills" / "knowledge-storage"
+    stale = home / ".agents" / "skills" / "ingest-knowledge"
     stale.mkdir(parents=True)
     (stale / "SKILL.md").write_text("# stale junk", encoding="utf-8")
 
     result = _run(home, extra_path=str(fake_uv.parent))
 
     assert result.returncode == 0, result.stdout + result.stderr
-    _assert_live_link(stale, REPO_ROOT / "skills" / "knowledge-storage")
+    _assert_live_link(stale, REPO_ROOT / "skills" / "ingest-knowledge")
     assert "replacing" in (result.stdout + result.stderr).lower()
 
 

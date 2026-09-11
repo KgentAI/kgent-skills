@@ -67,11 +67,11 @@ def router(tmp_home, monkeypatch):
     registry.clear()
 
 
-def test_e2e_knowledge_storage_creates_with_provenance(router):
-    """store_workflow creates with provenance."""
-    from kgent.skills.knowledge_storage import store_workflow
+def test_e2e_ingest_knowledge_creates_with_provenance(router):
+    """ingest_knowledge creates with provenance."""
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
-    proposal = store_workflow("save the new doc 'Welcome to kgent'", {}, router)
+    proposal = ingest_knowledge("save the new doc 'Welcome to kgent'", {}, router)
     assert proposal.operation == "create"
     # pi-lens-ignore: python-sql-injection
     result = router.execute(proposal, confirmation="interactive-yes")
@@ -79,21 +79,21 @@ def test_e2e_knowledge_storage_creates_with_provenance(router):
     assert router.backends["lark"].docs
 
 
-def test_e2e_knowledge_storage_update_first(router):
-    """store_workflow is update-first (N18)."""
-    from kgent.skills.knowledge_storage import store_workflow
+def test_e2e_ingest_knowledge_update_first(router):
+    """ingest_knowledge is update-first (N18)."""
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
-    p1 = store_workflow("save 'API Guidelines'", {}, router)
+    p1 = ingest_knowledge("save 'API Guidelines'", {}, router)
     # pi-lens-ignore: python-sql-injection
     router.execute(p1, confirmation="interactive-yes")
-    p2 = store_workflow("save 'API Guidelines' - add more details", {}, router)
+    p2 = ingest_knowledge("save 'API Guidelines' - add more details", {}, router)
     assert p2.operation == "update"  # update-first bias
     assert p2.targets[0][1] is not None
 
 
-def test_e2e_question_answering_cites_sources(router):
-    """QA answer cites sources (S68, N11)."""
-    from kgent.skills.question_answering import answer
+def test_e2e_query_knowledge_cites_sources(router):
+    """Query result cites sources (S68, N11)."""
+    from kgent.skills.query_knowledge import query_knowledge
 
     # Seed a doc
     router.backends["lark"].create_document(
@@ -101,7 +101,7 @@ def test_e2e_question_answering_cites_sources(router):
         content="Onboarding requires security training.",
         metadata=_meta("lark", "Policy"),
     )
-    ans = answer("What does onboarding require?", router)
+    ans = query_knowledge("What does onboarding require?", router)
     assert ans.claims
     assert all(c.source_uri for c in ans.claims if c.supported)
 

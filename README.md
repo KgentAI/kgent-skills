@@ -48,8 +48,8 @@ CLI (preferring `uv tool install`, falling back to a dedicated venv, then
 ambient pip). The manual equivalent:
 
 ```bash
-ln -s $(pwd)/skills/knowledge-storage ~/.agents/skills/knowledge-storage
-ln -s $(pwd)/skills/question-answering ~/.agents/skills/question-answering
+ln -s $(pwd)/skills/ingest-knowledge ~/.agents/skills/ingest-knowledge
+ln -s $(pwd)/skills/query-knowledge ~/.agents/skills/query-knowledge
 ln -s $(pwd)/skills/wiki-setup ~/.agents/skills/wiki-setup
 ln -s $(pwd)/skills/decision-navigator ~/.agents/skills/decision-navigator
 ```
@@ -72,8 +72,9 @@ manual fallback, and verification:
 
 After installation (and an agent restart), you can use natural language:
 
-- "Save this to the knowledge base" → invokes `knowledge-storage` skill
-- "What does X mean?" → invokes `question-answering` skill
+- "Save this to the knowledge base" → invokes `ingest-knowledge` skill
+- "What does X mean?" → invokes `query-knowledge` skill
+- "Draft the PRD for Project X — pull what we have on it first" → invokes `query-knowledge` skill (knowledge dependency: the task needs org facts before it can proceed)
 - "Set up a wiki" → invokes `wiki-setup` skill
 - "Should we pick A or B? Give me a recommendation" → invokes `decision-navigator` skill
 
@@ -164,15 +165,15 @@ kgent store "save 'Welcome' to dingtalk" --op-id custom-op-123
 
 Three high-level skills orchestrate common workflows:
 
-### 1. Knowledge Storage (`store_workflow`)
+### 1. Knowledge Ingestion (`ingest_knowledge`)
 
 Update-first workflow with provenance tracking:
 
 ```python
-from kgent.skills.knowledge_storage import store_workflow
+from kgent.skills.ingest_knowledge import ingest_knowledge
 
 # Build a write proposal
-proposal = store_workflow(
+proposal = ingest_knowledge(
     user_request="save the new API guidelines",
     context={"preferences": {"target_backend": "lark"}},
     router=router,
@@ -185,18 +186,18 @@ result = router.execute(proposal, confirmation="interactive-yes")
 **Features**:
 
 - Resolution priority: explicit input > preferences > config defaults
-- Update-first bias: searches for matching docs before creating
+- Update-first bias: discovers matching docs (via the query-knowledge flow at the agent layer) before creating
 - Provenance tracking: records intent, target, source
 
-### 2. Question Answering (`answer`)
+### 2. Knowledge Query (`query_knowledge`)
 
-Grounded claims with source citations:
+Grounded claims with source citations — answers questions and serves any task with a knowledge dependency:
 
 ```python
-from kgent.skills.question_answering import answer
+from kgent.skills.query_knowledge import query_knowledge
 
-# Answer a question using search results
-result = answer("What does onboarding require?", router)
+# Resolve a question using search results
+result = query_knowledge("What does onboarding require?", router)
 
 # Access claims with citations
 for claim in result.claims:

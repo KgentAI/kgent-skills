@@ -20,8 +20,8 @@ import pytest
 
 SKILLS_DIR = Path(__file__).resolve().parents[1] / "skills"
 DOC_FILES = [
-    SKILLS_DIR / "knowledge-storage" / "SKILL.md",
-    SKILLS_DIR / "question-answering" / "SKILL.md",
+    SKILLS_DIR / "ingest-knowledge" / "SKILL.md",
+    SKILLS_DIR / "query-knowledge" / "SKILL.md",
     SKILLS_DIR / "wiki-setup" / "SKILL.md",
     SKILLS_DIR / "decision-navigator" / "SKILL.md",
     SKILLS_DIR / "lark-integration" / "SKILL.md",

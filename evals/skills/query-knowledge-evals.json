@@ -1,5 +1,5 @@
 {
-  "skill_name": "question-answering",
+  "skill_name": "query-knowledge",
   "evals": [
     {
       "id": 1,
@@ -106,6 +106,31 @@
         "The citation for the wiki node uses a '/wiki/' native URL path",
         "No wiki citation uses '/docx/', and no flat-doc citation uses '/wiki/'",
         "No kgent:// URIs appear in the citations"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "I'm drafting the Q3 PRD for Project Aurora. Before I write it, pull what the knowledge base has on Aurora's requirements and past architecture decisions.",
+      "expected_output": "Task-context invocation (knowledge dependency, ADR 0006): the skill derives a retrieval plan from the driving task (one leg per knowledge need), searches it, and returns a grounded brief whose conflicts and gaps are flagged FOR the PRD — the driving task is the consumer.",
+      "files": [],
+      "expectations": [
+        "The skill treats this as a task-context invocation and derives a retrieval plan (multiple sub-queries: requirements, architecture decisions), showing the plan",
+        "Each retrieval leg is searched separately through the enabled backends' integration skills",
+        "Findings carry native platform URL citations for every factual claim",
+        "Conflicting facts found in the KB are surfaced explicitly as input for the PRD, not silently resolved",
+        "If a needed topic has no KB coverage, the gap is stated explicitly (e.g., 'nothing in the KB covers X — that section needs input outside the KB')",
+        "The skill performs zero write operations (no journal begin/end, no platform writes)"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Explain how OAuth 2.0 authorization code flow works.",
+      "expected_output": "No knowledge dependency: the request needs only generic, public knowledge. The skill should NOT fire — the agent answers directly without searching the knowledge base.",
+      "files": [],
+      "expectations": [
+        "The agent does not search the knowledge base (no integration-skill search steps, no lark-cli/dws/wecom-cli search invocation)",
+        "The agent answers the question directly from general knowledge",
+        "Heuristic scoring cannot verify absence — mark this case manual review"
       ]
     }
   ]

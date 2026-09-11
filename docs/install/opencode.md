@@ -29,14 +29,14 @@ Populate the hub yourself (junction on Windows needs no admin):
 
 ```bash
 # POSIX
-ln -sfn "$(pwd)/skills/knowledge-storage" ~/.agents/skills/knowledge-storage
+ln -sfn "$(pwd)/skills/ingest-knowledge" ~/.agents/skills/ingest-knowledge
 
 # Windows
-cmd /c mklink /J "%USERPROFILE%\.agents\skills\knowledge-storage" "%CD%\skills\knowledge-storage"
+cmd /c mklink /J "%USERPROFILE%\.agents\skills\ingest-knowledge" "%CD%\skills\ingest-knowledge"
 ```
 
 (If you prefer OpenCode's own directory, target
-`~/.config/opencode/skills/knowledge-storage` instead — but the hub is shared
+`~/.config/opencode/skills/ingest-knowledge` instead — but the hub is shared
 with Codex / OpenClaw / pi, so prefer the hub.)
 
 ## Verify

@@ -75,13 +75,13 @@ def router_env(tmp_home: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict
 
 
 def test_s65_same_orchestration_across_backends(router_env: dict[str, Any]) -> None:
-    """S65: same store_workflow works for lark, dingtalk, wecom — only adapter differs."""
-    from kgent.skills.knowledge_storage import store_workflow
+    """S65: same ingest_knowledge works for lark, dingtalk, wecom — only adapter differs."""
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     for backend_name in ("lark", "dingtalk", "wecom"):
         context = {"preferences": {"target_backend": backend_name}}
         # Use unique title per backend to avoid update-first matching across iterations
-        proposal = store_workflow(f"save doc for {backend_name}", context, router_env["router"])
+        proposal = ingest_knowledge(f"save doc for {backend_name}", context, router_env["router"])
         # The proposal targets the requested backend
         assert proposal.targets[0][0] == backend_name
         # Execute — should work identically across backends
@@ -113,7 +113,7 @@ def test_s66_resolve_intent_returns_adapter_name(router_env: dict[str, Any]) -> 
 
 def test_s67_explicit_input_overrides_preferences(router_env: dict[str, Any]) -> None:
     """S67: explicit 'store to dingtalk' outranks preferences (lark) + conversation."""
-    from kgent.skills.knowledge_storage import store_workflow
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     # Preferences say lark, conversation says lark, but user explicitly says dingtalk
     context = {
@@ -121,7 +121,7 @@ def test_s67_explicit_input_overrides_preferences(router_env: dict[str, Any]) ->
         "conversation": "we use lark for everything",
         "explicit_input": "store this to dingtalk",  # explicit override
     }
-    proposal = store_workflow("save doc", context, router_env["router"])
+    proposal = ingest_knowledge("save doc", context, router_env["router"])
     # Should target dingtalk (explicit input wins)
     assert proposal.targets[0][0] == "dingtalk"
     # Provenance should record the source as "explicit user input"
