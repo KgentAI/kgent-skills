@@ -50,6 +50,7 @@ def test_init_store_git_backed(tmp_path: Path) -> None:
         [git, "-C", str(root), "log", "--oneline"], capture_output=True, text=True, check=True
     )
     assert len(log.stdout.strip().splitlines()) == 1  # seed commit
+    assert nested_in_foreign_repo(root) is False  # owns its own work tree
 
 
 def test_init_store_idempotent(tmp_path: Path) -> None:
@@ -71,16 +72,23 @@ def test_init_store_refuses_foreign_work_tree(tmp_path: Path) -> None:
     nested = outer / "nested-store"
     with pytest.raises(RuntimeError, match="another git work tree"):
         init_store(nested)
+    assert nested_in_foreign_repo(nested) is True
 
 
 def test_effective_mode_snapshot_short_circuits(tmp_path: Path) -> None:
     assert effective_mode("snapshot", tmp_path) == "snapshot"
 
 
+def test_effective_mode_none_degrades_to_default(tmp_path: Path) -> None:
+    # Task 1 review carry-over: an absent/None mode is *unset* -> DEFAULT_MODE, not an error.
+    assert DEFAULT_MODE == "git-backed"
+    assert effective_mode(None, tmp_path) == DEFAULT_MODE
+
+
 def test_effective_mode_git_backed_unavailable_without_git(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import kgent.localfs as localfs
+    from kgent import localfs
 
     monkeypatch.setattr(localfs, "git_path", lambda: None)
     assert effective_mode("git-backed", tmp_path) == "git-backed-unavailable"
