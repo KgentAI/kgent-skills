@@ -43,3 +43,31 @@ _Avoid_: 回滚
 **路由裁决 (routing decision)**:
 kgent 对内容敏感级与目标后端的只读判定，先于任何写执行。
 _Avoid_: 分流、敏感级路由
+
+**决策导航 (decision navigator)**:
+引导用户在多方案间抉择的 kgent 编排 skill（`skills/decision-navigator/`）；只编排不落盘，平台 I/O 统一经 integration skill。
+_Avoid_: DecisionNavigator（仅作显示名）、决策助手
+
+**决策意图 (decision intent)**:
+用户必须在多个候选方案间做选择或承诺行动方向的请求态势；decision-navigator 的触发面，区别于纯查询（question-answering）。
+_Avoid_: 提问、咨询
+
+**决策简报 (decision brief)**:
+decision-navigator 一次运行的唯一交付物：聊天内结构化答复——排序方案、对加权准则的权衡、标注假设、带原生 URL 的证据、置信度与「何者会改变排序」。v1 不落盘。
+_Avoid_: 决策报告、决策文档
+
+**决策分解 (first-principles decomposition)**:
+决策简报中的显式基本面段：把决策拆解为子问题依赖图，节点标注解算状态（用户已给 / 引用来源 / 假设 / 依前未解）；开放子问题的信息需求驱动检索取材，已解节点汇成约束集、未解节点即变量集。
+_Avoid_: 第一性原理（泛称）、根因分析、问题树
+
+**评价准则 (criteria set)**:
+评价方案所用的一组带权重的准则；由 decision-navigator 依澄清后的目标提出、用户确认或修改，用户显式给出的权重优先。
+_Avoid_: 评分卡、rubric
+
+**先例 (precedent)**:
+检索得到的过往相关案例；只作「可能相关」呈现并必须附引用，不当作真正的类比断言。
+_Avoid_: 历史案例库、案例检索
+
+**能力盘点 (capability inventory)**:
+检索开始时对当前环境可用 skill / MCP / 工具的一次性探查，用于发现 kgent 知识库之外的内部数据源。
+_Avoid_: 插件发现、工具扫描
