@@ -38,7 +38,7 @@ _RESERVED_SCALARS = frozenset({"true", "false", "null", "~"})
 #: Platform backends whose generated entries default to the ``internal`` trust
 #: zone (ADR 0004 maintainer ruling). Unknown backend names keep the fail-safe
 #: ``external``.
-_INTERNAL_BY_NAME = frozenset({"lark", "dingtalk", "wecom"})
+_INTERNAL_BY_NAME = frozenset({"lark", "dingtalk", "wecom", "local-fs"})
 
 
 def write_setup_config(home: Path, backends: dict[str, dict[str, Any]]) -> None:
