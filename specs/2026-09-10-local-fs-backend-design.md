@@ -1,6 +1,6 @@
 # Design Spec: local-fs backend — 本地文件系统知识库（本地后端家族首个成员，git 使能）
 
-- **Date:** 2026-09-10（同日 rev 2：store 改为 git 仓库，undo 改为 revert，`.trash` 废弃；rev 3：remote 可选；rev 4：git 可选，快照兜底模式）
+- **Date:** 2026-09-10（同日 rev 2：store 改为 git 仓库，undo 改为 revert，`.trash` 废弃；rev 3：remote 可选；rev 4：git 可选，快照兜底模式；rev 5：模式进 config，`backends.local-fs.mode`）
 - **Status:** draft（design 已逐节过审 + 三轮修订；实现未开始）
 - **Priority:** medium-high — eval/gauntlet 目前实写真实 Lark 租户（租户污染 + 配额 + 凭据依赖）；本地后端提供一等可弃实写目标，同时是零凭据 onboarding 路径与不出本机的隐私存储
 - **ADRs:** 0006（本地后端家族 + 执行层）、0007（存储格式）、0008（git-backed 模式：revert undo + 可选 remote）、0009（git 可选：snapshot 兜底模式）
@@ -27,14 +27,30 @@ kgent 目前仅有三个 SaaS 平台后端。新增 **local-fs**：存储在本�
   `journal begin,end` / 台账读取（ADR 0006、0008）。
 - **存储**：md + YAML frontmatter；wiki 形目录树（空间=顶层目录、节点=嵌套目录、
   文档=.md）；路径即 id；归档=frontmatter 标志（ADR 0007）。
-- **git 使能且可选（store 模式）**：git 可得（且 root 不嵌于他人仓库）→
-  **git-backed**：每次写一个 commit、undo = `git revert`、台账 revision 字段存
-  commit SHA；git 缺失 → **snapshot**：删除入 `.trash`、undo = 台账快照写回、
+- **git 使能且可选（store 模式）**：**模式可配**——`backends.local-fs.mode:
+  auto | git-backed | snapshot`（默认 `auto`=环境定档、降档不拒启；显式
+  `git-backed` 是承诺，git 缺失/嵌套仓库 → enable fail closed；显式 `snapshot`
+  = git 在也不用）。git-backed：每次写一个 commit、undo = `git revert`、台账
+  revision 字段存 commit SHA；snapshot：删除入 `.trash`、undo = 台账快照写回、
   revision 存 version 字符串。两模式同一 skill / frontmatter / CAS，fail closed
-  不变；**remote 仅 git-backed 有效**，配置后尽力而为 push（ADR 0008、0009）。
-- **config 零 schema 改动**：`backends.local-fs.type: skill`、
-  `skill_name: local-fs-integration`、`trust_zone: internal`、`root`（可选，
-  默认 `~/.kgent/local-fs/`；`KGENT_LOCAL_FS_ROOT` 覆盖一切）。
+  不变；**remote 仅 git-backed 有效**，配置后尽力而为 push = remote-synced
+  有效状态（doctor 报告三值：`snapshot` / `git-backed` / `git-backed+remote`）
+  （ADR 0008、0009）。
+- **config 最小 schema 扩展（rev 5）**：backend defaults 新增 `mode`（默认
+  `"auto"`）与 `remote`（默认 `None`）两键 + 枚举校验；既有后端与既有校验路径
+  零改动。local-fs 条目：
+
+  ```yaml
+  backends:
+    local-fs:
+      enabled: true
+      type: skill
+      skill_name: local-fs-integration
+      trust_zone: internal
+      mode: auto            # auto | git-backed | snapshot
+      remote: null          # git URL；git-backed 有效时每次 commit 后尽力 push
+      root: ~/.kgent/local-fs   # 可选；KGENT_LOCAL_FS_ROOT 覆盖一切
+  ```
 
 ## 存储模型
 
@@ -144,23 +160,29 @@ closed）：
 
 ## kgent CLI 侧改动（Python 足迹，刻意最小）
 
-1. **setup**（`capabilities/detect.py` `detect_setup`）：检测序列加 local-fs 腿——
-   无凭据、恒可用（`git`/`rg` 存在性一并报告，并据此定档 store 模式）；backend
-   条目按现有 merge-on-rerun 写入（0001/0003 ADR 语义不变）；`<root>` 幂等创建；
-   git-backed 下加 `git init` + 种子提交 + `.gitattributes`（已是仓库则跳过全部
-   三步；root 嵌于既有仓库 → 不 init，落 snapshot 档）。
-2. **doctor**（`config/validate.py` `doctor`）：`backends.local-fs.enabled` 时只读
-   检查——root 缺失/非目录/不可写、有效模式报告（git-backed / snapshot）；git-
-   backed 下加 root 非 git 仓库、工作树脏（信息级）、remote 已配置 → push 可达性
-   提示；snapshot 下 `remote` 已配置 → finding「remote 仅 git-backed 有效」
-   （不自动建，创建归 setup）。
+1. **config schema**（`config/schema.py`）：backend defaults 增 `mode`（默认
+   `"auto"`）与 `remote`（默认 `None`）；`_validate_backend` 增 mode 枚举校验
+   （`auto|git-backed|snapshot`，违例 → ConfigError）与 remote 类型校验（str 或
+   None）。既有后端与既有校验路径零改动。
+2. **setup**（`capabilities/detect.py` `detect_setup`）：检测序列加 local-fs 腿——
+   无凭据、恒可用（`git`/`rg` 存在性一并报告）；`mode` 裁决：`auto` → 环境定档
+   （git 缺失降 snapshot，不拒启）；`git-backed` → git 缺失或 root 嵌于他人仓库
+   → **命名报错**（enable fail closed）；`snapshot` → 跳过一切 git 步骤。git-
+   backed 有效时：`<root>` 幂等创建 + `git init` + 种子提交 + `.gitattributes`
+   （已是仓库则跳过全部三步）。backend 条目按现有 merge-on-rerun 写入（0001/0003
+   ADR 语义不变）。
+3. **doctor**（`config/validate.py` `doctor`）：`backends.local-fs.enabled` 时只读
+   检查——root 缺失/非目录/不可写；有效模式报告（`snapshot` / `git-backed` /
+   `git-backed+remote`）；git-backed 下加 root 非 git 仓库、工作树脏（信息级）；
+   snapshot 下 `remote` 已配置 → finding「remote 仅 git-backed 有效」；显式
+   `git-backed` 但 git 缺失/嵌套仓库 → error 级 finding（不自动建，创建归 setup）。
 
-除此之外 **零 CLI 新增**：local-fs 无 adapter，`kgent search` 的 CLI fanout **不**
+除此之外 **零执行面新增**：local-fs 无 adapter，`kgent search` 的 CLI fanout **不**
 含 local-fs 腿（与平台检索同规——ADR 0004 后三平台检索也一律改走各自 integration
 skill）；`kgent undo` 的 adapter 执行路径不适用 local-fs（补偿由 skill 执行，
 ADR 0008）；`kgent route --dry-run` 对 local-fs 可用：config 声明的 `capabilities`
-直达 router，无需 adapter。台账 begin/end 的 revision 字段原样承载 SHA，
-**schema 与 undo 模块均不动**。
+直达 router，无需 adapter。台账 begin/end 的 revision 字段原样承载 SHA 或
+version，**journal 与 undo 模块均不动**；search/read/write 路径无任何新 CLI 面。
 
 ## Tier 与失败模型
 
@@ -171,7 +193,7 @@ ADR 0008）；`kgent route --dry-run` 对 local-fs 可用：config 声明的 `ca
 | 覆盖他人/他进程写入 | frontmatter version CAS（skill 执行） | 同刻外部编辑且 version 未动——undo 新鲜度兜底（按模式：双层/单层），写时不可查 |
 | 半截文件（崩溃/断电） | 临时文件 + `mv` 原子落盘；git-backed 下未 commit 的半截状态被显式检查拦截 | mv 失败 → journal end failed 显式落账 |
 | undo 埋掉并发/手工编辑 | git-backed：双层新鲜度 + revert 冲突哨兵；snapshot：version+hash 单层，均 fail closed | git-backed 下 gc prune 毁历史（skill 明示勿做）；snapshot 下 retention 过期后快照不可得（`.trash` 类不受限） |
-| git 缺失 / root 嵌于他人仓库 / 运行中删 `.git` | 自动降档 snapshot（0009），不拒启；doctor 报告有效模式 | 恢复窗口变窄（快照受 retention）；非安全削弱——fail closed 不变 |
+| git 缺失 / root 嵌于他人仓库 / 运行中删 `.git` | `mode: auto` → 自动降档 snapshot（0009），不拒启；doctor 报告有效模式。显式 `git-backed` → enable fail closed（配置即承诺） | auto 降档后恢复窗口变窄（快照受 retention）；非安全削弱——fail closed 不变 |
 | 并发 agent 写竞争 | git-backed：index.lock 获取失败即退出，不清理他人锁；snapshot：version CAS | 无（退避重试属实现细节） |
 | URI 逃逸 root | id 校验拒绝绝对路径/`..` | —（负向约束，无残余） |
 | 用户手放文件被破坏 | 外来文件写入拒绝 + 永不 stage | 检索仍可读（只读无害） |
@@ -182,36 +204,43 @@ ADR 0008）；`kgent route --dry-run` 对 local-fs 可用：config 声明的 `ca
 ## 验收标准（可执行）
 
 **A1 config/schema（pytest）**：含 `backends.local-fs`（type: skill,
-skill_name: local-fs-integration, trust_zone: internal, root:
-`~/.kgent/local-fs`）的 config 经 `load_config_dict` 通过；故意把 type 写成
-`local`（新类型）→ ConfigError（证明零 schema 改动的负向约束）。
+skill_name: local-fs-integration, trust_zone: internal, mode/remote 缺省）的
+config 经 `load_config_dict` 通过，且 defaults 补全 `mode: "auto"`、`remote:
+None`；`mode: "git-synced"`（非法值）→ ConfigError；`remote: "https://git.example.com/team/store.git"`
+与 `mode: "snapshot"` / `mode: "git-backed"` 均通过；故意把 type 写成 `local`
+（新类型）→ ConfigError（type 枚举零扩动的负向约束）；既有后端条目（无 mode/
+remote 键）行为与 rev 4 前完全一致。
 
-**A2 setup（pytest + tmp home + tmp root，git 有/无两变体）**：`detect_setup` 后
-local-fs 条目存在且 `enabled` 取用户选择；root 已创建。git 可得变体：root 已是
-git 仓库（`.git` 在）、`.gitattributes` 为 `* -text`、存在种子提交；git 缺失
-变体（PATH 屏蔽 git）：无 `.git`、setup 不报错。重跑 setup 幂等（git-backed 不
-重复 init；两变体均不覆盖用户已改的 `backends.local-fs`——merge-on-rerun，
-ADR 0001）；备份文件生成（ADR 0002/0003 语义不回归）。
+**A2 setup（pytest + tmp home + tmp root，按 mode 分变体）**：`detect_setup` 后
+local-fs 条目存在且 `enabled` 取用户选择；root 已创建。变体：`mode: auto` + git
+可得 → git-backed（root 已是 git 仓库、`.gitattributes` 为 `* -text`、存在种子
+提交）；`mode: auto` + git 缺失（PATH 屏蔽）→ snapshot、无 `.git`、setup 不报
+错；`mode: git-backed` + git 缺失 → **命名报错**、不建 `.git`；`mode: snapshot` +
+git 可得 → 无 `.git`、不调 git。重跑 setup 幂等（git-backed 不重复 init；各变体
+均不覆盖用户已改的 `backends.local-fs`——merge-on-rerun，ADR 0001）；备份文件
+生成（ADR 0002/0003 语义不回归）。
 
-**A3 doctor（pytest + tmp home）**：root 缺失 → finding 含路径；git-backed 下：
-root 非 git 仓库 → finding、工作树脏 → 信息级、snapshot 下配置了 remote →
-finding「remote 仅 git-backed 有效」；doctor 输出有效模式（git-backed /
-snapshot）；`enabled: false` → 无 local-fs finding。doctor 保持只读（运行后 root
+**A3 doctor（pytest + tmp home）**：root 缺失 → finding 含路径；doctor 输出有效
+模式三值（`snapshot` / `git-backed` / `git-backed+remote`）；git-backed 下：root
+非 git 仓库 → finding、工作树脏 → 信息级；snapshot 下配置了 remote → finding
+「remote 仅 git-backed 有效」；显式 `mode: git-backed` 但 git 缺失 → error 级
+finding；`enabled: false` → 无 local-fs finding。doctor 保持只读（运行后 root
 未被创建/初始化）。
 
-**A4 skill 流（gauntlet flow 腿，`KGENT_LOCAL_FS_ROOT=<tmp>`，git-backed 与
-snapshot（PATH 屏蔽 git）各跑一遍）**：真实启用 backend 上的端到端——(a) create
-space/node/doc → frontmatter 断言（version:1、hash==正文 sha256、LF 落盘）；
-git-backed 变体另断言 git log 恰一 commit（message 含 op_id）；(b) 检索（rg→grep
-退化链任一）命中并产出正确 `kgent://local-fs/…` URI 与绝对路径引用；(c) update
-带 `--expected-version` 正确版本 → version 递增（git-backed 另有新 commit）；带
-过期版本 → 拒绝且文件未动、journal 落 failed；(d) archive 后检索不再命中，
-unarchive 恢复；(e) delete → 文件消失（git-backed 且历史保留）→ undo → 文件恢复
-（git-backed 经 `git revert`；snapshot 自 `.trash` 归位）、frontmatter version
-恢复写前值；(f) update→undo 拒绝：git-backed 两类——手工改文件不提交（脏树）→
-拒绝、经 skill 再写一笔（HEAD 前移）→ revert 冲突拒绝；snapshot 一类——手工改
-文件（hash 漂移）→ 拒绝；(g) 全程 journal begin/end 成对、op_id 含 uuid、
-revision-after 为有效 SHA（git-backed）或写后 version（snapshot）。
+**A4 skill 流（gauntlet flow 腿，`KGENT_LOCAL_FS_ROOT=<tmp>`，按 config 固定
+`mode: git-backed` 与 `mode: snapshot` 各跑一遍，另以 `mode: auto` + 隐藏 git 验
+降档）**：真实启用 backend 上的端到端——(a) create space/node/doc → frontmatter
+断言（version:1、hash==正文 sha256、LF 落盘）；git-backed 变体另断言 git log 恰
+一 commit（message 含 op_id）；(b) 检索（rg→grep 退化链任一）命中并产出正确
+`kgent://local-fs/…` URI 与绝对路径引用；(c) update 带 `--expected-version` 正确
+版本 → version 递增（git-backed 另有新 commit）；带过期版本 → 拒绝且文件未动、
+journal 落 failed；(d) archive 后检索不再命中，unarchive 恢复；(e) delete → 文件
+消失（git-backed 且历史保留）→ undo → 文件恢复（git-backed 经 `git revert`；
+snapshot 自 `.trash` 归位）、frontmatter version 恢复写前值；(f) update→undo
+拒绝：git-backed 两类——手工改文件不提交（脏树）→ 拒绝、经 skill 再写一笔
+（HEAD 前移）→ revert 冲突拒绝；snapshot 一类——手工改文件（hash 漂移）→
+拒绝；(g) 全程 journal begin/end 成对、op_id 含 uuid、revision-after 为有效
+SHA（git-backed）或写后 version（snapshot）。
 
 **A5 幂等与隔离（负向）**：URI `kgent://local-fs/../etc/passwd` 与
 `kgent://local-fs/C:/x.md` → 拒绝；无 frontmatter 文件植入 root → search 跳过、
