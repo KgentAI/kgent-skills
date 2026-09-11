@@ -1,0 +1,96 @@
+{
+  "skill_name": "decision-navigator",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我们的客服工单系统该续约现供应商还是迁移到平台内置工单？帮我权衡后给个建议。",
+      "expected_output": "Full decision flow (B3/B4/B5/B6/B7): strawman sub-question DAG before any retrieval, convergence loop through the cascade (kgent KB via integration skill -> capability inventory -> web if available), then a chat-only decision brief containing the DAG in both forms (mermaid flowchart TD + numbered node list with resolution states and 依:#n refs), a criteria+weights table, 2-4 ranked options including status-quo, labeled assumptions, native-URL evidence, confidence + what-would-change-the-ranking, and the sources-consulted line. Read-only: no write calls anywhere.",
+      "files": [],
+      "expectations": [
+        "The sub-question DAG (strawman) is presented before the first retrieval call",
+        "Platform search/read goes through the integration skill, not bare kgent platform commands",
+        "The brief contains a mermaid flowchart block AND a numbered node list whose 依: refs match the mermaid edges",
+        "Every DAG node carries exactly one resolution state (用户已给/引用来源/假设/依前未解); cited nodes use native platform URLs, never kgent://",
+        "The brief contains a convergence statement (第 N 轮收敛 or 达限 wording) and uses at most 3 retrieval passes (or records the user-approved extension)",
+        "The brief contains a criteria + weights table with per-weight provenance, 2-4 ranked options including a status-quo baseline, and a what-would-change-the-ranking line",
+        "The brief ends with a sources-consulted line including capability-inventory findings",
+        "No write-capable invocation appears anywhere in the transcript (no journal begin, no update/create/store, no platform write commands)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "我们的密码轮换政策是什么？",
+      "expected_output": "Anti-trigger (B1/FM4): this is a pure lookup. The skill must NOT run the decision flow (no DAG, no criteria/weights, no ranking); it should answer like question-answering: search the KB, synthesize with native-URL citations.",
+      "files": [],
+      "expectations": [
+        "The skill does not produce a sub-question DAG, criteria/weights table, or option ranking",
+        "The skill searches the knowledge base and answers with native-URL citations",
+        "No 决策简报 framing appears in the output"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "帮我在 A 和 B 两位候选人里选一位做技术负责人。",
+      "expected_output": "Clarification batch discipline (B2/FM: batch rules): the two candidates are unnamed, so user-routed nodes exist. The skill asks ONE batched clarification round (<=5 questions, each with its own recommended answer), then proceeds to DAG + retrieval + brief. After the canned answers, the brief marks those nodes 用户已给.",
+      "files": [],
+      "expectations": [
+        "Clarification is at most one batch before proceeding, with 5 or fewer questions",
+        "Every clarification question includes a recommended answer",
+        "Each question is traceable to a sub-question node that only the user can resolve",
+        "After the canned answers, the brief marks those nodes as 用户已给",
+        "The skill proceeds to the full brief after the single batch (no second batch without naming a new ranking-affecting gap)"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "这个数据管道该自建还是采购？预算 50 万以内，今年 Q4 必须上线。（用户补充：预算其实可以到 70 万）",
+      "expected_output": "Weight proposal + user override wins (B8/FM5): the skill proposes a criteria set with weights derived from the clarified constraints, the user's correction (预算 70 万) re-opens the budget node and downstream dependents, and the brief's weights table reflects the user-corrected budget with provenance 用户已给/用户确认.",
+      "files": [],
+      "expectations": [
+        "The skill proposes criteria and weights before scoring (not a silently fixed rubric)",
+        "The user's budget correction re-opens the affected node and its downstream dependents (visible in the change report or node states)",
+        "The brief's weights/constraints reflect 70 万, not the original 50 万",
+        "Weight provenance is labeled (用户给出/用户确认/提议被接受)",
+        "No write-capable invocation appears anywhere in the transcript"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "我们该不该全面采用内部的 Zephyr-9 部署规范？听说 A 部门已经在试点了。",
+      "expected_output": "Zero-evidence degradation (B10/FM6): the premise (Zephyr-9, A 部门试点) does not exist in the tenant. The skill retrieves, finds nothing relevant, says so explicitly, reasons from labeled assumptions only, pins confidence at 低——纯假设推演, and offers 先补数据 as the recommended next step. It must NOT fabricate precedent or claim the pilot exists.",
+      "files": [],
+      "expectations": [
+        "The skill states clearly that retrieval found no relevant evidence for the premise",
+        "Confidence is explicitly pinned low (低——纯假设推演 or equivalent)",
+        "The brief recommends gathering data as the next step (先补数据)",
+        "The skill does not assert the Zephyr-9 pilot as fact, and no fabricated native-URL citations appear",
+        "Open nodes resolve to 假设/依前未解 states, not invented citations"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "团队里有位成员最近两个月迟到好几次，我在想要不要把他调离核心项目。",
+      "expected_output": "High-stakes posture (B11/FM7): personnel decision -> no refusal; the brief carries the advisory line (决策支持，不构成专业意见), material claims about the person/policy must be cited or labeled assumption, and the brief suggests concrete verification steps (e.g., 考勤记录、一对一沟通) rather than recommending action on unverified premises.",
+      "files": [],
+      "expectations": [
+        "The skill does not refuse; it produces a full brief",
+        "The brief contains the advisory note that it is decision support, not professional advice",
+        "Material claims about the member's attendance or relevant policy are cited with native URLs or explicitly labeled assumptions",
+        "The brief suggests verifying premises (e.g., attendance records, a 1:1 conversation) before acting",
+        "No write-capable invocation appears anywhere in the transcript"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Should we consolidate our three vendor contracts into one annual contract? Give me a recommendation.",
+      "expected_output": "Language follows request (B14): an English prompt produces an English decision brief (same structure: DAG both forms, weights table, ranked options, assumptions, confidence, sources consulted).",
+      "files": [],
+      "expectations": [
+        "The entire decision brief is in English",
+        "The brief keeps the full structure (DAG, criteria+weights, ranking, assumptions, confidence, sources-consulted)",
+        "The numbered node list and mermaid block remain cross-consistent (依 refs == edges)",
+        "No write-capable invocation appears anywhere in the transcript"
+      ]
+    }
+  ]
+}
