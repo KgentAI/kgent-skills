@@ -37,8 +37,8 @@ _Avoid_: 本地存储、离线后端
 _Avoid_: local backend（那是家族名）、文件后端
 
 **store 模式 (store mode)**:
-local-fs 的版本化能力档位，由 `backends.local-fs.mode` 配置（`auto` 默认 / `git-backed` / `snapshot`）：**git-backed**（root 为 git 仓库，undo = git revert，恢复窗口无限）与 **snapshot**（git 不可用或 root 嵌于他人仓库，undo = 台账快照写回 + `.trash`，快照窗口受 retention 约束）。两模式同一 skill、同一 frontmatter、同一 fail-closed 新鲜度纪律；git-backed + `remote` 配置 = remote-synced 有效状态。
-_Avoid_: git 模式/非 git 模式（档位名固定为 git-backed / snapshot）
+local-fs 的版本化能力档位，由 `backends.local-fs.mode` 配置（**默认 `git-backed`** / `snapshot`，无 auto 档）：**git-backed**（root 为 git 仓库，undo = git revert，恢复窗口无限；git 缺失 → enable fail closed）与 **snapshot**（显式降档，git 不可用环境的选择，undo = 台账快照写回 + `.trash`，快照窗口受 retention 约束）。两档同一 skill、同一 frontmatter、同一 fail-closed 新鲜度纪律；git-backed + `remote` 配置 = remote-synced 有效状态。
+_Avoid_: git 模式/非 git 模式、auto 档（档位固定为 git-backed / snapshot）
 
 **kgent hosted backend**:
 kgent 自有的云端托管知识库后端，与 lark / dingtalk / wecom 并列的另一种后端选择（尚未实现）；kgent CLI 平台操作（store / wiki / update / create / read / search）的唯一保留对象。三大平台的操作不经它。
