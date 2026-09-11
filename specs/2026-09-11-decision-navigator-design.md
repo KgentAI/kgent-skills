@@ -14,6 +14,9 @@
 > #12 与 #13 各自落了 0006 与 0007（`0006-query-knowledge-*` vs
 > `0006-local-backend-family-*`、`0007-ingest-knowledge-*` vs
 > `0007-local-fs-storage-format`），编号重复属 main 自身问题，本分支不代为重编。
+>
+> **修订 2（2026-09-11，实现期）**：runner 增加可选 `answers` 字段（见组件改动），
+> 支持 B2/B8 澄清场景的真实多轮回放。
 
 ## 设计稿 → 本 spec 的修正（grill 记录）
 
@@ -100,7 +103,8 @@ skill（ADR 0004）；skill 自身无写路径，故不触台账 / undo / 路由
 | `skills/decision-navigator/SKILL.md`（新） | 唯一实现物：上述操作流 + 触发面 + 检索纪律沿用（S33 缺失覆盖声明 / S55 冲突浮出 / S56 快照重叠 / N6 不可信内容 / config-consent / 语言跟随请求）+ mermaid 方言限定（裸 `flowchart TD`，节点不塞状态文本）+ 高风险域规则 + 零证据降级脚本 |
 | `tools/dn_brief_check.py`（新） | 结构断言器：吃 transcript/简报 markdown，校验 B5/B6/B7（节点状态恰一、mermaid 可解析且与节点表交叉一致（边一致/无环/节点覆盖）、收敛申报在场、轮次 ≤ 上限）；非零退出即违规 |
 | `tests/test_dn_brief_check.py`（新） | 断言器自身的单元测试：合规简报通过；图-表分叉、环、状态缺失、伪 mermaid、轮次超限 各负控必败 |
-| `evals/skills/decision-navigator-evals.json`（新） | 只读 eval 腿：B1/B2/B8/B10/B11/B14 场景；澄清行为用 canned answers（runner `--continue` 沿例），免批路径用 `--no-followup` |
+| `evals/skills/decision-navigator-evals.json`（新） | 只读 eval 腿：B1/B2/B8/B10/B11/B14 场景；澄清行为用 canned answers（eval 新增可选 `answers` 字段，runner `user_turns()` 读取并沿 `--continue` 节奏回放；缺省仍用固定 APPROVALS），免批路径用 `--no-followup` |
+| `tools/run-agent-evals.py`（小改） | 新增 `user_turns(entry, followup)`：`answers` 字段优先，否则默认 APPROVALS——澄清类 eval 需要真实回答而非批准语 |
 | `README.md` | 技能清单两处补 decision-navigator（手动 `ln -s` 示例 + 触发示例） |
 | `evals/README.md` | 并行分区说明补：decision-navigator 属只读组（零台账写入，与 query-knowledge 同组可并行） |
 | `tools/surface-manifest.txt` | **不改**——无新 kgent CLI 子命令 |

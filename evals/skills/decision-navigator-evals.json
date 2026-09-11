@@ -31,8 +31,12 @@
     {
       "id": 3,
       "prompt": "帮我在 A 和 B 两位候选人里选一位做技术负责人。",
-      "expected_output": "Clarification batch discipline (B2/FM: batch rules): the two candidates are unnamed, so user-routed nodes exist. The skill asks ONE batched clarification round (<=5 questions, each with its own recommended answer), then proceeds to DAG + retrieval + brief. After the canned answers, the brief marks those nodes 用户已给.",
+      "expected_output": "Clarification batch discipline (B2/FM: batch rules): the two candidates are unnamed, so user-routed nodes exist. The skill asks ONE batched clarification round (<=5 questions, each with its own recommended answer), then proceeds to DAG + retrieval + brief. The canned answers (see runner answers field) resolve the batch; the brief marks those nodes 用户已给.",
       "files": [],
+      "answers": [
+        "两位候选人：张三，现任后端负责人，带 8 人团队 3 年，技术判断强；李四，平台架构师，跨团队协作多，但没正式带过团队。",
+        "我更看重技术判断力和跨团队协作；管理经验可以后天补。其余问题按你的推荐来。"
+      ],
       "expectations": [
         "Clarification is at most one batch before proceeding, with 5 or fewer questions",
         "Every clarification question includes a recommended answer",
@@ -46,6 +50,10 @@
       "prompt": "这个数据管道该自建还是采购？预算 50 万以内，今年 Q4 必须上线。（用户补充：预算其实可以到 70 万）",
       "expected_output": "Weight proposal + user override wins (B8/FM5): the skill proposes a criteria set with weights derived from the clarified constraints, the user's correction (预算 70 万) re-opens the budget node and downstream dependents, and the brief's weights table reflects the user-corrected budget with provenance 用户已给/用户确认.",
       "files": [],
+      "answers": [
+        "预算上限修正为 70 万，不是 50 万。其他信息按你的推荐来。",
+        "权重就按你提议的用。"
+      ],
       "expectations": [
         "The skill proposes criteria and weights before scoring (not a silently fixed rubric)",
         "The user's budget correction re-opens the affected node and its downstream dependents (visible in the change report or node states)",
