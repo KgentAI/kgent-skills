@@ -9,7 +9,7 @@ kgent 是联邦知识管理层：把 Lark、DingTalk、WeCom 等平台的知识�
 _Avoid_: 服务、渠道
 
 **integration skill**:
-打包进 kgent-skills 的平台唯一接口层；对该平台的一切 search / read / write / undo 补偿执行 / 原生 URL 构造都必须经它，由它委派原生 skill 或平台 CLI。命名 `<platform>-integration`。
+打包进 kgent-skills 的后端唯一接口层；对该后端的一切 search / read / write / undo 补偿执行 / 原生 URL 构造都必须经它，由它委派原生 skill、平台 CLI，或（本地后端）shell 原语。命名 `<backend>-integration`。
 _Avoid_: 平台 skill、平台适配器
 
 **原生 skill (native skill)**:
@@ -17,7 +17,7 @@ _Avoid_: 平台 skill、平台适配器
 _Avoid_: 官方 skill
 
 **后端 (backend)**:
-kgent config/router 层的平台抽象，带 trust_zone。与平台一一对应：lark、dingtalk、wecom。
+kgent config/router 层的存储抽象，带 trust_zone。平台后端与平台一一对应（lark、dingtalk、wecom）；本地后端按 `local-` 家族扩展（local-fs，见下）。
 _Avoid_: 存储
 
 **知识库 (knowledge base)**:
@@ -27,6 +27,14 @@ _Avoid_: 文档库
 **知识空间 (wiki space)**:
 平台侧的知识空间容器（Lark wiki space、DingTalk workspace），平台概念而非 kgent 抽象。
 _Avoid_: 空间
+
+**本地后端 (local backend)**:
+存储在本机的后端家族，与 SaaS 平台后端（lark / dingtalk / wecom）相对，也与 kgent hosted backend（云端托管）相区分。成员以 `local-` 前缀命名，各自由 `<member>-integration` skill 承载操作。
+_Avoid_: 本地存储、离线后端
+
+**local-fs backend（本地文件后端）**:
+本地后端家族的首个成员：纯文件系统知识库——markdown + frontmatter、wiki 形目录树、grep 式检索。config 名 `local-fs`，URI 形如 `kgent://local-fs/<相对路径>`。
+_Avoid_: local backend（那是家族名）、文件后端
 
 **kgent hosted backend**:
 kgent 自有的云端托管知识库后端，与 lark / dingtalk / wecom 并列的另一种后端选择（尚未实现）；kgent CLI 平台操作（store / wiki / update / create / read / search）的唯一保留对象。三大平台的操作不经它。
