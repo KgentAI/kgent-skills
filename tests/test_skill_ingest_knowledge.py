@@ -1,7 +1,7 @@
-"""Knowledge-storage skill tests (Task 9.1; S60–S64).
+"""Ingest-knowledge skill tests (Task 9.1; S60–S64).
 
-Tests the ``store_workflow`` function that orchestrates context gathering,
-update-first search, proposal building with provenance, and execution via
+Tests the ``ingest_knowledge`` function that orchestrates context gathering,
+update-first matching, proposal building with provenance, and execution via
 the Router primitives.
 """
 
@@ -79,7 +79,7 @@ def router_env(tmp_home, monkeypatch):
 
 def test_s60_provenance_records_intent_and_target(router_env):
     """S60: provenance records intent=update and target=lark from context."""
-    from kgent.skills.knowledge_storage import store_workflow
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     # Seed an existing doc
     lark = router_env["backends"]["lark"]
@@ -92,7 +92,7 @@ def test_s60_provenance_records_intent_and_target(router_env):
         "conversation": "discussed API Design Guidelines v2",
         "preferences": {"target_backend": "lark"},
     }
-    proposal = store_workflow("save API Design Guidelines", context, router_env["router"])
+    proposal = ingest_knowledge("save API Design Guidelines", context, router_env["router"])
     # Provenance should record the source of each inferred field
     assert hasattr(proposal, "provenance")
     prov = proposal.provenance
@@ -107,24 +107,24 @@ def test_s60_provenance_records_intent_and_target(router_env):
 
 def test_s61_update_first_proposes_update_not_create(router_env):
     """S61: when a matching doc exists, propose UPDATE, never CREATE."""
-    from kgent.skills.knowledge_storage import store_workflow
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     lark = router_env["backends"]["lark"]
     lark.create_document(
         title="API Guidelines", content="v1", metadata=_meta("lark", "API Guidelines")
     )
     context = {}
-    proposal = store_workflow("save API Guidelines v2", context, router_env["router"])
+    proposal = ingest_knowledge("save API Guidelines v2", context, router_env["router"])
     assert proposal.operation == "update"
     assert proposal.targets[0][1] is not None  # has a doc_uri (not None)
 
 
 def test_s61_no_match_proposes_create(router_env):
     """S61: when no match exists, propose CREATE."""
-    from kgent.skills.knowledge_storage import store_workflow
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     context = {}
-    proposal = store_workflow("save new doc", context, router_env["router"])
+    proposal = ingest_knowledge("save new doc", context, router_env["router"])
     assert proposal.operation == "create"
 
 
@@ -135,7 +135,7 @@ def test_s61_no_match_proposes_create(router_env):
 
 def test_s62_multiple_matches_offer_options(router_env):
     """S62: multiple matches → proposal includes match_uris for per-copy options."""
-    from kgent.skills.knowledge_storage import store_workflow
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     # Seed matching docs in both backends
     lark = router_env["backends"]["lark"]
@@ -147,7 +147,7 @@ def test_s62_multiple_matches_offer_options(router_env):
         title="API Guidelines", content="dingtalk v1", metadata=_meta("dingtalk", "API Guidelines")
     )
     context = {}
-    proposal = store_workflow("save API Guidelines v2", context, router_env["router"])
+    proposal = ingest_knowledge("save API Guidelines v2", context, router_env["router"])
     # When multiple matches exist, the proposal should list them
     assert hasattr(proposal, "match_uris")
     assert len(proposal.match_uris) >= 2
@@ -160,10 +160,10 @@ def test_s62_multiple_matches_offer_options(router_env):
 
 def test_s63_skill_uses_resolve_intent(router_env):
     """S63: skill calls resolve_intent and consumes targets[0].adapter_name."""
-    from kgent.skills.knowledge_storage import store_workflow
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     context = {}
-    proposal = store_workflow("save doc", context, router_env["router"])
+    proposal = ingest_knowledge("save doc", context, router_env["router"])
     # The proposal should have targets resolved via resolve_intent
     assert proposal.targets
     # Execute via router (which uses resolve_intent internally)
@@ -180,10 +180,10 @@ def test_s63_skill_uses_resolve_intent(router_env):
 def test_s64_unconfirmed_write_blocked(router_env):
     """S64: router blocks unconfirmed skill write (no journal, no backend call)."""
     from kgent.errors import PolicyError
-    from kgent.skills.knowledge_storage import store_workflow
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     context = {}
-    proposal = store_workflow("save doc", context, router_env["router"])
+    proposal = ingest_knowledge("save doc", context, router_env["router"])
     # Attempt to execute with "rejected" confirmation — raises PolicyError
     with pytest.raises(PolicyError):
         # pi-lens-ignore: python-sql-injection

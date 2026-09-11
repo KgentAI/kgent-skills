@@ -1,7 +1,8 @@
-"""Question-answering skill (§7.4, S68, N11).
+"""Query-knowledge skill — the read lane (ADR 0006; §7.4, S68, N11).
 
-Every factual claim in an answer carries a source citation (``doc_uri``) from
-a search result. Claims without a source are marked as ``supported=False`` —
+Answers questions and serves any task with a knowledge dependency: every
+factual claim in a result carries a source citation (``doc_uri``) from a
+search result. Claims without a source are marked as ``supported=False`` —
 never fabricated (N11).
 """
 
@@ -11,7 +12,7 @@ from dataclasses import dataclass, field
 
 from kgent.router.core import Router
 
-__all__ = ["Answer", "Claim", "answer"]
+__all__ = ["Answer", "Claim", "query_knowledge"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,8 +34,8 @@ class Answer:
     summary: str = ""
 
 
-def answer(question: str, router: Router, *, top_k: int = 5) -> Answer:
-    """Answer ``question`` using search results as citations (S68).
+def query_knowledge(question: str, router: Router, *, top_k: int = 5) -> Answer:
+    """Resolve ``question`` using search results as citations (S68).
 
     Every factual claim in the returned :class:`Answer` carries a ``source_uri``
     from a search result. Claims without a source are marked ``supported=False``

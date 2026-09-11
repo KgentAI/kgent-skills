@@ -1,10 +1,12 @@
-"""Knowledge-storage skill (§5.1–§5.3, §6.1–§6.5, S60–S64; wiki: S83–S84).
+"""Ingest-knowledge skill — the write lane (ADR 0007; §5.1–§5.3, §6.1–§6.5, S60–S64; wiki: S83–S84).
 
-Orchestrates context gathering, update-first search, proposal building with
+Orchestrates context gathering, update-first matching, proposal building with
 provenance, and returns a :class:`WriteProposal` for the caller to confirm
-and execute via the Router.
+and execute via the Router. At the agent-flow layer, pre-write discovery
+delegates to the query-knowledge skill (ADR 0007); this primitive keeps the
+router-level matching so the proposal machinery stays testable.
 
-Wiki nodes (§6.10) are first-class targets: update-first search covers wiki
+Wiki nodes (§6.10) are first-class targets: update-first matching covers wiki
 nodes and flat docs (a wiki match is updated in place as a wiki node, N24),
 and when the resolved target is a knowledge space the proposal carries
 ``wiki_space`` + a ``parent_node_token`` obtained ONLY from search or space
@@ -19,10 +21,10 @@ from typing import Any
 from kgent.router.core import Router
 from kgent.types import WriteProposal
 
-__all__ = ["store_workflow"]
+__all__ = ["ingest_knowledge"]
 
 
-def store_workflow(
+def ingest_knowledge(
     user_request: str,
     context: dict[str, Any],
     router: Router,
@@ -30,7 +32,8 @@ def store_workflow(
     """Build a write proposal from ``user_request`` + ``context`` (S60–S64).
 
     1. Gather context: conversation, preferences, existing docs (S60).
-    2. Search for matching docs/blog/wiki nodes (update-first, S61; wiki S83).
+    2. Match existing docs/blog/wiki nodes (update-first, S61; wiki S83) —
+       at the agent layer this discovery is the query-knowledge flow.
     3. Resolve the target type (wiki-vs-doc) — asking when undetermined (S84).
     4. Build the proposal with provenance; wiki creates resolve space + a
        fitting parent from space listing (S83 — never guessed tokens).

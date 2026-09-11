@@ -292,12 +292,12 @@ def test_n10_no_silent_failure_drop(router_env: dict[str, Any]) -> None:
 
 
 def test_n11_no_fabricate_content(router_env: dict[str, Any]) -> None:
-    """N11: QA answers do not fabricate content without sources."""
-    from kgent.skills.question_answering import answer
+    """N11: query-knowledge results do not fabricate content without sources."""
+    from kgent.skills.query_knowledge import query_knowledge
 
     router = router_env["router"]
     # Ask about something not in any doc
-    result = answer("What is the secret project?", router)
+    result = query_knowledge("What is the secret project?", router)
     # All claims without source_uri are marked unsupported
     for claim in result.claims:
         if claim.source_uri is None:
@@ -423,8 +423,8 @@ def test_n17_no_resolve_disabled_adapter(router_env: dict[str, Any]) -> None:
 
 
 def test_n18_no_create_when_match_exists(router_env: dict[str, Any]) -> None:
-    """N18: store_workflow proposes UPDATE when a match exists."""
-    from kgent.skills.knowledge_storage import store_workflow
+    """N18: ingest_knowledge proposes UPDATE when a match exists."""
+    from kgent.skills.ingest_knowledge import ingest_knowledge
 
     router = router_env["router"]
     # Create a doc
@@ -434,7 +434,7 @@ def test_n18_no_create_when_match_exists(router_env: dict[str, Any]) -> None:
         metadata=_meta("lark", "API Guidelines"),
     )
     # Try to store with matching title
-    proposal = store_workflow("save 'API Guidelines' v2", {}, router)
+    proposal = ingest_knowledge("save 'API Guidelines' v2", {}, router)
     # Should propose UPDATE, not CREATE
     assert proposal.operation == "update"
 

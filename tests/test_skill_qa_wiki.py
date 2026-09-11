@@ -1,4 +1,4 @@
-"""QA + wiki-setup skill tests (Task 9.3; S68, S69)."""
+"""query-knowledge + wiki-setup skill tests (Task 9.3; S68, S69)."""
 
 # pyright: basic
 from __future__ import annotations
@@ -63,13 +63,13 @@ def router_env(tmp_home, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# S68: QA answers cite sources
+# S68: query results cite sources
 # ---------------------------------------------------------------------------
 
 
-def test_s68_qa_answer_cites_sources(router_env):
-    """S68: every factual claim in a QA answer carries a source doc_uri."""
-    from kgent.skills.question_answering import answer
+def test_s68_query_cites_sources(router_env):
+    """S68: every factual claim in a query result carries a source doc_uri."""
+    from kgent.skills.query_knowledge import query_knowledge
 
     # Seed some docs
     lark = router_env["backends"]["lark"]
@@ -80,7 +80,7 @@ def test_s68_qa_answer_cites_sources(router_env):
         title="Benefits", content="Health insurance included", metadata=_meta("lark", "Benefits")
     )
 
-    result = answer("What is the onboarding process?", router_env["router"])
+    result = query_knowledge("What is the onboarding process?", router_env["router"])
     # Every claim must have a source_uri
     for claim in result.claims:
         if claim.supported:
@@ -88,11 +88,11 @@ def test_s68_qa_answer_cites_sources(router_env):
             assert claim.source_uri.startswith("kgent://")
 
 
-def test_s68_qa_unsupported_claims_marked(router_env):
+def test_s68_query_unsupported_claims_marked(router_env):
     """S68: claims without sources are marked as unsupported, never fabricated."""
-    from kgent.skills.question_answering import answer
+    from kgent.skills.query_knowledge import query_knowledge
 
-    result = answer("What is the secret project?", router_env["router"])
+    result = query_knowledge("What is the secret project?", router_env["router"])
     # All claims should be marked unsupported when no source exists
     for claim in result.claims:
         if claim.source_uri is None:
