@@ -27,7 +27,7 @@ DEP_TAIL_RE = re.compile(r"依[:：]\s*(.+)\s*$")
 DEP_ID_RE = re.compile(r"N\d+")
 URL_RE = re.compile(r"^https?://\S+$")
 
-MERMAID_FENCE_RE = re.compile(r"```mermaid[ \t]*\r?\n(.*?)```", re.S)
+MERMAID_FENCE_RE = re.compile(r"```mermaid[ \t]*\r?\n(.*?)```", re.DOTALL)
 FLOWCHART_RE = re.compile(r"^flowchart TD$")
 NODE_DEF_RE = re.compile(r"^N\d+(?:\[\"[^\"]*\"\])?$")
 EDGE_RE = re.compile(r"^(N\d+)-->(N\d+)$")
@@ -96,7 +96,9 @@ def _violations_mermaid(text: str) -> tuple[list[str], set[str], set[str]]:
         if NODE_DEF_RE.match(compact):
             nodes.add(re.match(r"^N\d+", compact).group(0))
             continue
-        problems.append(f"mermaid L{lineno}: 非裸方言的行「{line}」（只准 N1[\"标签\"] 与 N1 --> N2）")
+        problems.append(
+            f'mermaid L{lineno}: 非裸方言的行「{line}」（只准 N1["标签"] 与 N1 --> N2）'
+        )
     if not seen_header:
         problems.append("mermaid 块为空：缺 flowchart TD 头")
     return problems, edges, nodes
@@ -115,7 +117,7 @@ def _has_cycle(edges: set[tuple[str, str]]) -> str | None:
         stack.append(node)
         for nxt in out.get(node, []):
             if state.get(nxt, 0) == 1:
-                return " -> ".join([*stack[stack.index(nxt):], nxt])
+                return " -> ".join([*stack[stack.index(nxt) :], nxt])
             if state.get(nxt, 0) == 0 and (found := visit(nxt)):
                 return found
         state[node] = 2
@@ -194,7 +196,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("brief", help="简报 markdown 文件路径")
     parser.add_argument(
-        "--max-passes", type=int, default=DEFAULT_MAX_PASSES,
+        "--max-passes",
+        type=int,
+        default=DEFAULT_MAX_PASSES,
         help=f"检索循环硬上限（默认 {DEFAULT_MAX_PASSES}）",
     )
     args = parser.parse_args(argv)

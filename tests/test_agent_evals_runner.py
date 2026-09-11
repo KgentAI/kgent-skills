@@ -46,7 +46,9 @@ def test_runner_allows_wecom_cli():
 
 def test_grader_accepts_wecom_integration_wording():
     passed, misses, manual = runner.heuristic_grade(
-        ["For WeCom targets the skill delegates execution via wecom-integration, not 'kgent update'"],
+        [
+            "For WeCom targets the skill delegates execution via wecom-integration, not 'kgent update'"
+        ],
         "transcript ... wecom-integration ... 委派了",
     )
     assert passed == 1 and not misses and not manual

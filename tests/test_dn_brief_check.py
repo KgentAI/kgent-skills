@@ -28,8 +28,12 @@ NODES_CLEAN = """- N1 [用户已给] 预算上限 50 万
 CONVERGED = "第2轮收敛：本轮零新增、零重开、零新增引用解算。"
 
 
-def _brief(mermaid: str = MERMAID_CLEAN, nodes: str = NODES_CLEAN,
-           convergence: str = CONVERGED, extra: str = "") -> str:
+def _brief(
+    mermaid: str = MERMAID_CLEAN,
+    nodes: str = NODES_CLEAN,
+    convergence: str = CONVERGED,
+    extra: str = "",
+) -> str:
     return f"""# 决策简报：客服系统续约 vs 迁移
 
 ## 决策分解
@@ -52,7 +56,10 @@ def run_checker(tmp_path: Path, text: str, *args: str) -> subprocess.CompletedPr
     brief.write_text(text, encoding="utf-8")
     return subprocess.run(
         [sys.executable, str(CHECKER), *args, str(brief)],
-        capture_output=True, text=True, encoding="utf-8",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
     )
 
 
@@ -255,8 +262,7 @@ def test_cap_reached_assumption_path_exit0(tmp_path):
 
 def test_custom_max_passes_flag(tmp_path):
     """--max-passes 提高上限后 第5轮收敛 合法。"""
-    result = run_checker(tmp_path, _brief(convergence="第5轮收敛：零新增。"),
-                         "--max-passes", "5")
+    result = run_checker(tmp_path, _brief(convergence="第5轮收敛：零新增。"), "--max-passes", "5")
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -274,7 +280,10 @@ def test_unreadable_file_exit2(tmp_path):
     """输入文件不存在 → exit 2（不是 0，不是未捕获栈）。"""
     result = subprocess.run(
         [sys.executable, str(CHECKER), str(tmp_path / "nope.md")],
-        capture_output=True, text=True, encoding="utf-8",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
     )
     assert result.returncode == 2
 
@@ -283,7 +292,10 @@ def test_directory_arg_exit2(tmp_path):
     """输入是目录 → exit 2（fail closed）。"""
     result = subprocess.run(
         [sys.executable, str(CHECKER), str(tmp_path)],
-        capture_output=True, text=True, encoding="utf-8",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
     )
     assert result.returncode == 2
 
@@ -292,7 +304,10 @@ def test_no_args_exit2():
     """零参数 → exit 2 用法错误。"""
     result = subprocess.run(
         [sys.executable, str(CHECKER)],
-        capture_output=True, text=True, encoding="utf-8",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
     )
     assert result.returncode == 2
 
@@ -304,6 +319,9 @@ def test_undecodable_file_exit2(tmp_path, encoding):
     brief.write_text("第2轮收敛", encoding=encoding)
     result = subprocess.run(
         [sys.executable, str(CHECKER), str(brief)],
-        capture_output=True, text=True, encoding="utf-8",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
     )
     assert result.returncode == 2

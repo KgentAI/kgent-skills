@@ -8,15 +8,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-from hypothesis import HealthCheck, given, settings, strategies as st
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 CHECKER = Path(__file__).resolve().parents[2] / "tools" / "dn_brief_check.py"
 
 STATES = ["用户已给", "引用来源", "假设", "依前未解"]
 
 
-def _render(ids: list[str], deps: dict[str, list[str]], states: dict[str, str],
-            convergence: str) -> str:
+def _render(
+    ids: list[str], deps: dict[str, list[str]], states: dict[str, str], convergence: str
+) -> str:
     mermaid_lines = ["```mermaid", "flowchart TD"]
     for nid in ids:
         mermaid_lines.append(f'    {nid}["节点{nid}"]')
@@ -64,12 +66,14 @@ def _valid_briefs(draw):
             deps[nid] = draw(st.sets(st.sampled_from(earlier), max_size=len(earlier)))
     states = {nid: draw(st.sampled_from(STATES)) for nid in ids}
     convergence = draw(
-        st.sampled_from([
-            "第1轮收敛：零新增。",
-            "第3轮收敛：零新增、零重开。",
-            "3轮达限，余下开放节点按假设处理。",
-            "第3轮达限，经用户批准延长3轮；第5轮收敛。",
-        ])
+        st.sampled_from(
+            [
+                "第1轮收敛：零新增。",
+                "第3轮收敛：零新增、零重开。",
+                "3轮达限，余下开放节点按假设处理。",
+                "第3轮达限，经用户批准延长3轮；第5轮收敛。",
+            ]
+        )
     )
     return _render(ids, deps, states, convergence)
 
@@ -86,6 +90,9 @@ def test_p8_valid_brief_always_passes(tmp_path, brief: str):
     path.write_text(brief, encoding="utf-8")
     result = subprocess.run(
         [sys.executable, str(CHECKER), str(path)],
-        capture_output=True, text=True, encoding="utf-8",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
     )
     assert result.returncode == 0, f"{brief}\n---\n{result.stdout}{result.stderr}"
