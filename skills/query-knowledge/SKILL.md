@@ -425,3 +425,7 @@ Skill:
   文件）之前，先向用户说明要读什么、为什么，征得同意后再读——配置含后端与
   信任设置，不静默读取。kgent CLI 自身内部读配置不受此条约束；此条管的是
   agent 直接 Read 配置文件的行为。
+
+## Local backend (local-fs-integration)
+
+When `backends.local-fs.enabled: true` in `~/.kgent/config.yaml`, the local-fs leg of search / read / write / undo flows through the **local-fs-integration** skill — never `kgent search ... --backends local-fs` directly (ADR 0004; local-fs has no CLI adapter). Gate closed → skip; other backends unaffected.
