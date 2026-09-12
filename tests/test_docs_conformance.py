@@ -26,6 +26,7 @@ DOC_FILES = [
     SKILLS_DIR / "lark-integration" / "SKILL.md",
     SKILLS_DIR / "dingtalk-integration" / "SKILL.md",
     SKILLS_DIR / "wecom-integration" / "SKILL.md",
+    SKILLS_DIR / "local-fs-integration" / "SKILL.md",
 ]
 
 _LINE = re.compile(r"^\s*(?:[-*]\s+|>\s*|\$\s+)?((?:kgent|lark-cli|dws|wecom-cli)\b.+)")
