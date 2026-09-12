@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from kgent import localfs
 from kgent.localfs import (
     DEFAULT_MODE,
     dirty_paths,
@@ -27,7 +28,9 @@ def _git() -> str:
     return git
 
 
-def test_resolve_root_env_overrides_everything(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_root_env_overrides_everything(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("KGENT_LOCAL_FS_ROOT", str(tmp_path / "env-root"))
     assert resolve_root({"local-fs": {"root": str(tmp_path / "cfg-root")}}) == tmp_path / "env-root"
 
@@ -101,3 +104,55 @@ def test_dirty_paths_empty_then_dirty(tmp_path: Path) -> None:
     (root / "a.md").write_text("x", encoding="utf-8", newline="\n")
     dirty = dirty_paths(root)
     assert dirty and dirty[0].startswith("??")
+
+
+def test_nested_in_foreign_repo_without_git_is_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git 缺失 → 不判 foreign（mode resolution 单独处理 git 缺失，ADR 0009）。"""
+    monkeypatch.setattr(localfs, "git_path", lambda: None)
+    assert nested_in_foreign_repo(tmp_path) is False
+
+
+def test_nested_in_foreign_repo_probe_failure_is_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git 探针自身失败（可执行文件不存在 → OSError）→ 不判 foreign，绝不 raise。"""
+    monkeypatch.setattr(localfs, "git_path", lambda: str(tmp_path / "no-such-git"))
+    assert nested_in_foreign_repo(tmp_path) is False
+
+
+def test_init_store_without_git_fails_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(localfs, "git_path", lambda: None)
+    with pytest.raises(RuntimeError, match="git not found on PATH"):
+        init_store(tmp_path / "store")
+
+
+def test_dirty_paths_without_git_is_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(localfs, "git_path", lambda: None)
+    assert dirty_paths(tmp_path) == []
+
+
+def test_dirty_paths_probe_failure_is_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git 探针 OSError → 只读 best-effort 返回 []，不打断调用方。"""
+    monkeypatch.setattr(localfs, "git_path", lambda: str(tmp_path / "no-such-git"))
+    assert dirty_paths(tmp_path) == []
+
+
+def test_dirty_paths_outside_any_repo_is_empty(tmp_path: Path) -> None:
+    """git status 在非仓库退出非零 → []（无变化可报）。"""
+    assert dirty_paths(tmp_path) == []
+
+
+def test_init_store_git_step_failure_fails_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """某个 git 步骤失败 → named RuntimeError 带子命令与 stderr（ADR 0009 fail-closed）。"""
+    failed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom")
+    monkeypatch.setattr(localfs.subprocess, "run", lambda *a, **k: failed)
+    with pytest.raises(RuntimeError, match="git init failed: boom"):
+        init_store(tmp_path / "store")

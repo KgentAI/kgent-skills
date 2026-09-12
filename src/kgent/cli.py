@@ -561,11 +561,27 @@ def _cmd_undo(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _coerce_revision(value: str | None) -> str | int | None:
+    """CLI ``--revision-before/--revision-after`` → ledger revision (``str | int``).
+
+    纯数字字面量仍收成 int（平台腿既有行为不变）；其余原样透传——local-fs
+    git-backed 的 revision 是 git SHA（A4/A5 写序列），``int()`` 化会让文档化
+    的台账流程当场 ValueError（tools/local-fs-flow.sh 首跑撞出）。ledger 两端
+    签名本就收 ``str | int``。
+    """
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return value
+
+
 def _cmd_journal_begin(args: argparse.Namespace) -> int:
     """B2: register a logical write op in the ledger."""
     from kgent.router.ledger import begin
 
-    revision = int(args.revision_before) if args.revision_before else None
+    revision = _coerce_revision(args.revision_before)
     entry = begin(
         Journal(_home()),  # 台账只依赖 home，不需要已配置的 backends
         operation=args.operation,
@@ -594,7 +610,7 @@ def _cmd_journal_end(args: argparse.Namespace) -> int:
     """
     from kgent.router.ledger import LedgerError, end
 
-    revision = int(args.revision_after) if args.revision_after else None
+    revision = _coerce_revision(args.revision_after)
     doc_uri = getattr(args, "doc_uri", None)
     snapshot_after = getattr(args, "snapshot_after", None)
     try:

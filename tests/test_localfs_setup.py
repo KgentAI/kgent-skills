@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from kgent.capabilities.detect import discover, setup
+from kgent.capabilities.detect import _prepare_local_fs_store, discover, setup
 from kgent.config import _yaml
 from kgent.errors import ConfigError
 
@@ -111,3 +111,23 @@ def test_setup_rerun_merges_and_stays_idempotent(
         check=True,
     )
     assert len(log.stdout.strip().splitlines()) == 1  # still one seed commit
+
+
+def test_store_prep_noop_when_config_absent(tmp_path: Path) -> None:
+    """守卫分支：home 无 config.yaml → store prep 直接返回（A2 无副作用）。"""
+    _prepare_local_fs_store(tmp_path)
+    assert not (tmp_path / "local-fs").exists()
+
+
+def test_store_prep_noop_when_config_is_not_a_mapping(tmp_path: Path) -> None:
+    """守卫分支：config 顶层不是 mapping（如 list）→ 直接返回，不 raise。"""
+    _write_config(tmp_path, "- a\n- b\n")
+    _prepare_local_fs_store(tmp_path)
+    assert not (tmp_path / "local-fs").exists()
+
+
+def test_store_prep_noop_when_backends_is_not_a_mapping(tmp_path: Path) -> None:
+    """守卫分支：backends 不是 mapping（如 list）→ 直接返回，不 raise。"""
+    _write_config(tmp_path, "version: 1\nbackends: []\n")
+    _prepare_local_fs_store(tmp_path)
+    assert not (tmp_path / "local-fs").exists()

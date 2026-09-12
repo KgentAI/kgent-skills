@@ -3,6 +3,7 @@
 # pyright: basic
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -137,3 +138,25 @@ def test_doctor_reports_git_backed_plus_remote(
         )
     )
     assert any("git-backed+remote" in f for f in findings)
+
+
+def test_doctor_root_is_file_named(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """root 存在但不是目录 → named finding（不是 missing，也不是 healthy）。"""
+    root = tmp_path / "store-as-file"
+    root.write_text("not a directory", encoding="utf-8", newline="\n")
+    monkeypatch.setenv("KGENT_LOCAL_FS_ROOT", str(root))
+    findings, code = doctor(_config(tmp_path, "    enabled: true\n"))
+    assert code == 1
+    assert any("not a directory" in f for f in findings)
+
+
+def test_doctor_root_not_writable_named(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """root 不可写 → named finding（只读检查，doctor 不改任何东西）。"""
+    root = tmp_path / "store"
+    root.mkdir()
+    monkeypatch.setenv("KGENT_LOCAL_FS_ROOT", str(root))
+    real_access = os.access
+    monkeypatch.setattr(os, "access", lambda p, m: False if m == os.W_OK else real_access(p, m))
+    findings, code = doctor(_config(tmp_path, "    enabled: true\n"))
+    assert code == 1
+    assert any("not writable" in f for f in findings)
