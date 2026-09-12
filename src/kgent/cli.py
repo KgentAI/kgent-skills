@@ -660,6 +660,12 @@ def _cmd_route(args: argparse.Namespace) -> int:
     :func:`_backend_trust_zone`), never from the adapter object. Nothing is
     written, journaled, or audited. Every backend rejected → exit 3 (the
     router's policy-rejected code).
+
+    A configured-but-adapter-less backend (local-fs, spec 2026-09-10:
+    「route 对 local-fs 可用——config 声明的后端直达裁决，无需 adapter」)
+    adjudicates from config alone: the zone gate only reads config-side
+    ``trust_zone``. A name that is neither adapter-registered nor configured
+    keeps the read/delete contract — exit 1, never a silent skip.
     """
     from kgent.router.sensitivity import analyze_sensitivity, enforce_zone
 
@@ -675,9 +681,13 @@ def _cmd_route(args: argparse.Namespace) -> int:
     allowed: list[str] = []
     rejected: list[dict[str, str]] = []
     for name in names:
-        if router.backends.get(name) is None:
+        if router.backends.get(name) is None and name not in router.config.backends:
             # Same contract as read/delete: a named-but-unavailable backend is
             # a failure (exit 1) — never a silent skip, never a policy 3.
+            # "Unavailable" = neither adapter-registered nor configured: a
+            # configured-but-adapter-less backend (local-fs, spec 2026-09-10)
+            # adjudicates from config alone below — enforce_zone reads the
+            # trust_zone via _backend_trust_zone(config, …), no adapter needed.
             raise ConfigError(f"backend {name!r} is not available")
         try:
             enforce_zone(tier, _backend_trust_zone(router.config, name), name)

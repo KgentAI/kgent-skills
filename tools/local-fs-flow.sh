@@ -91,6 +91,18 @@ EOF
   # commit uses (localfs.init_store): a throwaway env has no global git config.
   local GIT=(git -C "$root" -c user.name=kgent -c user.email=kgent@local)
 
+  # (a) skill Write step 1 — route adjudication (read-only, before any write).
+  # The CLI has no local-fs adapter; route adjudicates the configured backend
+  # from its config-side trust_zone (spec 2026-09-10). Pinned outcome: internal
+  # content + internal zone → exit 0 with local-fs in allowed_backends.
+  local route_json route_code
+  route_json="$("$KGENT_BIN" route --content "first-year body" --backends local-fs --json 2>&1)" \
+    && route_code=0 || route_code=$?
+  assert "(a) route adjudicates the adapter-less local-fs backend (never exit 1)" \
+    bash -c "test '$route_code' -ne 1"
+  assert "(a) route allows local-fs (internal content, internal zone)" \
+    bash -c "printf '%s' '$route_json' | python -c \"import json,sys;d=json.load(sys.stdin);sys.exit(0 if 'local-fs' in d.get('allowed_backends',[]) else 1)\""
+
   # (a) create space/node/doc per the skill: mkdir + frontmatter + journal + (git) commit
   mkdir -p "$root/engineering-wiki/onboarding"
   printf 'first-year body\n' > "$WORK/body-a.txt"
