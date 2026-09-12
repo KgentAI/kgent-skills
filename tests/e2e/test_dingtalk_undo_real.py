@@ -30,7 +30,9 @@ undo 计划期的新鲜度读（FM2）经 :class:`kgent.adapters.dingtalk.DingTa
    dws 二进制自述：非交互环境（Agent/CI，stdin 非 TTY）写命令不带 ``--yes`` 会被
    CLI 直接阻断、不落交互提示——真机验收因此必须是有人的运行：操作者对回滚/删除
    明示同意后设 ``DWS_PROBE_CONFIRM=yes`` 再跑（该设置即本探针的用户确认记录，
-   每次带 -y 的调用都会打印审计说明）。
+   每次带 -y 的调用都会打印审计说明）。**同意缺席 → 整文件模块级 skip**
+   （Task 7 修正轮：原实现只挡 ``-y``、不挡测试本身，无人 gauntlet 里写腿当场
+   rc=3 ``confirmation_required`` → FAIL；现与凭据门同构，无人即 skip）。
 5. payload 键位**live-captured 2026-09-09**（兑现轮首跑 3/3 failed 定谳 + 修复轮
    回填；closure report §3 全文、``tests/fixtures/dws/FIXTURES-NOTE.md`` 锚点表）：
    fetch 目标块是顶层 ``content``（``doc.content.v1``，外层无 ``data``），
@@ -199,7 +201,15 @@ def _dws_cmd() -> list[str]:
 
 
 def _confirmation_flags() -> tuple[str, ...]:
-    """confirmation=user_required 命令的 ``-y`` 通道（缺省禁用，修正 4）。"""
+    """confirmation=user_required 命令的 ``-y`` 通道（缺省禁用，修正 4）。
+
+    ``-y`` 只在操作者显式 opt-in（:data:`CONFIRM_ENV` = ``yes``）时追加；同意
+    缺席时整文件在模块级 skip（:func:`_operator_confirmed` skipif 门，与凭据门
+    同构）——探针既不会在无人运行里真跑回滚/删除，也不会再把
+    ``confirmation_required`` 撞成 FAIL（Task 7 gauntlet 首跑的失败形态：
+    旧实现只挡 ``-y``、不挡测试本身，写腿当场被 dws rc=3 阻断后落在
+    ``doc_write_verification_failed`` 断言上）。
+    """
     if os.environ.get(CONFIRM_ENV, "").strip().lower() == "yes":
         return ("-y",)
     return ()
@@ -845,6 +855,28 @@ pytestmark.append(
     pytest.mark.skipif(
         not _dws_identity_available(),
         reason=("real-machine probe: dws identity unavailable (credentials blocked, 见 EVIDENCE)"),
+    )
+)
+
+
+def _operator_confirmed() -> bool:
+    """操作者对回滚/删除的明示同意（:data:`CONFIRM_ENV` = ``yes``）。
+
+    同意缺席 → 整文件 skip（模块级 skipif）：confirmation=user_required 命令
+    在非交互环境里被 dws 直接 rc=3 ``confirmation_required`` 阻断、不落交互
+    提示，无人运行的正确形态是 skip 而非 FAIL（Task 7 修正轮定谳）。
+    """
+    return os.environ.get(CONFIRM_ENV, "").strip().lower() == "yes"
+
+
+pytestmark.append(
+    pytest.mark.skipif(
+        not _operator_confirmed(),
+        reason=(
+            "real-machine probe runs confirmation=user_required commands (update/"
+            "version-revert/delete): operator consent absent — set DWS_PROBE_CONFIRM=yes "
+            "to run; unattended runs skip instead of failing with rc=3 confirmation_required"
+        ),
     )
 )
 
