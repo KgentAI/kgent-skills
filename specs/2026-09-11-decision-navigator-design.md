@@ -1,7 +1,16 @@
 # Design Spec: decision-navigator 决策导航 skill（编排型决策支持）
 
 - **Date:** 2026-09-11
-- **Status:** proposed（grill-with-docs 已收敛；实现与验收未开始）
+- **Status:** implemented（2026-09-11，验收摘要，详见
+  `specs/2026-09-11-decision-navigator-design-evidence.md`）：
+  全量套件 654 passed / 7 failed / 4 skipped——7 failed 全部为真机环境态
+  （2 dingtalk 凭据门既有项 + 5 wecom 640459 当日配额，后者系本日 eval 真租户
+  只读检索烧尽配额、~09:00 PDT 重置），**零代码性失败**；mypy strict 52 文件
+  0 错；本分支文件 ruff 0 错（全仓 lint 维持 report-only 债务）；手工突变
+  5/5 杀；`dn_brief_check.py` 矩阵 31 测试全绿 + P8 性质；agent evals 只读腿
+  **7/7 场景人工复核 PASS**（机检 4×exit 0；eval 4/5 的 exit 1 仅为简报元注释
+  复述 `kgent://` 禁令原文，引用本体全清）；排序挂起规则系 eval-5 agent
+  dogfood 修订（`cc25a44`），**待维护者追认或 revert**；全程零真租户写入）
 - **Priority:** medium — 新能力，无事故驱动；价值主张是「把 kgent 已有的联邦检索变成可选方案的决策支持」
 - **Discovered while:** 维护者提出 Decision-Guidance Agent Skill Architecture 设计稿
   （2026-09-10），经 grill-with-docs 四轮 stress-test 收敛为本 spec；统一语言落

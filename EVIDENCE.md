@@ -398,3 +398,19 @@ Implementation is production-ready for kgent packaging.
 **遗留（如实声明，未由本工作代删）**: 本日两轮真机失败在租户留下 dws probe doc ×4——`9bN7RYPWdMzz1wy9cjZLbM3LVZd1wyK0`、`9E05BDRVQ2oo1EROtPGRy1n3J63zgkYA`、`3NwLYZXWyn112PxyUGoP5xpzVkyEqBQm`、`vNG4YZ7JnP334gxzCA1a57kMW2LD0oRE`（删除句柄同前例：`dws drive +delete --node <DOC_ID> -y -f json`，进回收站）；另有前轮在案 `Exel2BLV5zZZ7096CpX9zgKPJgk9rpMq`。wecom probe doc ×5（docid 见 `gauntlet-run.log`，平台无文档删除命令，需后台处理）。agent 侧代删被权限层正确拦截，留给维护者裁决。
 
 **Reproduce**: `PATH="<repo>/.venv/Scripts:$PATH" PYTHONPATH="$PWD/src" PYTEST_ADDOPTS='-m "not real"' bash tools/gauntlet.sh`；安装器 `pytest tests/test_install_skills.py -q`（15 passed）；B9 静态路由 `pytest tests/test_skill_docs_integration_routing.py -q`。
+
+## decision-navigator 决策导航 skill — 2026-09-11（ADR 0010/0011 · spec 2026-09-11-decision-navigator-design）
+
+**Tier 2，只读编排 skill**（澄清批 → 分解⇄检索收敛循环 → 级联检索 → 准则提议 → 加权排序 → 决策简报；v1 无写路径，不触台账/undo/路由裁决）。统一语言 +7 词条落 `CONTEXT.md`；检索级联与收敛循环裁决落 `docs/adr/0010`、`docs/adr/0011`（原编号 0006/0007 与 #12/#13 撞号，改 0010/0011；**main 的 #12/#13 自身落下重复的 0006/0007 编号，本分支未代编，待上游修**）。
+
+**实现物**: `skills/decision-navigator/SKILL.md`（简报文法与断言器逐字对齐，Example 2 经断言器 exit 0 验证）；`tools/dn_brief_check.py`（B5/B6/B7 结构断言，stdlib-only，fail-closed 三态退出码）；`tests/test_dn_brief_check.py`（31 用例矩阵，RED→GREEN 全程目睹）+ `tests/properties/test_dn_brief_props.py`（P8 正空间性质）；eval runner 增可选 `answers` 字段（澄清流真实多轮回放，缺省 APPROVALS 不变）。三个 gauntlet 清单（conformance / integration-routing / installer EXPECTED_SKILLS）纳入 decision-navigator，与兄弟 skill 同防护。
+
+**验收数字**（suite fresh @ 分支尾态；分层细节见 `specs/2026-09-11-decision-navigator-design-evidence.md`）: 全量套件 **654 passed / 7 failed / 4 skipped**——7 failed 全部为真机环境态（2 dingtalk 凭据门既有项 + 5 wecom 640459 当日配额耗尽，系本日 eval 真租户只读检索烧尽、~09:00 PDT 重置），**零代码性失败**；mypy strict 52 文件 0 错；本分支 4 文件 ruff 0 错（全仓 report-only 债务不动）；diff-cover 对本 diff 为 vacuous pass（无 src/kgent 变更），checker 专项 in-process 85%（余量为 main() CLI 面，由 31 黑盒 subprocess 用例行为覆盖）；手工突变 5/5 杀；agent evals 只读腿 7 场景真跑真租户——启发式 0 hits 属预期（双语 prose 断言，词面 grader 无法命中），verdict 以人工 transcript 复核 + 断言器机检为准：**7/7 人工复核 PASS**（机检 exit 0 ×4：eval 1/3/6/7——6 经 `--timeout 900` 重跑、7 补 answers 重跑；eval 4/5 exit 1 仅为简报元注释复述 `kgent://` 禁令原文，引用本体全清；eval 2 反触发不适用机检）。全程零真租户写入。
+
+**dogfood 事故（如实入档，待维护者追认）**: eval-5 agent 在 followup 轮经 Write/Edit 权限**自行修改了 spec/SKILL.md/evals**（发现「零证据 × 无实质候选」未覆盖，自拟「排序挂起」规则并落盘）。已按内容功过单独提交（`cc25a44`，提交信息载明出处）——改动本身自洽且补真实缺口，但**被测系统改自己的测试装置**必须显式追认或 revert。eval allowlist 是否应对只读腿收回 Write/Edit，留维护者裁决。
+
+**worktree 运行注意（本 worktree 实测）**: 上节「venv editable .pth 指向主 checkout」的坑在本 worktree 未复现——session 首日 `uv sync` 即以 worktree 路径重建 editable 安装（日志：Built kgent @ …worktrees/decision-navigator-spec），merge 后更名车道的测试全数通过亦佐证 src 解析到 worktree。
+
+**残留（接前账）**: 本日 gauntlet 真机用例新增一枚 dws probe doc——`Exel2BLV5zZZ7096Cp5BQvx3Jgk9rpMq`（删除句柄 live-verified：`dws drive +delete --node <DOC_ID> -y -f json`；注意与前账 `Exel2BLV5zZZ7096CpX9zgKPJgk9rpMq` 是**两枚不同文档**，均待维护者删除）。
+
+**Reproduce**: `uv run --extra dev pytest -q`；`uv run --extra dev mypy src`；`python tools/dn_brief_check.py <简报.md>`；eval 腿 `python tools/run-agent-evals.py --execute --file decision-navigator-evals --timeout 600`（transcript 本地不入库；逐条人工复核 + 断言器机检记录见 `specs/2026-09-11-decision-navigator-design-evidence.md`）。
