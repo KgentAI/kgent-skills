@@ -398,3 +398,7 @@ Implementation is production-ready for kgent packaging.
 **遗留（如实声明，未由本工作代删）**: 本日两轮真机失败在租户留下 dws probe doc ×4——`9bN7RYPWdMzz1wy9cjZLbM3LVZd1wyK0`、`9E05BDRVQ2oo1EROtPGRy1n3J63zgkYA`、`3NwLYZXWyn112PxyUGoP5xpzVkyEqBQm`、`vNG4YZ7JnP334gxzCA1a57kMW2LD0oRE`（删除句柄同前例：`dws drive +delete --node <DOC_ID> -y -f json`，进回收站）；另有前轮在案 `Exel2BLV5zZZ7096CpX9zgKPJgk9rpMq`。wecom probe doc ×5（docid 见 `gauntlet-run.log`，平台无文档删除命令，需后台处理）。agent 侧代删被权限层正确拦截，留给维护者裁决。
 
 **Reproduce**: `PATH="<repo>/.venv/Scripts:$PATH" PYTHONPATH="$PWD/src" PYTEST_ADDOPTS='-m "not real"' bash tools/gauntlet.sh`；安装器 `pytest tests/test_install_skills.py -q`（15 passed）；B9 静态路由 `pytest tests/test_skill_docs_integration_routing.py -q`。
+
+## local-fs backend (2026-09-12)
+
+Spec `specs/2026-09-10-local-fs-backend-design.md` (rev 6, ADR 0006–0009). Full evidence: `specs/2026-09-10-local-fs-backend-evidence.md`. **GAUNTLET PASS**: 674 passed / 7 skipped / 0 failed; diff-cover 100%; mypy strict clean (53 files); artifact-smoke 18/18; local-fs flow conformance green in both store modes (git-backed 32 + snapshot 22 assertions). Agent-execution discipline (URI/CAS refusal, tmp+mv) pinned at docs layer, behaviorally enforced at the agent-evals release gate per ADR 0006.
