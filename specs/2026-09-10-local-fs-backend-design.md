@@ -255,6 +255,12 @@ write 拒绝；git-backed 下 **git status 无该文件的任何 staged 痕迹**
 
 ## Setup plan（依赖逐项论证）
 
+> **维护者裁决（2026-09-11，decision-navigator 实现期追加）**：local-fs 落地后，
+> **e2e 测试一律打 local-fs 后端**，不打真实租户——Lark/DingTalk/WeCom 真机用例
+> （`real` 标记）自同日起移出默认 gauntlet，仅按请求 opt-in
+> （`PYTEST_ADDOPTS='-m "real"' bash tools/gauntlet.sh`）。本表「agent evals 用
+> `KGENT_LOCAL_FS_ROOT` 指向临时目录」一条由此从可选项升格为既定方向。
+
 | 依赖 | 论证 |
 |---|---|
 | git（**默认档所需**，新） | 默认 `git-backed` 依赖它：结构化冲突检测 + 无限恢复窗口 + op 历史，无替代品兼得；git 缺失 → 命名报错（显式 `mode: snapshot` 显式降档后可无 git 运行，wecom 同款补偿家族） |

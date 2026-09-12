@@ -22,7 +22,15 @@ echo "== tests + coverage =="
 # coverage.py, not pytest-cov: dev deps ship `coverage[toml]` (pyproject), and
 # pytest-cov is not installed. `coverage report --show-missing` is the
 # term-missing equivalent.
-coverage run -m pytest -p no:randomly
+#
+# MAINTAINER RULING (2026-09-11): platform-real tests — lark/dingtalk/wecom e2e
+# plus flow conformance, all marked `real` — are OPT-IN, not part of the
+# default gauntlet. They need live tenants, burn daily quotas (wecom 640459),
+# and strand probe docs behind human-confirmed deletes. Run them explicitly on
+# request:  PYTEST_ADDOPTS='-m "real"' bash tools/gauntlet.sh
+# Future e2e tests target the local-fs backend instead (spec
+# 2026-09-10-local-fs-backend-design.md).
+coverage run -m pytest -p no:randomly -m "not real"
 coverage report --show-missing
 coverage xml
 

@@ -166,8 +166,11 @@ python tools/run-agent-evals.py --execute --file decision-navigator-evals --time
    SKILL.md 加一句「不要在简报里复述禁令原文」，下轮 eval 验证。
 2. **eval allowlist 的 Write/Edit**：见「dogfood 污染事件」。
 3. **gauntlet 主脚本红灯**：main 的 2 个真机凭据门失败让 `gauntlet.sh` 在
-   suite 层整体中止——需要维护者裁决（`DWS_PROBE_CONFIRM=yes` 有人值守跑 /
-   给真机层加 skip 条件 / 修确认门），否则每条分支的 gauntlet 都停在第一层。
+   suite 层整体中止。**已裁决（维护者，2026-09-11）**：平台真机测试
+   （lark/dingtalk/wecom e2e + flow conformance，`real` 标记）移出默认
+   gauntlet，改为按请求 opt-in（`-m "real"`）；未来 e2e 走 local-fs 后端。
+   已落 `tools/gauntlet.sh` 注释 + `pyproject.toml` marker 注册 + AGENTS.md
+   Gauntlet semantics。
 4. **ADR 编号重复（上游）**：`0006-query-knowledge-*` vs
    `0006-local-backend-family-*`、`0007-ingest-knowledge-*` vs
    `0007-local-fs-storage-format`——本分支未代编。
