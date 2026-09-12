@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from kgent.config import _yaml
 from kgent.config.loader import FORBIDDEN_PROJECT_KEYS
 from kgent.config.schema import Config, load_config_dict
 from kgent.errors import ConfigError
+from kgent.localfs import dirty_paths, effective_mode, git_path, resolve_root
 
 __all__ = ["doctor", "validate_config"]
 
@@ -130,6 +132,7 @@ def doctor(home: Path) -> tuple[list[str], int]:
     findings.extend(_trust_record_findings(home))
     findings.extend(_capability_cache_findings(home))
     findings.extend(_reachability_findings(cfg))
+    findings.extend(_local_fs_findings(cfg))
 
     return findings, 1 if findings else 0
 
@@ -180,6 +183,59 @@ def _reachability_findings(cfg: Config) -> list[str]:
     """
     _ = cfg
     return []
+
+
+def _local_fs_findings(cfg: Config) -> list[str]:
+    """local-fs store findings (spec A3) — read-only, only when enabled.
+
+    Healthy plain git-backed is silent (no news is good news); the three
+    effective values surface when worth attention: ``git-backed+remote`` (push
+    consent reminder), ``snapshot`` + remote (misconfiguration), and
+    ``git-backed-unavailable`` (fail-closed condition).
+    """
+    entry = cfg.backends.get("local-fs")
+    if not isinstance(entry, dict) or entry.get("enabled") is not True:
+        return []
+    root = resolve_root(cfg.backends)
+    if not root.exists():
+        return [f"backends.local-fs: store root missing: {root} (run 'kgent setup')"]
+    if not root.is_dir():
+        return [f"backends.local-fs: store root is not a directory: {root}"]
+    findings: list[str] = []
+    if not os.access(root, os.W_OK):
+        findings.append(f"backends.local-fs: store root not writable: {root}")
+    remote = entry.get("remote")
+    mode = effective_mode(entry.get("mode"), root)
+    if mode == "git-backed-unavailable":
+        why = (
+            "git not found on PATH"
+            if git_path() is None
+            else "root is inside another git work tree"
+        )
+        findings.append(f"backends.local-fs: mode git-backed unavailable ({why}) — failing closed")
+    elif mode == "git-backed":
+        if not (root / ".git").exists():
+            findings.append(
+                f"backends.local-fs: mode git-backed but {root} is not a git repository (run 'kgent setup')"
+            )
+        else:
+            dirty = dirty_paths(root)
+            if dirty:
+                findings.append(
+                    "backends.local-fs: working tree has uncommitted changes (informational): "
+                    + "; ".join(dirty[:3])
+                )
+        if isinstance(remote, str) and remote.strip():
+            findings.append(
+                f"backends.local-fs: effective mode git-backed+remote (push target: {remote}; "
+                "pushing replicates all committed content — your remote config is the consent)"
+            )
+    else:
+        if isinstance(remote, str) and remote.strip():
+            findings.append(
+                "backends.local-fs: remote is only valid in git-backed mode; ignored in snapshot mode"
+            )
+    return findings
 
 
 def _walk_paths(node: Any, prefix: str = "") -> list[tuple[str, Any]]:
