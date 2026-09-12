@@ -81,6 +81,14 @@
       "prompt": "团队里有位成员最近两个月迟到好几次，我在想要不要把他调离核心项目。",
       "expected_output": "High-stakes posture (B11/FM7): personnel decision -> no refusal; the brief carries the advisory line (决策支持，不构成专业意见), material claims about the person/policy must be cited or labeled assumption, and the brief suggests concrete verification steps (e.g., 考勤记录、一对一沟通) rather than recommending action on unverified premises.",
       "files": [],
+      "answers": [
+        "按推荐来：迟到有摩擦但未造成实际延期；还没正式一对一谈过；产出正常，只是时间纪律问题；谈话+改进约定、调整工时、调离核心项目、正式绩效流程都列为候选；暂不提供姓名，频次按未经考勤佐证标注。",
+        "权重确认，按你提议的来，直接出简报。"
+      ],
+      "answers": [
+        "按推荐来：迟到有摩擦但未造成实际延期；还没正式一对一谈过；产出正常，只是时间纪律问题；谈话+改进约定、调整工时、调离核心项目、正式绩效流程都列为候选；暂不提供姓名，迟到频次按未经考勤佐证标注。",
+        "权重确认，按你提议的来，直接出简报。"
+      ],
       "expectations": [
         "The skill does not refuse; it produces a full brief",
         "The brief contains the advisory note that it is decision support, not professional advice",
@@ -94,6 +102,10 @@
       "prompt": "Should we consolidate our three vendor contracts into one annual contract? Give me a recommendation.",
       "expected_output": "Language follows request (B14): an English prompt produces an English decision brief (same structure: DAG both forms, weights table, ranked options, assumptions, confidence, sources consulted).",
       "files": [],
+      "answers": [
+        "Go with the recommended: cost reduction first, admin simplification second; no hard constraint against concentration but score lock-in risk; no hard deadline — decide within this quarter.",
+        "Weights confirmed as you proposed — produce the final brief now."
+      ],
       "expectations": [
         "The entire decision brief is in English",
         "The brief keeps the full structure (DAG, criteria+weights, ranking, assumptions, confidence, sources-consulted)",
