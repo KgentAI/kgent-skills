@@ -182,7 +182,18 @@ EOF
   assert "(b) pre-archive search hit present" bash -c "test -n '$hit_files'"
   assert_not "(d) archived doc filtered from active hits" bash -c "echo '$active_hits' | grep -q first-year"
 
-  # (e) delete → gone (git-backed: history keeps it) → undo restores
+  # (d) unarchive (A4(d)): the same flag flips back — an ordinary update write
+  sed -i 's/^archived: true$/archived: false/' "$doc"
+  if [ "$mode" = "git-backed" ]; then
+    "${GIT[@]}" add "engineering-wiki/onboarding/first-year-tasks.md"
+    "${GIT[@]}" commit --no-gpg-sign -q -m "kgent: unarchive v3→v4"
+  fi
+  assert "(d) unarchive restores archived: false" grep -q "^archived: false$" "$doc"
+
+  # (e) delete → gone (git-backed: history keeps it) → undo restores — content
+  # AND the frontmatter version (A4(e): restore is wholesale, v stays as written)
+  local pre_delete_version
+  pre_delete_version="$(grep -m1 '^version: ' "$doc" | cut -d' ' -f2)"
   if [ "$mode" = "git-backed" ]; then
     "${GIT[@]}" rm -q "engineering-wiki/onboarding/first-year-tasks.md"
     "${GIT[@]}" commit --no-gpg-sign -q -m "kgent: delete v3→v4"
@@ -198,6 +209,8 @@ EOF
     mv "$root/.trash/engineering-wiki/onboarding/first-year-tasks.md" "$doc"
     assert "(e) undo via .trash restores file" test -f "$doc"
   fi
+  assert "(e) undo restores the pre-delete version" \
+    grep -q "^version: ${pre_delete_version}\$" "$doc"
 
   # (f) undo refusal conditions present, fail closed
   if [ "$mode" = "git-backed" ]; then
@@ -237,6 +250,26 @@ EOF
   printf 'no frontmatter here\n' > "$root/foreign.txt"
   printf 'another body\n' > "$WORK/body-c.txt"
   write_doc "$doc" "第一年末任务" 9 "$WORK/body-c.txt"
+  # foreign frontmatter-less .md (the skill's foreign-file rule covers .md too):
+  # raw search hits it, the frontmatter post-filter drops it — 检索跳过外来文件
+  printf 'another body\nbut no kgent frontmatter here\n' \
+    > "$root/engineering-wiki/onboarding/foreign-note.md"
+  local raw_hits filtered_hits g
+  if command -v rg >/dev/null 2>&1; then
+    raw_hits="$(rg -l --glob '*.md' --glob '!/.git/**' 'another body' "$root" | _slashes || true)"
+  else
+    raw_hits="$(grep -rl --include='*.md' --exclude-dir=.git 'another body' "$root" || true)"
+  fi
+  assert "(A5) foreign .md present in raw search hits" \
+    bash -c "echo '$raw_hits' | grep -q 'foreign-note.md'"
+  filtered_hits=""
+  for g in $raw_hits; do
+    if grep -q '^hash: ' "$g"; then filtered_hits="$filtered_hits$g"$'\n'; fi
+  done
+  assert "(A5) real doc survives the frontmatter post-filter" \
+    bash -c "echo '$filtered_hits' | grep -q 'first-year-tasks.md'"
+  assert_not "(A5) foreign .md dropped by frontmatter post-filter" \
+    bash -c "echo '$filtered_hits' | grep -q 'foreign-note.md'"
   if [ "$mode" = "git-backed" ]; then
     "${GIT[@]}" add "engineering-wiki/onboarding/first-year-tasks.md"
     "${GIT[@]}" commit --no-gpg-sign -q -m "kgent: update v8→v9"

@@ -7,7 +7,7 @@ description: "Equip kgent operations with local-fs-specific knowledge: grep-styl
 
 Equip the kgent skills (query-knowledge, ingest-knowledge, wiki-setup) with the local-fs layer of their operations: grep-style search and directory traversal over the store, frontmatter reads, disciplined writes with version CAS and journal evidence, undo compensation, and native citations. Execution uses raw shell primitives — there is no platform CLI: `rg`/`grep` for search, `find`/`ls` for structure, direct file writes for content, `git` for versioning. Single source of truth — the kgent skills carry no copies of these rules.
 
-Store 模式（`backends.local-fs.mode`，默认 `git-backed`；ADR 0009）决定提交与补偿机制，其余一切相同。运行 `kgent doctor` 可得有效模式（`snapshot` / `git-backed` / `git-backed+remote`）。
+Store 模式（`backends.local-fs.mode`，默认 `git-backed`；ADR 0009）决定提交与补偿机制，其余一切相同。**有效模式不问 doctor**：它 = config 该键（缺省 `git-backed`）+ store 实况（root 下有无 `.git`）。`kgent doctor` 不是模式报告，只报异常与接线——root 缺失/不可写、git-backed 不可用（fail-closed）、声明 git-backed 但 root 非 git 仓库、remote 接线（`git-backed+remote`）或 snapshot 下误配 remote、dirty 提示（informational）；**沉默即健康**，健康时 local-fs 不产生任何 finding。
 
 ## The Gate
 
@@ -48,7 +48,8 @@ URI 形如 `kgent://local-fs/<相对路径>`；绝对路径与含 `..` 段的 id
 一切写（create / update / delete / archive / unarchive）走同一序列；git-backed 与 snapshot 的差异只在第 4 步提交与删除动作：
 
 ```
-# 0. 前置：doctor 有效模式确认（git-backed / snapshot）；root 可写
+# 0. 前置：确认有效模式——config `backends.local-fs.mode`（缺省 git-backed）+ store 实况
+#    （root/.git 是否存在）；`kgent doctor` 只报异常与接线（沉默即健康），不是模式报告；root 可写
 # 1. 路由裁决（只读，先于一切写执行）
 kgent route --content "<content>" --backends local-fs --json
 # 2. 台账开账——revision-before：git-backed 传 git rev-parse HEAD 的 SHA；
