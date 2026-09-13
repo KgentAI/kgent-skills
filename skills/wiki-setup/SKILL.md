@@ -8,7 +8,7 @@ metadata:
 
 # Wiki Setup
 
-Create wiki pages across multiple backends in a single orchestrated operation. The user describes what they want created and where; you present a single unified proposal, and upon approval, execute each leg through its platform's integration skill, wrapped in the routing decision and the ledger so every leg is journaled, undoable, and independently repairable on failure. Content on Lark, DingTalk, or WeCom is created, read, and updated only through that platform's integration skill (`<platform>-integration`; Lark: `lark-integration`) — the kgent CLI's own `create` / `update` / `search` / `read` stay reserved for the kgent hosted backend, which is not yet implemented (ADR 0004).
+Create wiki pages across multiple backends in a single orchestrated operation. The user describes what they want created and where; you present a single unified proposal, and upon approval, execute each leg through its platform's integration skill, wrapped in the routing decision and the ledger so every leg is journaled, undoable, and independently repairable on failure. Content on Lark, DingTalk, or WeCom is created, read, and updated only through that platform's integration skill (`<platform>-integration`; Lark: `lark-integration`) — the kgent CLI's own `create` / `update` / `search` / `read` stay reserved for the kgent hosted backend, which is not yet implemented (ADR 0004). Local store legs — with `backends.local-fs.enabled: true` in `~/.kgent/config.yaml` — flow through the **local-fs-integration** skill the same way (local-fs has no CLI adapter, ADR 0004).
 
 ## When to Use
 
@@ -64,7 +64,7 @@ kgent config show-effective --json
 
 Before proposing creates, search each target backend for existing documents with the same or similar titles. The user usually wants to update existing pages, not create duplicates.
 
-For each page, run the collision search through that target's integration skill. For Lark, invoke the `lark-integration` skill and follow its Search section — `lark-cli docs +search --query "<page title>" --json`; the DingTalk and WeCom integration skills carry the equivalent search steps. `kgent search` stays reserved for the kgent hosted backend, which is not yet implemented.
+For each page, run the collision search through that target's integration skill. For Lark, invoke the `lark-integration` skill and follow its Search section — `lark-cli docs +search --query "<page title>" --json`; the DingTalk and WeCom integration skills carry the equivalent search steps. With the local-fs backend enabled, the local leg's collision search invokes the **local-fs-integration** skill and follows its Search section. `kgent search` stays reserved for the kgent hosted backend, which is not yet implemented.
 
 The search covers both flat docs and wiki nodes; results include a `node_type` field (`doc` vs `wiki_node`) so you can distinguish them. For Lark wiki targets, also note the `space_id` of matches so you can propose updating within the same space.
 
@@ -98,7 +98,7 @@ Important details to include:
 
 - Operation type per leg (CREATE or UPDATE)
 - Target backend per leg
-- Native platform URL (not the `kgent://` URI) — for Lark legs, with the Lark backend enabled, invoke the `lark-integration` skill and convert per its URL construction table; for DingTalk legs, with the DingTalk backend enabled, invoke the `dingtalk-integration` skill and convert per its Native URL table; for WeCom legs, with the WeCom backend enabled, invoke the `wecom-integration` skill and cite the platform-response URL verbatim per its Native URL rules
+- Native platform URL (not the `kgent://` URI) — for Lark legs, with the Lark backend enabled, invoke the `lark-integration` skill and convert per its URL construction table; for DingTalk legs, with the DingTalk backend enabled, invoke the `dingtalk-integration` skill and convert per its Native URL table; for WeCom legs, with the WeCom backend enabled, invoke the `wecom-integration` skill and cite the platform-response URL verbatim per its Native URL rules; for local-fs legs, with the local-fs backend enabled, invoke the `local-fs-integration` skill and cite the absolute file path per its Native URL rules
 
 ### Lark Wiki (Knowledge Space) Integration
 
@@ -302,7 +302,3 @@ Skill:
   文件）之前，先向用户说明要读什么、为什么，征得同意后再读——配置含后端与
   信任设置，不静默读取。kgent CLI 自身内部读配置不受此条约束；此条管的是
   agent 直接 Read 配置文件的行为。
-
-## Local backend (local-fs-integration)
-
-When `backends.local-fs.enabled: true` in `~/.kgent/config.yaml`, the local-fs leg of search / read / write / undo flows through the **local-fs-integration** skill — never `kgent search ... --backends local-fs` directly (ADR 0004; local-fs has no CLI adapter). Gate closed → skip; other backends unaffected.

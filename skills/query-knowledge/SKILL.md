@@ -108,7 +108,7 @@ Searching both in parallel...
 
 ### 2. Search the Knowledge Base
 
-Fan out across all configured backends (or specific ones if the user mentions them). Platform content is searched through each platform's integration skill: for Lark, invoke the `lark-integration` skill and follow its Search section — `lark-cli docs +search --query "<search terms>" --json` (doc + wiki in one pass; add `lark-cli drive +search` when Drive files are in scope). The DingTalk and WeCom integration skills carry the equivalent search steps for their content.
+Fan out across all configured backends (or specific ones if the user mentions them). Platform content is searched through each platform's integration skill: for Lark, invoke the `lark-integration` skill and follow its Search section — `lark-cli docs +search --query "<search terms>" --json` (doc + wiki in one pass; add `lark-cli drive +search` when Drive files are in scope). The DingTalk and WeCom integration skills carry the equivalent search steps for their content. With the local-fs backend enabled — `backends.local-fs.enabled: true` in `~/.kgent/config.yaml` — the local leg invokes the **local-fs-integration** skill and follows its Search section (rg→grep over the store; never `kgent search ... --backends local-fs` — local-fs has no CLI adapter, ADR 0004).
 
 ```bash
 # Lark leg, via lark-integration
@@ -204,6 +204,7 @@ Format the answer with inline citations using **native platform URLs, not `kgent
 
 **DingTalk**: with the DingTalk backend enabled, invoke the `dingtalk-integration` skill and convert each `kgent://dingtalk/<id>` per its Native URL table (all node types share the `/i/nodes/<nodeId>` shape — confirm the content type before citing)
 **WeCom**: with the WeCom backend enabled, invoke the `wecom-integration` skill and cite the native URL returned by the platform response verbatim (per its Native URL rules) — WeCom doc URLs carry a `?scode=` share signature that cannot be reconstructed, and the admin-console URL shape was never a content link.
+**Local results:** with the local-fs backend enabled, invoke the `local-fs-integration` skill and cite each hit's absolute file path per its Native URL rules — the `kgent://local-fs/<path>` URI stays ledger-internal.
 
 **Answer format:**
 
@@ -425,7 +426,3 @@ Skill:
   文件）之前，先向用户说明要读什么、为什么，征得同意后再读——配置含后端与
   信任设置，不静默读取。kgent CLI 自身内部读配置不受此条约束；此条管的是
   agent 直接 Read 配置文件的行为。
-
-## Local backend (local-fs-integration)
-
-When `backends.local-fs.enabled: true` in `~/.kgent/config.yaml`, the local-fs leg of search / read / write / undo flows through the **local-fs-integration** skill — never `kgent search ... --backends local-fs` directly (ADR 0004; local-fs has no CLI adapter). Gate closed → skip; other backends unaffected.
