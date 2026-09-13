@@ -103,4 +103,9 @@ echo "== network capture check (N14) =="
 # tests/monkeypatch a socket send gate; gauntlet asserts no off-machine send during suite
 python -c "print('N14: network capture enforced via test fixture (Task 10.1)')"
 
+echo "== local-fs flow conformance (spec 2026-09-10 A4/A5) =="
+# Hard gate (no || true): replays the documented local-fs-integration flow in
+# both store modes against the installed artifact under throwaway homes.
+bash tools/local-fs-flow.sh
+
 echo "GAUNTLET PASS"

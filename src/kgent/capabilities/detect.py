@@ -45,6 +45,7 @@ from kgent.capabilities.cache import write_cache
 from kgent.capabilities.setup_config import write_setup_config
 from kgent.config import _yaml
 from kgent.errors import ConfigError
+from kgent.localfs import BACKEND_NAME, DEFAULT_MODE, git_path, init_store, resolve_root
 
 __all__ = ["DiscoveryReport", "discover", "setup"]
 
@@ -64,6 +65,17 @@ _CLI_BACKENDS: tuple[tuple[str, str], ...] = (
     ("dingtalk-cli", "dingtalk"),
     ("wecom-cli", "wecom"),
 )
+
+#: local-fs capability declaration (spec 2026-09-10: search/read/write true,
+#: semantics/approval unsupported — fanout and policy skip them).
+_LOCAL_FS_CAPABILITIES: dict[str, Any] = {
+    "document_storage": {
+        "supported": True,
+        "features": ["create", "read", "update", "delete", "archive", "list"],
+    },
+    "document_search": {"supported": True, "features": {"search_by_keywords": True}},
+    "approval_flow": {"supported": False, "features": []},
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +108,7 @@ def discover(home: Path, env: Mapping[str, str]) -> DiscoveryReport:
         backends.setdefault(name, entry)
     for name, entry in _discover_mcp(Path(home_env), env).items():
         backends.setdefault(name, entry)
+    backends.update(_discover_local_fs(env))
     return DiscoveryReport(backends=backends)
 
 
@@ -116,7 +129,41 @@ def setup(home: Path) -> tuple[DiscoveryReport, int]:
         caps = entry.get("capabilities")
         caps_by_backend[str(name)] = dict(caps) if isinstance(caps, dict) else {}
     write_cache(home_path, caps_by_backend, _now_iso())
+    _prepare_local_fs_store(home_path)
     return report, 0
+
+
+def _prepare_local_fs_store(home_path: Path) -> None:
+    """Create + git-init the store when the merged local-fs entry is enabled (A2).
+
+    A fresh appended entry is disabled: no store side effects, no errors —
+    enabling later reruns setup (or the user mkdirs via the skill). git-backed
+    (default) with git unavailable fails closed with a named error; it never
+    silently degrades (ADR 0009). snapshot mode only mkdirs.
+    """
+    config_path = home_path / "config.yaml"
+    if not config_path.exists():
+        return
+    raw = _yaml.parse(config_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        return
+    backends = raw.get("backends")
+    if not isinstance(backends, dict):
+        return
+    entry = backends.get(BACKEND_NAME)
+    if not isinstance(entry, dict) or entry.get("enabled") is not True:
+        return
+    root = resolve_root(backends)
+    mode = entry.get("mode")
+    if mode not in ("git-backed", "snapshot"):
+        mode = DEFAULT_MODE
+    if mode == "snapshot":
+        root.mkdir(parents=True, exist_ok=True)
+        return
+    try:
+        init_store(root)
+    except RuntimeError as exc:
+        raise ConfigError(f"backends.local-fs: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +358,30 @@ def _read_mcp_servers(path: Path) -> dict[str, str | None]:
             url = spec
         result[str(name)] = url
     return result
+
+
+# ---------------------------------------------------------------------------
+# local-fs discovery (spec 2026-09-10; ADR 0006-0009)
+# ---------------------------------------------------------------------------
+
+
+def _discover_local_fs(env: Mapping[str, str]) -> dict[str, dict[str, Any]]:
+    """The local-fs leg is always present and credential-free (auth deferred).
+
+    Read-only: reports git/rg availability from PATH; never touches the store
+    (store prep happens in :func:`setup`, which owns writes).
+    """
+    path_env = env.get("PATH", "")
+    return {
+        BACKEND_NAME: {
+            "auth": "deferred",
+            "capabilities": dict(_LOCAL_FS_CAPABILITIES),
+            "found_via": "local",
+            "adapter_name": "local-fs-integration",
+            "git": git_path() is not None,
+            "rg": shutil.which("rg", path=path_env or None) is not None,
+        }
+    }
 
 
 def _now_iso() -> str:

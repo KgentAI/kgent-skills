@@ -8,7 +8,7 @@ DIRECT = re.compile(
     r"kgent (search|read|update|create|store|wiki)[^\n]*--backends?\s+(lark|dingtalk|wecom)",
     re.IGNORECASE,
 )
-INTEGRATION_REF = re.compile(r"\b(lark|dingtalk|wecom)-integration\b")
+INTEGRATION_REF = re.compile(r"\b(?:lark|dingtalk|wecom|local-fs)-integration\b")
 
 def test_no_direct_platform_cli_calls_in_skills():
     for name in SKILLS:

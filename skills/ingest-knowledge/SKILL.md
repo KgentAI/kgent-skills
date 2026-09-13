@@ -8,7 +8,7 @@ metadata:
 
 # Knowledge Ingestion
 
-Ingest knowledge from conversations into the knowledge base. This skill orchestrates the write with update-first semantics, provenance tracking, and native URL presentation. Pre-write discovery — finding existing content that the incoming knowledge should update — is delegated to the **query-knowledge** skill, the read lane (ADR 0007); this skill owns the proposal, the write sequence, and the confirmation. Content living on Lark, DingTalk, or WeCom is searched, read, and written only through that platform's integration skill (`<platform>-integration`; Lark: `lark-integration`). The kgent CLI's own `search` / `read` / `create` / `update` / `store` operations stay reserved for the kgent hosted backend, which is not yet implemented (ADR 0004).
+Ingest knowledge from conversations into the knowledge base. This skill orchestrates the write with update-first semantics, provenance tracking, and native URL presentation. Pre-write discovery — finding existing content that the incoming knowledge should update — is delegated to the **query-knowledge** skill, the read lane (ADR 0007); this skill owns the proposal, the write sequence, and the confirmation. Content living on Lark, DingTalk, or WeCom is searched, read, and written only through that platform's integration skill (`<platform>-integration`; Lark: `lark-integration`); local store content — with `backends.local-fs.enabled: true` in `~/.kgent/config.yaml` — flows through the **local-fs-integration** skill the same way (never the kgent CLI directly; local-fs has no CLI adapter, ADR 0004). The kgent CLI's own `search` / `read` / `create` / `update` / `store` operations stay reserved for the kgent hosted backend, which is not yet implemented (ADR 0004).
 
 ## When to Use
 
@@ -261,6 +261,7 @@ After execution, **never show `kgent://...` URIs to the user** (N20, S73). Conve
 
 **DingTalk**: with the DingTalk backend enabled, invoke the `dingtalk-integration` skill and convert each `kgent://dingtalk/<id>` per its Native URL table (all node types share the `/i/nodes/<nodeId>` shape — confirm the content type before citing; share links `/i/p/` are passed through as-is)
 **WeCom**: with the WeCom backend enabled, invoke the `wecom-integration` skill and cite the native URL returned by the platform response verbatim (per its Native URL rules) — WeCom doc URLs carry a `?scode=` share signature that cannot be reconstructed, and the admin-console URL shape was never a content link.
+**Local results:** with the local-fs backend enabled, invoke the `local-fs-integration` skill and cite the doc's absolute file path per its Native URL rules — the `kgent://local-fs/<path>` URI stays ledger-internal.
 
 **Confirmation format:**
 

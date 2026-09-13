@@ -561,11 +561,27 @@ def _cmd_undo(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _coerce_revision(value: str | None) -> str | int | None:
+    """CLI ``--revision-before/--revision-after`` → ledger revision (``str | int``).
+
+    纯数字字面量仍收成 int（平台腿既有行为不变）；其余原样透传——local-fs
+    git-backed 的 revision 是 git SHA（A4/A5 写序列），``int()`` 化会让文档化
+    的台账流程当场 ValueError（tools/local-fs-flow.sh 首跑撞出）。ledger 两端
+    签名本就收 ``str | int``。
+    """
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return value
+
+
 def _cmd_journal_begin(args: argparse.Namespace) -> int:
     """B2: register a logical write op in the ledger."""
     from kgent.router.ledger import begin
 
-    revision = int(args.revision_before) if args.revision_before else None
+    revision = _coerce_revision(args.revision_before)
     entry = begin(
         Journal(_home()),  # 台账只依赖 home，不需要已配置的 backends
         operation=args.operation,
@@ -594,7 +610,7 @@ def _cmd_journal_end(args: argparse.Namespace) -> int:
     """
     from kgent.router.ledger import LedgerError, end
 
-    revision = int(args.revision_after) if args.revision_after else None
+    revision = _coerce_revision(args.revision_after)
     doc_uri = getattr(args, "doc_uri", None)
     snapshot_after = getattr(args, "snapshot_after", None)
     try:
@@ -644,6 +660,12 @@ def _cmd_route(args: argparse.Namespace) -> int:
     :func:`_backend_trust_zone`), never from the adapter object. Nothing is
     written, journaled, or audited. Every backend rejected → exit 3 (the
     router's policy-rejected code).
+
+    A configured-but-adapter-less backend (local-fs, spec 2026-09-10:
+    「route 对 local-fs 可用——config 声明的后端直达裁决，无需 adapter」)
+    adjudicates from config alone: the zone gate only reads config-side
+    ``trust_zone``. A name that is neither adapter-registered nor configured
+    keeps the read/delete contract — exit 1, never a silent skip.
     """
     from kgent.router.sensitivity import analyze_sensitivity, enforce_zone
 
@@ -659,9 +681,13 @@ def _cmd_route(args: argparse.Namespace) -> int:
     allowed: list[str] = []
     rejected: list[dict[str, str]] = []
     for name in names:
-        if router.backends.get(name) is None:
+        if router.backends.get(name) is None and name not in router.config.backends:
             # Same contract as read/delete: a named-but-unavailable backend is
             # a failure (exit 1) — never a silent skip, never a policy 3.
+            # "Unavailable" = neither adapter-registered nor configured: a
+            # configured-but-adapter-less backend (local-fs, spec 2026-09-10)
+            # adjudicates from config alone below — enforce_zone reads the
+            # trust_zone via _backend_trust_zone(config, …), no adapter needed.
             raise ConfigError(f"backend {name!r} is not available")
         try:
             enforce_zone(tier, _backend_trust_zone(router.config, name), name)
