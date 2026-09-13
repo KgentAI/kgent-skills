@@ -46,7 +46,23 @@ def test_runner_allows_wecom_cli():
 
 def test_grader_accepts_wecom_integration_wording():
     passed, misses, manual = runner.heuristic_grade(
-        ["For WeCom targets the skill delegates execution via wecom-integration, not 'kgent update'"],
+        [
+            "For WeCom targets the skill delegates execution via wecom-integration, not 'kgent update'"
+        ],
         "transcript ... wecom-integration ... 委派了",
     )
     assert passed == 1 and not misses and not manual
+
+
+def test_user_turns_default_approvals():
+    assert runner.user_turns({}, followup=True) == list(runner.APPROVALS)
+
+
+def test_user_turns_followup_off_is_empty():
+    assert runner.user_turns({"answers": ["A"]}, followup=False) == []
+
+
+def test_user_turns_answers_override():
+    """decision-navigator 澄清流：eval 可带 canned answers 覆盖批准语。"""
+    entry = {"answers": ["预算改为 70 万，其余按推荐", "权重按你提议的用"]}
+    assert runner.user_turns(entry, followup=True) == entry["answers"]

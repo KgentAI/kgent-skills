@@ -27,6 +27,14 @@ kgent = ["py.typed"]
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+# Marker registry (2026-09-11): `real` tests hit live SaaS tenants and are
+# OPT-IN — excluded from the default gauntlet (tools/gauntlet.sh), run on
+# request via `-m "real"`. Future e2e targets the local-fs backend instead.
+markers = [
+  "e2e: end-to-end flow tests",
+  "real: hits real SaaS tenants (Lark/DingTalk/WeCom) — opt-in, not in the default gauntlet",
+  "real_config: reads the real ~/.kgent/config.yaml (read-only smoke)",
+]
 
 [tool.ruff]
 line-length = 100
