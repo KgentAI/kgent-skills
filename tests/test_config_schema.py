@@ -63,3 +63,51 @@ def test_max_parallel_backends_below_one_rejected():
                 "defaults": {"concurrency": {"max_parallel_backends": 0}},
             }
         )
+
+
+def test_local_fs_defaults_mode_git_backed_remote_none():
+    cfg = load_config_dict({"version": 1, "backends": {"local-fs": {"type": "skill"}}})
+    entry = cfg.backends["local-fs"]
+    assert entry["mode"] == "git-backed"
+    assert entry["remote"] is None
+
+
+def test_mode_enum_rejects_auto_and_other_values():
+    with pytest.raises(ConfigError, match=r"backends\.local-fs\.mode.*git-backed, snapshot"):
+        load_config_dict({"version": 1, "backends": {"local-fs": {"type": "skill", "mode": "auto"}}})
+    with pytest.raises(ConfigError, match=r"backends\.local-fs\.mode"):
+        load_config_dict({"version": 1, "backends": {"local-fs": {"type": "skill", "mode": "git-synced"}}})
+
+
+def test_mode_accepts_both_legal_values():
+    for mode in ("git-backed", "snapshot"):
+        cfg = load_config_dict({"version": 1, "backends": {"local-fs": {"type": "skill", "mode": mode}}})
+        assert cfg.backends["local-fs"]["mode"] == mode
+
+
+def test_remote_must_be_string_or_null():
+    with pytest.raises(ConfigError, match=r"backends\.local-fs\.remote"):
+        load_config_dict({"version": 1, "backends": {"local-fs": {"type": "skill", "remote": 42}}})
+    cfg = load_config_dict(
+        {
+            "version": 1,
+            "backends": {
+                "local-fs": {
+                    "type": "skill",
+                    "remote": "https://git.example.com/team/store.git",
+                }
+            },
+        }
+    )
+    assert cfg.backends["local-fs"]["remote"] == "https://git.example.com/team/store.git"
+
+
+def test_existing_backends_unaffected_by_mode_remote_keys():
+    cfg = load_config_dict(
+        {"version": 1, "backends": {"lark": {"enabled": True, "type": "skill", "trust_zone": "internal"}}}
+    )
+    entry = cfg.backends["lark"]
+    assert entry["mode"] == "git-backed"  # default present, harmless for platform backends
+    assert entry["remote"] is None
+    assert entry["trust_zone"] == "internal"
+    assert entry["enabled"] is True

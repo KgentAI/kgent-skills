@@ -280,6 +280,78 @@ def test_route_unknown_backend_is_failure_not_policy(route_world):
     assert "ghost" in out["error"]
 
 
+# ---------------------------------------------------------------------------
+# local-fs：无 adapter、config 声明的后端——route 从 config 裁决（spec 2026-09-10）
+# ---------------------------------------------------------------------------
+
+
+def test_route_adjudicates_configured_backend_without_adapter(route_world):
+    """local-fs 无 adapter 但 config 已声明 → 从 config trust_zone 裁决，exit 0。
+
+    spec 2026-09-10 的承诺：「route 对 local-fs 可用：config 声明的 capabilities
+    直达 router，无需 adapter」。route 的 zone 门只读 config 侧 trust_zone，
+    adapter 注册与否无关——曾经 ``router.backends.get(name) is None`` 一律
+    ConfigError，``kgent route --backends local-fs`` 首跑即 exit 1（Task 7
+    flow leg 前置核实）。钉死放行路径：internal 内容 + internal zone → 允许。
+    """
+    rc, out = route_world(
+        ["local-fs"], content="team standup notes", select="local-fs", register_fakes=False
+    )
+    assert rc == 0
+    assert out["operation"] == "route"
+    assert out["dry_run"] is True
+    assert out["allowed_backends"] == ["local-fs"]
+    assert out["rejected"] == []
+
+
+def test_route_adapterless_backend_zone_comes_from_config(route_world):
+    """adapter-less 后端的 zone 同样只认 config：confidential + external → exit 3。
+
+    与 :func:`test_route_real_adapter_zone_comes_from_config` 同构——config 把
+    zone 翻成 external 时裁决跟着翻转，证明 zone 没有第二来源。
+    """
+    rc, out = route_world(
+        ["local-fs"],
+        zones={"local-fs": "external"},
+        content="密: token-rotate-30d",
+        tier="confidential",
+        select="local-fs",
+        register_fakes=False,
+    )
+    assert out["allowed_backends"] == []
+    assert "local-fs" in out["rejected"][0]["reason"]
+    assert rc == 3
+
+
+def test_route_adjudicates_disabled_configured_backend(tmp_home, monkeypatch, capsys):
+    """disabled 但已配置的 adapter-less 后端 → 照常裁决（钉死现状，显式声明）。
+
+    与 adapter 注册路径同现状：``_build_router`` 不看 ``enabled``（那是写路径
+    的门），route 只回答「这段内容 zone 上能不能落」。这里用 disabled 变体
+    钉死该行为，防止日后有人在 route 里单独加 enabled 门、与平台后端分叉。
+    """
+    registry.clear()  # local-fs 永不在注册表——清掉任何前序测试残留
+    (tmp_home / "config.yaml").write_text(
+        "version: 1\nbackends:\n  local-fs:\n    enabled: false\n"
+        "    type: skill\n    skill_name: local-fs-integration\n"
+        "    trust_zone: internal\n",
+        encoding="utf-8",
+    )
+    # --json 置于子命令之后（argparse 子解析器默认值覆盖，仓库惯例）
+    code = main(["route", "--content", "team standup notes", "--backends", "local-fs", "--json"])
+    assert code == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["allowed_backends"] == ["local-fs"]
+    assert out["rejected"] == []
+
+
+def test_route_unknown_backend_still_fails_alongside_adapterless(route_world):
+    """未知名字仍 exit 1——不因 local-fs 可裁决而放宽（read/delete 契约保持）。"""
+    rc, out = route_world(["local-fs"], content="x", select="local-fs,ghost", register_fakes=False)
+    assert rc == 1
+    assert "ghost" in out["error"]
+
+
 def test_route_requires_content():
     """--content 必填：缺省 → argparse usage error → main 映射 exit 1。"""
     assert main(["route"]) == 1

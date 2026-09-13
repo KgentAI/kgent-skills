@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from kgent.adapters import registry
-from kgent.cli import main
+from kgent.cli import _coerce_revision, main
 from kgent.config.trusted import is_trusted
 from tests.fakes.fake_backend import FakeBackend
 
@@ -458,6 +458,63 @@ def test_journal_end_unknown_id_fails(tmp_home, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "failed"
     assert "op-20260905-00000000" in payload["error"]
+
+
+def test_journal_revisions_accept_git_shas(tmp_home, capsys):
+    """local-fs git-backed 腿（A4/A5 写序列）：revision 是 git SHA，不是数字。
+
+    ``--revision-before/--revision-after`` 曾经无条件 ``int()`` 化——SHA 当场
+    ValueError 打断文档化的写流程（tools/local-fs-flow.sh 首跑撞出）。SHA 必须
+    原样入账；纯数字 revision 仍收 int（平台腿既有行为不变）。
+    """
+    sha = "c06c477d5c26e20e82e30851a1093acaf609a6a1"
+    code = main(
+        [
+            "journal",
+            "begin",
+            "--operation",
+            "create",
+            "--backend",
+            "local-fs",
+            "--doc-uri",
+            "kgent://local-fs/create-placeholder.md",
+            "--revision-before",
+            "1",
+            "--json",
+        ]
+    )
+    assert code == 0
+    op_id = _last_op_id(tmp_home)
+    capsys.readouterr()
+
+    code = main(
+        [
+            "journal",
+            "end",
+            "--op-id",
+            op_id,
+            "--status",
+            "ok",
+            "--revision-after",
+            sha,
+            "--json",
+        ]
+    )
+    assert code == 0
+    capsys.readouterr()
+
+    lines = (tmp_home / "journal" / "journal.ndjson").read_text(encoding="utf-8").splitlines()
+    begin_entry = json.loads(lines[0])
+    end_entry = json.loads(lines[1])
+    assert begin_entry["revision_before"] == 1  # 纯数字仍收 int
+    assert end_entry["revision_after"] == sha  # SHA 原样透传，不 int() 化
+
+
+def test_coerce_revision_branches():
+    """``_coerce_revision`` 三分支：数字 → int、其余 → 原样、缺席 → None。"""
+    assert _coerce_revision("56") == 56
+    assert _coerce_revision("c06c477d5c26e20e") == "c06c477d5c26e20e"
+    assert _coerce_revision(None) is None
 
 
 def test_journal_end_snapshot_after_flag(tmp_home, capsys):

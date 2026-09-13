@@ -411,6 +411,10 @@ Implementation is production-ready for kgent packaging.
 
 **worktree 运行注意（本 worktree 实测）**: 上节「venv editable .pth 指向主 checkout」的坑在本 worktree 未复现——session 首日 `uv sync` 即以 worktree 路径重建 editable 安装（日志：Built kgent @ …worktrees/decision-navigator-spec），merge 后更名车道的测试全数通过亦佐证 src 解析到 worktree。
 
-**残留（接前账）**: 本日 gauntlet 真机用例新增一枚 dws probe doc——`Exel2BLV5zZZ7096Cp5BQvx3Jgk9rpMq`（删除句柄 live-verified：`dws drive +delete --node <DOC_ID> -y -f json`；注意与前账 `Exel2BLV5zZZ7096CpX9zgKPJgk9rpMq` 是**两枚不同文档**，均待维护者删除）。
+**残留（接前账，已清）**: 本日 gauntlet 真机用例新增的 dws probe doc `Exel2BLV5zZZ7096Cp5BQvx3Jgk9rpMq` 与前账 `Exel2BLV5zZZ7096CpX9zgKPJgk9rpMq`（两枚不同文档）已由维护者于 2026-09-11 手动删除（`drive +delete -y`，进回收站 30 天可恢复）。
 
 **Reproduce**: `uv run --extra dev pytest -q`；`uv run --extra dev mypy src`；`python tools/dn_brief_check.py <简报.md>`；eval 腿 `python tools/run-agent-evals.py --execute --file decision-navigator-evals --timeout 600`（transcript 本地不入库；逐条人工复核 + 断言器机检记录见 `specs/2026-09-11-decision-navigator-design-evidence.md`）。
+
+## local-fs backend (2026-09-12)
+
+Spec `specs/2026-09-10-local-fs-backend-design.md` (rev 6, ADR 0006–0009). Full evidence: `specs/2026-09-10-local-fs-backend-evidence.md`. **GAUNTLET PASS**: 674 passed / 7 skipped / 0 failed; diff-cover 100%; mypy strict clean (53 files); artifact-smoke 18/18; local-fs flow conformance green in both store modes (git-backed 32 + snapshot 22 assertions). Agent-execution discipline (URI/CAS refusal, tmp+mv) pinned at docs layer, behaviorally enforced at the agent-evals release gate per ADR 0006.

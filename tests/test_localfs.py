@@ -1,0 +1,158 @@
+"""local-fs store helper tests (ADR 0007-0009): root/mode resolution, git init, dirty check."""
+
+# pyright: basic
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from kgent import localfs
+from kgent.localfs import (
+    DEFAULT_MODE,
+    dirty_paths,
+    effective_mode,
+    init_store,
+    nested_in_foreign_repo,
+    resolve_root,
+)
+
+
+def _git() -> str:
+    import shutil
+
+    git = shutil.which("git")
+    if git is None:  # pragma: no cover - dev/CI environments have git
+        pytest.skip("git not available")
+    return git
+
+
+def test_resolve_root_env_overrides_everything(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("KGENT_LOCAL_FS_ROOT", str(tmp_path / "env-root"))
+    assert resolve_root({"local-fs": {"root": str(tmp_path / "cfg-root")}}) == tmp_path / "env-root"
+
+
+def test_resolve_root_config_then_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("KGENT_LOCAL_FS_ROOT", raising=False)
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert resolve_root({"local-fs": {"root": str(tmp_path / "cfg-root")}}) == tmp_path / "cfg-root"
+    assert resolve_root({}) == tmp_path / ".kgent" / "local-fs"
+
+
+def test_init_store_git_backed(tmp_path: Path) -> None:
+    git = _git()
+    root = tmp_path / "store"
+    init_store(root)
+    assert (root / ".git").exists()
+    assert (root / ".gitattributes").read_text(encoding="utf-8") == "* -text\n"
+    log = subprocess.run(
+        [git, "-C", str(root), "log", "--oneline"], capture_output=True, text=True, check=True
+    )
+    assert len(log.stdout.strip().splitlines()) == 1  # seed commit
+    assert nested_in_foreign_repo(root) is False  # owns its own work tree
+
+
+def test_init_store_idempotent(tmp_path: Path) -> None:
+    root = tmp_path / "store"
+    init_store(root)
+    (root / "keep.md").write_text("keep", encoding="utf-8", newline="\n")
+    init_store(root)  # second run: no re-init, no second commit, attributes untouched
+    log = subprocess.run(
+        ["git", "-C", str(root), "log", "--oneline"], capture_output=True, text=True, check=True
+    )
+    assert len(log.stdout.strip().splitlines()) == 1
+
+
+def test_init_store_refuses_foreign_work_tree(tmp_path: Path) -> None:
+    _git()
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    subprocess.run(["git", "init", str(outer)], capture_output=True, text=True, check=True)
+    nested = outer / "nested-store"
+    with pytest.raises(RuntimeError, match="another git work tree"):
+        init_store(nested)
+    assert nested_in_foreign_repo(nested) is True
+
+
+def test_effective_mode_snapshot_short_circuits(tmp_path: Path) -> None:
+    assert effective_mode("snapshot", tmp_path) == "snapshot"
+
+
+def test_effective_mode_none_degrades_to_default(tmp_path: Path) -> None:
+    # Task 1 review carry-over: an absent/None mode is *unset* -> DEFAULT_MODE, not an error.
+    assert DEFAULT_MODE == "git-backed"
+    assert effective_mode(None, tmp_path) == DEFAULT_MODE
+
+
+def test_effective_mode_git_backed_unavailable_without_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from kgent import localfs
+
+    monkeypatch.setattr(localfs, "git_path", lambda: None)
+    assert effective_mode("git-backed", tmp_path) == "git-backed-unavailable"
+
+
+def test_dirty_paths_empty_then_dirty(tmp_path: Path) -> None:
+    root = tmp_path / "store"
+    init_store(root)
+    assert dirty_paths(root) == []
+    (root / "a.md").write_text("x", encoding="utf-8", newline="\n")
+    dirty = dirty_paths(root)
+    assert dirty and dirty[0].startswith("??")
+
+
+def test_nested_in_foreign_repo_without_git_is_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git 缺失 → 不判 foreign（mode resolution 单独处理 git 缺失，ADR 0009）。"""
+    monkeypatch.setattr(localfs, "git_path", lambda: None)
+    assert nested_in_foreign_repo(tmp_path) is False
+
+
+def test_nested_in_foreign_repo_probe_failure_is_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git 探针自身失败（可执行文件不存在 → OSError）→ 不判 foreign，绝不 raise。"""
+    monkeypatch.setattr(localfs, "git_path", lambda: str(tmp_path / "no-such-git"))
+    assert nested_in_foreign_repo(tmp_path) is False
+
+
+def test_init_store_without_git_fails_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(localfs, "git_path", lambda: None)
+    with pytest.raises(RuntimeError, match="git not found on PATH"):
+        init_store(tmp_path / "store")
+
+
+def test_dirty_paths_without_git_is_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(localfs, "git_path", lambda: None)
+    assert dirty_paths(tmp_path) == []
+
+
+def test_dirty_paths_probe_failure_is_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """git 探针 OSError → 只读 best-effort 返回 []，不打断调用方。"""
+    monkeypatch.setattr(localfs, "git_path", lambda: str(tmp_path / "no-such-git"))
+    assert dirty_paths(tmp_path) == []
+
+
+def test_dirty_paths_outside_any_repo_is_empty(tmp_path: Path) -> None:
+    """git status 在非仓库退出非零 → []（无变化可报）。"""
+    assert dirty_paths(tmp_path) == []
+
+
+def test_init_store_git_step_failure_fails_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """某个 git 步骤失败 → named RuntimeError 带子命令与 stderr（ADR 0009 fail-closed）。"""
+    failed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom")
+    monkeypatch.setattr(localfs.subprocess, "run", lambda *a, **k: failed)
+    with pytest.raises(RuntimeError, match="git init failed: boom"):
+        init_store(tmp_path / "store")
