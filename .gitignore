@@ -10,6 +10,10 @@ htmlcov
 skills-workspace/
 build/
 dist/
-evals/transcripts/
+evals/transcripts/*
+# decision-navigator leg: transcripts committed at maintainer request for
+# release-gate review (PR #14, 2026-09-12). Keep the rest local.
+!evals/transcripts/decision-navigator-*.md
+!evals/transcripts/report.md
 *.tmp.md
 coverage.xml
