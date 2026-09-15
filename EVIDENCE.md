@@ -399,9 +399,9 @@ Implementation is production-ready for kgent packaging.
 
 **Reproduce**: `PATH="<repo>/.venv/Scripts:$PATH" PYTHONPATH="$PWD/src" PYTEST_ADDOPTS='-m "not real"' bash tools/gauntlet.sh`；安装器 `pytest tests/test_install_skills.py -q`（15 passed）；B9 静态路由 `pytest tests/test_skill_docs_integration_routing.py -q`。
 
-## decision-navigator 决策导航 skill — 2026-09-11（ADR 0010/0011 · spec 2026-09-11-decision-navigator-design）
+## decision-navigator 决策导航 skill — 2026-09-11（ADR 0012/0013 · spec 2026-09-11-decision-navigator-design）
 
-**Tier 2，只读编排 skill**（澄清批 → 分解⇄检索收敛循环 → 级联检索 → 准则提议 → 加权排序 → 决策简报；v1 无写路径，不触台账/undo/路由裁决）。统一语言 +7 词条落 `CONTEXT.md`；检索级联与收敛循环裁决落 `docs/adr/0010`、`docs/adr/0011`（原编号 0006/0007 与 #12/#13 撞号，改 0010/0011；**main 的 #12/#13 自身落下重复的 0006/0007 编号，本分支未代编，待上游修**）。
+**Tier 2，只读编排 skill**（澄清批 → 分解⇄检索收敛循环 → 级联检索 → 准则提议 → 加权排序 → 决策简报；v1 无写路径，不触台账/undo/路由裁决）。统一语言 +7 词条落 `CONTEXT.md`；检索级联与收敛循环裁决落 `docs/adr/0012`、`docs/adr/0013`（原编号 0008/0009 与 #12/#13 撞号，改 0012/0013；**main 的 #12/#13 自身落下重复的 0008/0009 编号，本分支未代编，待上游修**）。
 
 **实现物**: `skills/decision-navigator/SKILL.md`（简报文法与断言器逐字对齐，Example 2 经断言器 exit 0 验证）；`tools/dn_brief_check.py`（B5/B6/B7 结构断言，stdlib-only，fail-closed 三态退出码）；`tests/test_dn_brief_check.py`（31 用例矩阵，RED→GREEN 全程目睹）+ `tests/properties/test_dn_brief_props.py`（P8 正空间性质）；eval runner 增可选 `answers` 字段（澄清流真实多轮回放，缺省 APPROVALS 不变）。三个 gauntlet 清单（conformance / integration-routing / installer EXPECTED_SKILLS）纳入 decision-navigator，与兄弟 skill 同防护。
 
@@ -417,4 +417,4 @@ Implementation is production-ready for kgent packaging.
 
 ## local-fs backend (2026-09-12)
 
-Spec `specs/2026-09-10-local-fs-backend-design.md` (rev 6, ADR 0006–0009). Full evidence: `specs/2026-09-10-local-fs-backend-evidence.md`. **GAUNTLET PASS**: 674 passed / 7 skipped / 0 failed; diff-cover 100%; mypy strict clean (53 files); artifact-smoke 18/18; local-fs flow conformance green in both store modes (git-backed 32 + snapshot 22 assertions). Agent-execution discipline (URI/CAS refusal, tmp+mv) pinned at docs layer, behaviorally enforced at the agent-evals release gate per ADR 0006.
+Spec `specs/2026-09-10-local-fs-backend-design.md` (rev 6, ADR 0008–0011). Full evidence: `specs/2026-09-10-local-fs-backend-evidence.md`. **GAUNTLET PASS**: 674 passed / 7 skipped / 0 failed; diff-cover 100%; mypy strict clean (53 files); artifact-smoke 18/18; local-fs flow conformance green in both store modes (git-backed 32 + snapshot 22 assertions). Agent-execution discipline (URI/CAS refusal, tmp+mv) pinned at docs layer, behaviorally enforced at the agent-evals release gate per ADR 0008.

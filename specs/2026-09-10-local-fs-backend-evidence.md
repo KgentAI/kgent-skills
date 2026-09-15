@@ -25,7 +25,7 @@
 | A5b remote push：到位 / 非快进拒绝且不自动合并（bare-repo fixture） | flow (A5b) block（git-backed leg） | ✅ |
 | A6 表面：skill 随安装器分发 + 文档示例可解析 | `tests/test_docs_conformance.py`（local-fs-integration 注册，7/7 vs 真实工件）、`tests/test_install_skills.py`（17/17 与 routing 合跑） | ✅ |
 
-注：A5 的 URI 拒绝与 CAS 拒绝、tmp+mv 原子性属 agent 执行纪律——本轮的可执行证据是 docs-pin（SKILL.md 规则文本），行为保证归 agent-evals 发布门（ADR 0006，controller ruling，见 progress ledger）。
+注：A5 的 URI 拒绝与 CAS 拒绝、tmp+mv 原子性属 agent 执行纪律——本轮的可执行证据是 docs-pin（SKILL.md 规则文本），行为保证归 agent-evals 发布门（ADR 0008，controller ruling，见 progress ledger）。
 
 ## 本 PR 的源代码面（计划外但经裁决的扩展）
 

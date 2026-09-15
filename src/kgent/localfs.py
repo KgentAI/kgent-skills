@@ -1,11 +1,11 @@
-"""local-fs store helpers: root resolution, store-mode resolution, git init (ADR 0006-0009).
+"""local-fs store helpers: root resolution, store-mode resolution, git init (ADR 0008-0011).
 
 Pure functions over the config mapping (post-``load_config_dict`` shape) and the
 filesystem. Execution of document ops lives in the ``local-fs-integration``
 skill; this module only backs ``kgent setup`` / ``kgent doctor`` (spec
 2026-09-10, "kgent CLI 侧改动").
 
-Fail-closed rules (ADR 0009): ``init_store`` refuses to run git inside another
+Fail-closed rules (ADR 0011): ``init_store`` refuses to run git inside another
 work tree — kgent never commits into a repo it does not own; every failure is
 a named ``RuntimeError`` the caller maps to a config error.
 """
@@ -89,7 +89,7 @@ def effective_mode(mode_cfg: object, root: Path) -> str:
     unexpected value degrades to :data:`DEFAULT_MODE` rather than raising.
     git-backed requires git on PATH and a non-foreign root — otherwise the
     mode is *unavailable* (explicit config fails closed at setup/doctor; it is
-    never silently downgraded, ADR 0009).
+    never silently downgraded, ADR 0011).
     """
     mode = mode_cfg if mode_cfg in ("git-backed", "snapshot") else DEFAULT_MODE
     if mode == "snapshot":
@@ -115,7 +115,7 @@ def init_store(root: Path) -> None:
     if nested_in_foreign_repo(root):
         raise RuntimeError(
             f"{root} is inside another git work tree; refusing to init "
-            "(kgent never commits into a repo it does not own — ADR 0009)"
+            "(kgent never commits into a repo it does not own — ADR 0011)"
         )
     attrs = root / ".gitattributes"
     if not attrs.exists():

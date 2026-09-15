@@ -54,8 +54,8 @@ _BACKEND_DEFAULTS: dict[str, Any] = {
     "capabilities": {},
     "content_types": [],
     "priority": None,
-    "mode": "git-backed",  # local-fs store mode (ADR 0009); platform backends ignore it
-    "remote": None,  # optional git remote URL; local-fs only (ADR 0008 rev 3)
+    "mode": "git-backed",  # local-fs store mode (ADR 0011); platform backends ignore it
+    "remote": None,  # optional git remote URL; local-fs only (ADR 0010 rev 3)
 }
 
 

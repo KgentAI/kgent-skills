@@ -139,7 +139,7 @@ def _prepare_local_fs_store(home_path: Path) -> None:
     A fresh appended entry is disabled: no store side effects, no errors —
     enabling later reruns setup (or the user mkdirs via the skill). git-backed
     (default) with git unavailable fails closed with a named error; it never
-    silently degrades (ADR 0009). snapshot mode only mkdirs.
+    silently degrades (ADR 0011). snapshot mode only mkdirs.
     """
     config_path = home_path / "config.yaml"
     if not config_path.exists():
@@ -361,7 +361,7 @@ def _read_mcp_servers(path: Path) -> dict[str, str | None]:
 
 
 # ---------------------------------------------------------------------------
-# local-fs discovery (spec 2026-09-10; ADR 0006-0009)
+# local-fs discovery (spec 2026-09-10; ADR 0008-0011)
 # ---------------------------------------------------------------------------
 
 

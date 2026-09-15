@@ -1,4 +1,4 @@
-# 0006 — decision-navigator 检索层：知识库 + 能力盘点 + 宿主 web 检索
+# 0012 — decision-navigator 检索层：知识库 + 能力盘点 + 宿主 web 检索
 
 decision-navigator 的检索层不自建向量库，也不用企业知识图谱：检索 = kgent 联邦知识库（经 integration skill 的 search/read）→ 能力盘点发现的内部数据源（环境内可用 skill / MCP / 工具，只读优先）→ 宿主 agent 自带的 web 检索（机会性，宿主没有就跳过）。原始设计稿按「企业级 AI 通用件」写了向量库与知识图谱；现实是 kgent 栈内两者均不存在，为单个 skill 自建向量基础设施违反「skills 只做编排与纪律」的仓库法。知识图谱是**延后**而非否决：落地后经能力盘点作为内部数据源接入，源优先序不变。
 

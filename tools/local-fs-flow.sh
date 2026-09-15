@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# local-fs flow conformance (spec 2026-09-10 A4/A5/A5b; ADR 0006-0009).
+# local-fs flow conformance (spec 2026-09-10 A4/A5/A5b; ADR 0008-0011).
 # Replays the documented local-fs-integration flow against a real kgent
 # artifact under throwaway KGENT_HOME + KGENT_LOCAL_FS_ROOT — the first
 # backend whose full flow (route/journal/write/git/undo) is scriptable
