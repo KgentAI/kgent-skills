@@ -8,6 +8,7 @@ Grammar (must stay in lockstep with skills/decision-navigator/SKILL.md):
     STATE     : 用户已给 | 引用来源 | 假设 | 依前未解
     引用来源  : "[引用来源|" https-url "]"   (native URLs only — kgent:// banned)
     mermaid   : one fenced block, first line `flowchart TD`, bare N1 --> N2 edges
+                node labels may include status: N1["标签 · 状态"]
 
 Exit codes: 0 clean, 1 violations, 2 usage/IO/internal (fail closed).
 """
@@ -29,7 +30,7 @@ URL_RE = re.compile(r"^https?://\S+$")
 
 MERMAID_FENCE_RE = re.compile(r"```mermaid[ \t]*\r?\n(.*?)```", re.DOTALL)
 FLOWCHART_RE = re.compile(r"^flowchart TD$")
-NODE_DEF_RE = re.compile(r"^N\d+(?:\[\"[^\"]*\"\])?$")
+NODE_DEF_RE = re.compile(r"^N\d+(?:\[\"[^\"]*(?:·\s*(?:用户已给|引用来源|假设|依前未解))?[^\"]*\"\])?$")
 EDGE_RE = re.compile(r"^(N\d+)-->(N\d+)$")
 CONVERGED_RE = re.compile(r"第\s*(\d+)\s*轮收敛")
 EXTENDED_RE = re.compile(r"延长\s*(\d+)\s*轮")
