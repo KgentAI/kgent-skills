@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12 stdlib only (pathlib/hashlib/subprocess/shutil), existing `_yaml` parser, pytest, bash (Git Bash on Windows).
 
-**Spec:** `specs/2026-09-10-local-fs-backend-design.md` (ADRs 0006–0009 travel with it)
+**Spec:** `specs/2026-09-10-local-fs-backend-design.md` (ADRs 0008–0011 travel with it)
 
 ## Global Constraints
 
@@ -97,8 +97,8 @@ Expected: FAIL — `KeyError: 'mode'` (defaults lack the keys).
 In `_BACKEND_DEFAULTS` add two keys (after `"priority": None,`):
 
 ```python
-    "mode": "git-backed",  # local-fs store mode (ADR 0009); platform backends ignore it
-    "remote": None,  # optional git remote URL; local-fs only (ADR 0008 rev 3)
+    "mode": "git-backed",  # local-fs store mode (ADR 0011); platform backends ignore it
+    "remote": None,  # optional git remote URL; local-fs only (ADR 0010 rev 3)
 ```
 
 Next to `_TRUST_ZONES` add:
@@ -129,7 +129,7 @@ Expected: ALL PASS (including the pre-existing tests).
 
 ```bash
 git add src/kgent/config/schema.py tests/test_config_schema.py
-git commit -m "feat(config): backend mode/remote keys — store mode enum, git-backed default (ADR 0009)"
+git commit -m "feat(config): backend mode/remote keys — store mode enum, git-backed default (ADR 0011)"
 ```
 
 ---
@@ -156,7 +156,7 @@ git commit -m "feat(config): backend mode/remote keys — store mode enum, git-b
 Create `tests/test_localfs.py`:
 
 ```python
-"""local-fs store helper tests (ADR 0007-0009): root/mode resolution, git init, dirty check."""
+"""local-fs store helper tests (ADR 0009-0011): root/mode resolution, git init, dirty check."""
 
 # pyright: basic
 from __future__ import annotations
@@ -261,14 +261,14 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'kgent.localfs'`.
 - [ ] **Step 3: Write `src/kgent/localfs.py`**
 
 ```python
-"""local-fs store helpers: root resolution, store-mode resolution, git init (ADR 0006-0009).
+"""local-fs store helpers: root resolution, store-mode resolution, git init (ADR 0008-0011).
 
 Pure functions over the config mapping (post-``load_config_dict`` shape) and the
 filesystem. Execution of document ops lives in the ``local-fs-integration``
 skill; this module only backs ``kgent setup`` / ``kgent doctor`` (spec
 2026-09-10, "kgent CLI 侧改动").
 
-Fail-closed rules (ADR 0009): ``init_store`` refuses to run git inside another
+Fail-closed rules (ADR 0011): ``init_store`` refuses to run git inside another
 work tree — kgent never commits into a repo it does not own; every failure is
 a named ``RuntimeError`` the caller maps to a config error.
 """
@@ -352,7 +352,7 @@ def effective_mode(mode_cfg: object, root: Path) -> str:
     unexpected value degrades to :data:`DEFAULT_MODE` rather than raising.
     git-backed requires git on PATH and a non-foreign root — otherwise the
     mode is *unavailable* (explicit config fails closed at setup/doctor; it is
-    never silently downgraded, ADR 0009).
+    never silently downgraded, ADR 0011).
     """
     mode = mode_cfg if mode_cfg in ("git-backed", "snapshot") else DEFAULT_MODE
     if mode == "snapshot":
@@ -378,7 +378,7 @@ def init_store(root: Path) -> None:
     if nested_in_foreign_repo(root):
         raise RuntimeError(
             f"{root} is inside another git work tree; refusing to init "
-            "(kgent never commits into a repo it does not own — ADR 0009)"
+            "(kgent never commits into a repo it does not own — ADR 0011)"
         )
     attrs = root / ".gitattributes"
     if not attrs.exists():
@@ -429,7 +429,7 @@ Expected: no errors.
 
 ```bash
 git add src/kgent/localfs.py tests/test_localfs.py
-git commit -m "feat(localfs): store helpers — root/mode resolution, git init, dirty check (ADR 0007-0009)"
+git commit -m "feat(localfs): store helpers — root/mode resolution, git init, dirty check (ADR 0009-0011)"
 ```
 
 ---
@@ -595,7 +595,7 @@ New function (after `_discover_mcp` section):
 
 ```python
 # ---------------------------------------------------------------------------
-# local-fs discovery (spec 2026-09-10; ADR 0006-0009)
+# local-fs discovery (spec 2026-09-10; ADR 0008-0011)
 # ---------------------------------------------------------------------------
 
 
@@ -633,7 +633,7 @@ def _prepare_local_fs_store(home_path: Path) -> None:
     A fresh appended entry is disabled: no store side effects, no errors —
     enabling later reruns setup (or the user mkdirs via the skill). git-backed
     (default) with git unavailable fails closed with a named error; it never
-    silently degrades (ADR 0009). snapshot mode only mkdirs.
+    silently degrades (ADR 0011). snapshot mode only mkdirs.
     """
     config_path = home_path / "config.yaml"
     if not config_path.exists():
@@ -879,7 +879,7 @@ description: "Equip kgent operations with local-fs-specific knowledge: grep-styl
 
 Equip the kgent skills (query-knowledge, ingest-knowledge, wiki-setup) with the local-fs layer of their operations: grep-style search and directory traversal over the store, frontmatter reads, disciplined writes with version CAS and journal evidence, undo compensation, and native citations. Execution uses raw shell primitives — there is no platform CLI: `rg`/`grep` for search, `find`/`ls` for structure, direct file writes for content, `git` for versioning. Single source of truth — the kgent skills carry no copies of these rules.
 
-Store 模式（`backends.local-fs.mode`，默认 `git-backed`；ADR 0009）决定提交与补偿机制，其余一切相同。运行 `kgent doctor` 可得有效模式（`snapshot` / `git-backed` / `git-backed+remote`）。
+Store 模式（`backends.local-fs.mode`，默认 `git-backed`；ADR 0011）决定提交与补偿机制，其余一切相同。运行 `kgent doctor` 可得有效模式（`snapshot` / `git-backed` / `git-backed+remote`）。
 
 ## The Gate
 
@@ -951,7 +951,7 @@ kgent journal end --op-id <op_id> --status ok --revision-after "<SHA|version>" \
 
 ## Undo Compensation
 
-补偿机制按有效模式（ADR 0005/0008/0009）；执行归本 skill（`kgent undo` 的 adapter 执行路径不适用 local-fs）。
+补偿机制按有效模式（ADR 0005/0010/0011）；执行归本 skill（`kgent undo` 的 adapter 执行路径不适用 local-fs）。
 
 **取证据**：`kgent undo <op_id> --json` 取补偿计划；若 CLI 对 local-fs op 报错（无 adapter），直接读台账：`~/.kgent/journal/journal.ndjson` 中 `op_id` 匹配的行（entry 含 `snapshot.content_before` 与写前/写后 revision），快照文件在 `~/.kgent/journal/snapshots/<op_id>.txt` 与 `<op_id>.after.txt`。
 
@@ -1003,7 +1003,7 @@ Note: if `kgent` is not installed in this environment the conformance tests skip
 
 ```bash
 git add skills/local-fs-integration/SKILL.md tests/test_docs_conformance.py
-git commit -m "feat(skills): local-fs-integration — gate, store modes, search/read/write discipline, per-mode undo (ADR 0006-0009)"
+git commit -m "feat(skills): local-fs-integration — gate, store modes, search/read/write discipline, per-mode undo (ADR 0008-0011)"
 ```
 
 ---
@@ -1045,7 +1045,7 @@ Expected: ALL PASS.
 
 ```bash
 git add skills/query-knowledge/SKILL.md skills/ingest-knowledge/SKILL.md skills/wiki-setup/SKILL.md tests/test_skill_docs_integration_routing.py
-git commit -m "feat(skills): orchestration skills route the local leg via local-fs-integration (ADR 0004/0006)"
+git commit -m "feat(skills): orchestration skills route the local leg via local-fs-integration (ADR 0004/0008)"
 ```
 
 ---
@@ -1064,7 +1064,7 @@ git commit -m "feat(skills): orchestration skills route the local leg via local-
 
 ```bash
 #!/usr/bin/env bash
-# local-fs flow conformance (spec 2026-09-10 A4/A5/A5b; ADR 0006-0009).
+# local-fs flow conformance (spec 2026-09-10 A4/A5/A5b; ADR 0008-0011).
 # Replays the documented local-fs-integration flow against a real kgent
 # artifact under throwaway KGENT_HOME + KGENT_LOCAL_FS_ROOT — the first
 # backend whose full flow (route/journal/write/git/undo) is scriptable
@@ -1384,7 +1384,7 @@ Append at the end:
 ```markdown
 ## local-fs backend (2026-09-11)
 
-Spec `specs/2026-09-10-local-fs-backend-design.md` (rev 6, ADR 0006–0009). Full evidence: `specs/2026-09-10-local-fs-backend-evidence.md`. Gauntlet PASS: <pytest counts>; diff-cover 100%; local-fs flow conformance green in both store modes (git-backed / snapshot).
+Spec `specs/2026-09-10-local-fs-backend-design.md` (rev 6, ADR 0008–0011). Full evidence: `specs/2026-09-10-local-fs-backend-evidence.md`. Gauntlet PASS: <pytest counts>; diff-cover 100%; local-fs flow conformance green in both store modes (git-backed / snapshot).
 ```
 
 - [ ] **Step 4: Final commit**

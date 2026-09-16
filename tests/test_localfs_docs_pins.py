@@ -5,7 +5,7 @@ ruling, final review).** The URI refusal rules (absolute paths, `..` segments),
 the version-CAS refusal, and the tmp+mv write discipline are *agent-execution*
 rules: kgent ships them as skill prose, an agent executes them with raw shell
 primitives, and the CLI has no local-fs adapter to assert against structurally
-(ADR 0004/0006). Per ADR 0006 that discipline is enforced at the agent-evals
+(ADR 0004/0008). Per ADR 0008 that discipline is enforced at the agent-evals
 release gate. What CAN be asserted hermetically — fast, no artifact, no store —
 is that the skill prose keeps carrying the rules: these pins fail when an edit
 removes the documented rules from SKILL.md.

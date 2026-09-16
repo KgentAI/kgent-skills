@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-SKILLS = ["ingest-knowledge", "query-knowledge", "wiki-setup"]
+SKILLS = ["ingest-knowledge", "query-knowledge", "wiki-setup", "decision-navigator"]
 DIRECT = re.compile(
     r"kgent (search|read|update|create|store|wiki)[^\n]*--backends?\s+(lark|dingtalk|wecom)",
     re.IGNORECASE,

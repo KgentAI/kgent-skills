@@ -3,7 +3,7 @@
 - **Date:** 2026-09-10（同日 rev 2：store 改为 git 仓库，undo 改为 revert，`.trash` 废弃；rev 3：remote 可选；rev 4：git 可选，快照兜底模式；rev 5：模式进 config；rev 6：删 `auto` 档，默认 `git-backed`）
 - **Status:** draft（design 已逐节过审 + 三轮修订；实现未开始）
 - **Priority:** medium-high — eval/gauntlet 目前实写真实 Lark 租户（租户污染 + 配额 + 凭据依赖）；本地后端提供一等可弃实写目标，同时是零凭据 onboarding 路径与不出本机的隐私存储
-- **ADRs:** 0006（本地后端家族 + 执行层）、0007（存储格式）、0008（git-backed 模式：revert undo + 可选 remote）、0009（git 可选：snapshot 兜底模式）
+- **ADRs:** 0008（本地后端家族 + 执行层）、0009（存储格式）、0010（git-backed 模式：revert undo + 可选 remote）、0011（git 可选：snapshot 兜底模式）
 - **语言:** CONTEXT.md 新增 本地后端 (local backend) / local-fs backend（本地文件后端）；「后端」「integration skill」条目已同步
 
 ## 背景与目标
@@ -20,13 +20,13 @@ kgent 目前仅有三个 SaaS 平台后端。新增 **local-fs**：存储在本�
 ## 决策摘要
 
 - **命名与家族**：本地后端是家族（`local-` 前缀），local-fs 是首个成员；与 kgent
-  hosted backend（云端托管）互斥命名（ADR 0006）。
+  hosted backend（云端托管）互斥命名（ADR 0008）。
 - **执行层**：一切 local-fs search / read / write / undo 补偿经
   `local-fs-integration` skill，委派 **shell 原语**（`rg`/`grep` + `find`/`ls` +
   文件直写 + `git`），无平台 CLI。kgent CLI 角色与三平台一致：`route --dry-run` /
-  `journal begin,end` / 台账读取（ADR 0006、0008）。
+  `journal begin,end` / 台账读取（ADR 0008、0010）。
 - **存储**：md + YAML frontmatter；wiki 形目录树（空间=顶层目录、节点=嵌套目录、
-  文档=.md）；路径即 id；归档=frontmatter 标志（ADR 0007）。
+  文档=.md）；路径即 id；归档=frontmatter 标志（ADR 0009）。
 - **git 使能且可选（store 模式）**：**模式可配**——`backends.local-fs.mode:
   git-backed | snapshot`，**默认 `git-backed`**（git 缺失或 root 嵌于他人仓库 →
   enable fail closed，命名报错——配置即承诺，无静默降档；`auto` 档已删）。显式
@@ -35,7 +35,7 @@ kgent 目前仅有三个 SaaS 平台后端。新增 **local-fs**：存储在本�
   `.trash`、undo = 台账快照写回、revision 存 version 字符串。两档同一 skill /
   frontmatter / CAS，fail closed 不变；**remote 仅 git-backed 有效**，配置后尽力
   而为 push = remote-synced 有效状态（doctor 报告三值：`snapshot` / `git-backed` /
-  `git-backed+remote`）（ADR 0008、0009）。
+  `git-backed+remote`）（ADR 0010、0011）。
 - **config 最小 schema 扩展（rev 5，rev 6 默认值定档）**：backend defaults 新增
   `mode`（**默认 `"git-backed"`**）与 `remote`（默认 `None`）两键 + 枚举校验
   （`git-backed | snapshot`）；既有后端与既有校验路径零改动。local-fs 条目：
@@ -74,7 +74,7 @@ kgent 目前仅有三个 SaaS 平台后端。新增 **local-fs**：存储在本�
 ---
 id: engineering-wiki/onboarding/first-year-tasks.md   # = 相对路径 = native id
 title: 第一年末任务
-version: 7            # skill 每次写 +1（CAS 字段；兼任 revert 冲突哨兵，ADR 0008）
+version: 7            # skill 每次写 +1（CAS 字段；兼任 revert 冲突哨兵，ADR 0010）
 hash: sha256:…        # 正文 sha256，skill 每次写刷新
 created: 2026-09-10T09:30:00Z
 updated: 2026-09-10T14:05:00Z
@@ -126,7 +126,7 @@ push（可选，仅 git-backed）       # 仅当 backends.local-fs.remote 已配
   `C:/Users/…/local-fs/engineering-wiki/onboarding/auth.md`）；不向用户引用
   `kgent://` URI（与三平台同规）。
 
-## 台账与 undo（0005 + 0008/0009 的本地形态）
+## 台账与 undo（0005 + 0010/0011 的本地形态）
 
 台账零 schema 改动：`--revision-before/after` 是后端无关字符串——git-backed 存
 **git commit SHA**，snapshot 存 **version 字符串**。0005 的「当前 revision ≠
@@ -179,7 +179,7 @@ closed）：
 除此之外 **零执行面新增**：local-fs 无 adapter，`kgent search` 的 CLI fanout **不**
 含 local-fs 腿（与平台检索同规——ADR 0004 后三平台检索也一律改走各自 integration
 skill）；`kgent undo` 的 adapter 执行路径不适用 local-fs（补偿由 skill 执行，
-ADR 0008）；`kgent route --dry-run` 对 local-fs 可用：config 声明的 `capabilities`
+ADR 0010）；`kgent route --dry-run` 对 local-fs 可用：config 声明的 `capabilities`
 直达 router，无需 adapter。台账 begin/end 的 revision 字段原样承载 SHA 或
 version，**journal 与 undo 模块均不动**；search/read/write 路径无任何新 CLI 面。
 
@@ -254,6 +254,12 @@ write 拒绝；git-backed 下 **git status 无该文件的任何 staged 痕迹**
 `kgent skills list` 类检查（artifact-smoke）可见该 skill。
 
 ## Setup plan（依赖逐项论证）
+
+> **维护者裁决（2026-09-11，decision-navigator 实现期追加）**：local-fs 落地后，
+> **e2e 测试一律打 local-fs 后端**，不打真实租户——Lark/DingTalk/WeCom 真机用例
+> （`real` 标记）自同日起移出默认 gauntlet，仅按请求 opt-in
+> （`PYTEST_ADDOPTS='-m "real"' bash tools/gauntlet.sh`）。本表「agent evals 用
+> `KGENT_LOCAL_FS_ROOT` 指向临时目录」一条由此从可选项升格为既定方向。
 
 | 依赖 | 论证 |
 |---|---|

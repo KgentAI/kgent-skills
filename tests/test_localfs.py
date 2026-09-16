@@ -1,4 +1,4 @@
-"""local-fs store helper tests (ADR 0007-0009): root/mode resolution, git init, dirty check."""
+"""local-fs store helper tests (ADR 0009-0011): root/mode resolution, git init, dirty check."""
 
 # pyright: basic
 from __future__ import annotations
@@ -109,7 +109,7 @@ def test_dirty_paths_empty_then_dirty(tmp_path: Path) -> None:
 def test_nested_in_foreign_repo_without_git_is_false(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """git 缺失 → 不判 foreign（mode resolution 单独处理 git 缺失，ADR 0009）。"""
+    """git 缺失 → 不判 foreign（mode resolution 单独处理 git 缺失，ADR 0011）。"""
     monkeypatch.setattr(localfs, "git_path", lambda: None)
     assert nested_in_foreign_repo(tmp_path) is False
 
@@ -151,7 +151,7 @@ def test_dirty_paths_outside_any_repo_is_empty(tmp_path: Path) -> None:
 def test_init_store_git_step_failure_fails_named(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """某个 git 步骤失败 → named RuntimeError 带子命令与 stderr（ADR 0009 fail-closed）。"""
+    """某个 git 步骤失败 → named RuntimeError 带子命令与 stderr（ADR 0011 fail-closed）。"""
     failed = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom")
     monkeypatch.setattr(localfs.subprocess, "run", lambda *a, **k: failed)
     with pytest.raises(RuntimeError, match="git init failed: boom"):

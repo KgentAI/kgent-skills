@@ -42,6 +42,19 @@ if hasattr(sys.stdout, "reconfigure"):
 APPROVALS = ("Approved — proceed.", "Yes — proceed with your default choice.")
 
 
+def user_turns(entry: dict, followup: bool = True) -> list[str]:
+    """[user] turns appended after the first prompt.
+
+    Default = APPROVALS (write-flow approval cadence). An eval may override
+    with an "answers" list — canned user replies for clarification-style flows
+    (e.g. decision-navigator's batched clarification), where an approval-style
+    reply would trigger the no-answer fallthrough instead of answering.
+    """
+    if not followup:
+        return []
+    return list(entry.get("answers") or APPROVALS)
+
+
 def load_evals(skill: str | None, ids: set[int] | None, file_stem: str | None = None) -> list[tuple[str, dict]]:
     picked: list[tuple[str, dict]] = []
     for path in sorted(EVALS.glob("*-evals.json")):
@@ -198,10 +211,9 @@ def main() -> int:
             return done.stdout or done.stderr
 
         parts = [claude(entry["prompt"])]
-        if args.followup:
-            for approval in APPROVALS:
-                parts.append(f"[user]: {approval}")
-                parts.append(claude(approval, cont=True))
+        for user_msg in user_turns(entry, args.followup):
+            parts.append(f"[user]: {user_msg}")
+            parts.append(claude(user_msg, cont=True))
         transcript = "\n\n".join(parts)
 
         passed, misses, manual = heuristic_grade(entry.get("expectations", []), transcript)

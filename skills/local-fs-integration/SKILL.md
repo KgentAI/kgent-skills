@@ -7,7 +7,7 @@ description: "Equip kgent operations with local-fs-specific knowledge: grep-styl
 
 Equip the kgent skills (query-knowledge, ingest-knowledge, wiki-setup) with the local-fs layer of their operations: grep-style search and directory traversal over the store, frontmatter reads, disciplined writes with version CAS and journal evidence, undo compensation, and native citations. Execution uses raw shell primitives — there is no platform CLI: `rg`/`grep` for search, `find`/`ls` for structure, direct file writes for content, `git` for versioning. Single source of truth — the kgent skills carry no copies of these rules.
 
-Store 模式（`backends.local-fs.mode`，默认 `git-backed`；ADR 0009）决定提交与补偿机制，其余一切相同。**有效模式不问 doctor**：它 = config 该键（缺省 `git-backed`）+ store 实况（root 下有无 `.git`）。`kgent doctor` 不是模式报告，只报异常与接线——root 缺失/不可写、git-backed 不可用（fail-closed）、声明 git-backed 但 root 非 git 仓库、remote 接线（`git-backed+remote`）或 snapshot 下误配 remote、dirty 提示（informational）；**沉默即健康**，健康时 local-fs 不产生任何 finding。
+Store 模式（`backends.local-fs.mode`，默认 `git-backed`；ADR 0011）决定提交与补偿机制，其余一切相同。**有效模式不问 doctor**：它 = config 该键（缺省 `git-backed`）+ store 实况（root 下有无 `.git`）。`kgent doctor` 不是模式报告，只报异常与接线——root 缺失/不可写、git-backed 不可用（fail-closed）、声明 git-backed 但 root 非 git 仓库、remote 接线（`git-backed+remote`）或 snapshot 下误配 remote、dirty 提示（informational）；**沉默即健康**，健康时 local-fs 不产生任何 finding。
 
 ## The Gate
 
@@ -41,7 +41,7 @@ URI 形如 `kgent://local-fs/<相对路径>`；绝对路径与含 `..` 段的 id
 
 ## Read
 
-对 local-fs 内容的一切读取经本 skill。直读文件：解析 frontmatter（容忍 CRLF），正文随 `hash` 字段呈现。frontmatter 解析失败 → 按外来文件处理（说明并跳过，不猜测元数据）。`hash` 只覆盖**正文**（ADR 0007）——读回校验与 undo 比对需要它时，取「第二个 `---` 行之后的全部字节」计算，不得把 frontmatter 计入：`awk 'c>=2{print} /^---[[:space:]]*$/{c++}' <file> | python -c "import hashlib,sys;print('sha256:'+hashlib.sha256(sys.stdin.buffer.read()).hexdigest())"`（已对临时文件核对：该管道输出与直接对正文字节求 sha256 一致）。
+对 local-fs 内容的一切读取经本 skill。直读文件：解析 frontmatter（容忍 CRLF），正文随 `hash` 字段呈现。frontmatter 解析失败 → 按外来文件处理（说明并跳过，不猜测元数据）。`hash` 只覆盖**正文**（ADR 0009）——读回校验与 undo 比对需要它时，取「第二个 `---` 行之后的全部字节」计算，不得把 frontmatter 计入：`awk 'c>=2{print} /^---[[:space:]]*$/{c++}' <file> | python -c "import hashlib,sys;print('sha256:'+hashlib.sha256(sys.stdin.buffer.read()).hexdigest())"`（已对临时文件核对：该管道输出与直接对正文字节求 sha256 一致）。
 
 ## Write
 
@@ -81,7 +81,7 @@ kgent journal end --op-id <op_id> --status ok --revision-after "<SHA或version>"
 
 ## Undo Compensation
 
-补偿机制按有效模式（ADR 0005/0008/0009）；执行归本 skill（`kgent undo` 的 adapter 执行路径不适用 local-fs）。
+补偿机制按有效模式（ADR 0005/0010/0011）；执行归本 skill（`kgent undo` 的 adapter 执行路径不适用 local-fs）。
 
 **取证据**：`kgent undo <op_id> --json` 取补偿计划；若 CLI 对 local-fs op 报错（无 adapter），直接读台账：`~/.kgent/journal/journal.ndjson` 中 `op_id` 匹配的行（entry 含写前/写后 revision；`snapshot.content_before` 为条件字段——机密内容且加密关闭时省略，S51），快照文件在 `~/.kgent/journal/snapshots/<op_id>.txt` 与 `<op_id>.after.txt`。
 

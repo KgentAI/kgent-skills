@@ -23,6 +23,7 @@ DOC_FILES = [
     SKILLS_DIR / "ingest-knowledge" / "SKILL.md",
     SKILLS_DIR / "query-knowledge" / "SKILL.md",
     SKILLS_DIR / "wiki-setup" / "SKILL.md",
+    SKILLS_DIR / "decision-navigator" / "SKILL.md",
     SKILLS_DIR / "lark-integration" / "SKILL.md",
     SKILLS_DIR / "dingtalk-integration" / "SKILL.md",
     SKILLS_DIR / "wecom-integration" / "SKILL.md",
