@@ -13,7 +13,7 @@ from hypothesis import strategies as st
 
 CHECKER = Path(__file__).resolve().parents[2] / "tools" / "dn_brief_check.py"
 
-STATES = ["用户已给", "引用来源", "假设", "依前未解"]
+STATES = ["用户已给", "引用来源", "假设", "待确认"]
 
 
 def _render(
@@ -21,7 +21,7 @@ def _render(
 ) -> str:
     mermaid_lines = ["```mermaid", "flowchart TD"]
     for nid in ids:
-        mermaid_lines.append(f'    {nid}["节点{nid}"]')
+        mermaid_lines.append(f'    {nid}["问题{nid}"]')
     # deps[nid] = "nid 依 谁"；边方向 = 依赖喂向依赖方 → dep --> nid
     for nid in ids:
         for dep in deps[nid]:
@@ -44,11 +44,11 @@ def _render(
                 else f"- {nid} [{states[nid]}] 内容{nid}"
             )
     return (
-        "# 决策简报\n\n## 决策分解\n\n"
+        "# 决策简报\n\n## 问题拆解\n\n"
         + "\n".join(mermaid_lines)
         + "\n\n"
         + "\n".join(node_lines)
-        + "\n\n## 收敛申报\n\n"
+        + "\n\n## 完成申报\n\n"
         + convergence
         + "\n"
     )
@@ -57,7 +57,7 @@ def _render(
 @st.composite
 def _valid_briefs(draw):
     n = draw(st.integers(min_value=1, max_value=10))
-    ids = [f"N{i}" for i in range(1, n + 1)]
+    ids = [f"Q{i}" for i in range(1, n + 1)]
     deps: dict[str, list[str]] = {nid: [] for nid in ids}
     for i, nid in enumerate(ids):
         # 只允许指向更早的节点 → 必然无环
@@ -68,10 +68,10 @@ def _valid_briefs(draw):
     convergence = draw(
         st.sampled_from(
             [
-                "第1轮收敛：零新增。",
-                "第3轮收敛：零新增、零重开。",
-                "3轮达限，余下开放节点按假设处理。",
-                "第3轮达限，经用户批准延长3轮；第5轮收敛。",
+                "第1轮完成：零新增。",
+                "第3轮完成：零新增、零重开。",
+                "3轮达限，余下开放问题按假设处理。",
+                "第3轮达限，经用户批准延长3轮；第5轮完成。",
             ]
         )
     )
