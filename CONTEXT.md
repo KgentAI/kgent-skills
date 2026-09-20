@@ -12,6 +12,10 @@ _Avoid_: 服务、渠道
 打包进 kgent-skills 的后端唯一接口层；对该后端的一切 search / read / write / undo 补偿执行 / 原生 URL 构造都必须经它，由它委派原生 skill、平台 CLI，或（本地后端）shell 原语。命名 `<backend>-integration`。
 _Avoid_: 平台 skill、平台适配器
 
+**安装门 (install gate)**:
+平台 integration skill 的安装判定：仅当 `~/.kgent/config.yaml` 中 `backends.<platform>.enabled` 为 true 才安装对应 `<platform>-integration`；由安装器在安装时判定、由 skill 同步命令双向收敛（enabled ⇒ 已装，disabled ⇒ 移除）。本地后端与知识车道 skill（query-knowledge / ingest-knowledge / wiki-setup）不设门。门只读 config 不改写 config；显式越门仅为安装器旗标级例外（测试/开发）。
+_Avoid_: 依赖检测、presence 检测（门读 config，不探测原生 skill 是否在盘）、按需加载
+
 **原生 skill (native skill)**:
 平台 CLI 生态自带的 agent skill（非 kgent 打包），由 integration skill 委派。
 _Avoid_: 官方 skill
@@ -43,6 +47,10 @@ _Avoid_: git 模式/非 git 模式、auto 档（档位固定为 git-backed / sna
 **kgent hosted backend**:
 kgent 自有的云端托管知识库后端，与 lark / dingtalk / wecom 并列的另一种后端选择（尚未实现）；kgent CLI 平台操作（store / wiki / update / create / read / search）的唯一保留对象。三大平台的操作不经它。
 _Avoid_: 本地后端、内置后端、主后端
+
+**skill 同步 (skill sync)**:
+安装器的收敛模式（`install-skills.sh --sync`）：按安装门双向收敛已装的平台 integration skill——门开 ⇒ 确保已装，门关 ⇒ 移除（`--keep` 豁免移除）；仅作用于选定安装目标（agent skill 目录，默认全部检测到的，可用旗标选子集）。普通安装只装不删。
+_Avoid_: 重装、卸载（uninstall 是全量拆除）、按需加载
 
 **台账 (ledger)**:
 op 级写操作账本；一个逻辑操作一条 entry，只记变更不记读。对应 CLI 命令 `journal`。
