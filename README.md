@@ -40,6 +40,10 @@ bash tools/install-skills.sh --copy       # frozen copies instead of live links
 bash tools/install-skills.sh --no-cli     # skills only, skip the kgent CLI
 bash tools/install-skills.sh --uninstall  # remove skills + CLI
 bash tools/install-skills.sh --backup     # keep replaced dirs in ~/.agents/skills-backups
+bash tools/install-skills.sh --sync       # converge: install gate-open skills, remove gate-closed
+bash tools/install-skills.sh --sync --keep  # converge without ever removing
+bash tools/install-skills.sh --force      # ignore the install gate (dev/testing)
+bash tools/install-skills.sh --agents claude,codebuddy  # scope the mirror hops
 ```
 
 Under the hood, the script discovers every `skills/*/SKILL.md`, links it into
@@ -52,6 +56,25 @@ ln -s $(pwd)/skills/ingest-knowledge ~/.agents/skills/ingest-knowledge
 ln -s $(pwd)/skills/query-knowledge ~/.agents/skills/query-knowledge
 ln -s $(pwd)/skills/wiki-setup ~/.agents/skills/wiki-setup
 ```
+
+#### The install gate
+
+Platform integration skills (`lark-integration`, `dingtalk-integration`,
+`wecom-integration`) are **install-gated** on
+`backends.<platform>.enabled: true` in `~/.kgent/config.yaml` — the config is
+the only gate signal; native-skill presence is never probed (ADR 0010). The
+lanes (`query-knowledge`, `ingest-knowledge`, `wiki-setup`) and
+`local-fs-integration` always install. A fresh machine (no config) installs
+just the ungated set and says so.
+
+The plain installer never removes: gate-closed skills are skipped, already
+installed ones stay. `--sync` converges both ways — gate-open skills are
+installed, gate-closed ones are removed (`--keep` opts out). `--force`
+installs everything regardless of the gate (dev/testing). `--agents`
+scopes the mirror hops (the hub itself is always populated; hub-native
+agents — Codex, OpenCode, OpenClaw, pi — cannot be scoped). `kgent doctor`
+reports an enabled backend whose integration skill is missing, and
+`kgent setup` points at `--sync`.
 
 #### Installation per agent
 
@@ -92,7 +115,10 @@ kgent setup
 This runs read-only backend discovery (never authenticates, never prompts)
 and writes `~/.kgent/config.yaml`. Every discovered backend starts
 `enabled: false` — edit the config to set `enabled: true` for the backends
-you want to use. Use `kgent doctor` to validate the result.
+you want to use, then run `bash tools/install-skills.sh --sync` to install
+the matching platform integration skills (they are install-gated on
+`backends.<platform>.enabled` — see [The install gate](#the-install-gate)).
+Use `kgent doctor` to validate the result.
 
 Re-running `kgent setup` is safe: it merges into the existing config (your
 settings, notably `enabled`, win verbatim) and backs up the original to

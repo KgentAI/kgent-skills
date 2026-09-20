@@ -23,3 +23,16 @@ Shared mechanics (update = re-run the script, `--copy`, `--backup`,
 [main README](../../README.md#installation) — the per-agent guides only cover
 what is specific to that agent: discovery paths, manual fallback, and how to
 verify the skills are actually visible.
+
+## The install gate
+
+Platform integration skills (`lark/dingtalk/wecom-integration`) install only
+when that platform is enabled — `backends.<platform>.enabled: true` in
+`~/.kgent/config.yaml` (ADR 0010; the config is the only gate signal, native
+skills on disk are never probed). The lanes and `local-fs-integration` always
+install. The plain installer never removes; `--sync` converges both ways
+(`--keep` opts out), `--force` ignores the gate, and `--agents claude` (or
+`codebuddy`) scopes the mirror hops — the hub is always populated, so
+hub-native agents (Codex, OpenCode, OpenClaw, pi) are not valid `--agents`
+values. `kgent doctor` reports an enabled backend whose integration skill is
+missing; `kgent setup` points at `--sync`.

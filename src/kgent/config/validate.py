@@ -131,7 +131,7 @@ def doctor(home: Path) -> tuple[list[str], int]:
     findings.extend(validate_config(cfg))
     findings.extend(_trust_record_findings(home))
     findings.extend(_capability_cache_findings(home))
-    findings.extend(_reachability_findings(cfg))
+    findings.extend(_reachability_findings(cfg, home))
     findings.extend(_local_fs_findings(cfg))
 
     return findings, 1 if findings else 0
@@ -174,15 +174,32 @@ def _capability_cache_findings(home: Path) -> list[str]:
     return []
 
 
-def _reachability_findings(cfg: Config) -> list[str]:
-    """Backend reachability via read-only probes (§2.6).
-
-    Adapter probes arrive with the backend adapters (later tasks); with no
-    adapters wired up, reachability is skipped silently — backends without
-    configuration contribute nothing here.
+def _reachability_findings(cfg: Config, home: Path) -> list[str]:
+    """Install-gate alignment (spec 2026-09-19; ADR 0010): an enabled PLATFORM
+    backend whose ``<backend>-integration`` skill is not installed in any
+    agent skills dir is a finding — its ops cannot delegate (ADR 0004). The
+    platform set is the ledger's integration-skill backends; the probe is the
+    user-home skill dirs (hub + mirrors) and reads fail-closed (an unreadable
+    location reports NOT installed, never healthy). The kgent home is
+    ``~/.kgent`` by contract, so the user home is ``home.parent``.
     """
-    _ = cfg
-    return []
+    from kgent.capabilities.detect import integration_skill_installed
+    from kgent.router.ledger import INTEGRATION_SKILL_BACKENDS
+
+    user_home = home.parent
+    findings: list[str] = []
+    for name, spec in cfg.backends.items():
+        if str(name) not in INTEGRATION_SKILL_BACKENDS:
+            continue
+        if spec.get("enabled") is not True:
+            continue
+        if integration_skill_installed(user_home, str(name)):
+            continue
+        findings.append(
+            f"backends.{name}: enabled but {name}-integration is not installed in any agent "
+            "skills dir (run 'bash tools/install-skills.sh --sync' from the kgent-skills repo)"
+        )
+    return findings
 
 
 def _local_fs_findings(cfg: Config) -> list[str]:

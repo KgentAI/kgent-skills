@@ -47,7 +47,7 @@ from kgent.config import _yaml
 from kgent.errors import ConfigError
 from kgent.localfs import BACKEND_NAME, DEFAULT_MODE, git_path, init_store, resolve_root
 
-__all__ = ["DiscoveryReport", "discover", "setup"]
+__all__ = ["DiscoveryReport", "discover", "integration_skill_installed", "setup", "skill_dirs"]
 
 #: Skill directory prefixes mapped to backend names (§2.2 step 1).
 _SKILL_PREFIXES: tuple[tuple[str, str], ...] = (
@@ -58,6 +58,11 @@ _SKILL_PREFIXES: tuple[tuple[str, str], ...] = (
 
 #: Structured manifest files accepted during skill discovery (never prose).
 _MANIFEST_NAMES: tuple[str, ...] = ("manifest.json", "manifest.yaml", "manifest.yml")
+
+#: Agent skill directories probed for installed integration skills (spec
+#: 2026-09-19 install gate): the cross-agent hub first, then the mirror hops.
+#: Relative to the USER home (the kgent home ``~/.kgent`` sits inside it).
+SKILL_DIR_NAMES: tuple[str, ...] = (".agents/skills", ".claude/skills", ".codebuddy/skills")
 
 #: CLI names mapped to backend names (§2.2 step 2).
 _CLI_BACKENDS: tuple[tuple[str, str], ...] = (
@@ -182,6 +187,26 @@ def _discover_skills(home_env: Path) -> dict[str, dict[str, Any]]:
             continue
         result[backend] = _skill_entry(skill_dir.name, _read_skill_manifest(skill_dir))
     return result
+
+
+def skill_dirs(user_home: Path) -> list[Path]:
+    """Agent skill directories under a user home, hub first (spec B6)."""
+    return [user_home / name for name in SKILL_DIR_NAMES]
+
+
+def integration_skill_installed(user_home: Path, backend: str) -> bool:
+    """True when ``<backend>-integration/SKILL.md`` exists in any known agent
+    skill dir. Read-only; an unreadable location reads as NOT installed
+    (fail-closed — a probe that cannot answer must never report healthy).
+    """
+    for skills_dir in skill_dirs(user_home):
+        probe = skills_dir / f"{backend}-integration" / "SKILL.md"
+        try:
+            if probe.is_file():
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _skill_backend_for(skill_name: str) -> str | None:

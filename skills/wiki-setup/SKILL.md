@@ -43,7 +43,9 @@ A fresh config has every backend `enabled: false`. If nothing is enabled for
 this task, tell the user to set `enabled: true` for their backend in
 `~/.kgent/config.yaml` and stop there. Re-running `kgent setup` later is safe
 — it merges into the existing config (user settings win) and backs up the
-original.
+original. If a task targets a backend that is `enabled: true` but the matching
+`<backend>-integration` skill is not installed, run `kgent doctor` to confirm
+and point the user at `bash tools/install-skills.sh --sync` to install it.
 
 ### 1. Gather Pages and Targets
 

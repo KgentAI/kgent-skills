@@ -894,6 +894,10 @@ def _cmd_setup(args: argparse.Namespace) -> int:
                 )
         else:
             _text_out("no backends detected")
+        _text_out(
+            "next: enable your backends in ~/.kgent/config.yaml (they start disabled), then run "
+            "'bash tools/install-skills.sh --sync' to install the matching integration skills"
+        )
     return code
 
 

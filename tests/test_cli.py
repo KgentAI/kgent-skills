@@ -104,6 +104,12 @@ def e2e(tmp_home, monkeypatch):
         "  default: lark\n"
     )
     (tmp_home / "config.yaml").write_text(config_text, encoding="utf-8")
+    # the fabricated world includes the installed integration skills (install
+    # gate, spec 2026-09-19): doctor's alignment probe must find them
+    for name in ("lark", "dingtalk", "wecom"):
+        skill = tmp_home.parent / ".agents" / "skills" / f"{name}-integration"
+        skill.mkdir(parents=True, exist_ok=True)
+        (skill / "SKILL.md").write_text("---\nname: probe\n---\nprobe", encoding="utf-8")
     monkeypatch.setenv("KGENT_HOME", str(tmp_home))
 
     yield {"backends": backends, "home": tmp_home}

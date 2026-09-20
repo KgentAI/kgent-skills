@@ -17,6 +17,17 @@ The script links each repo skill into the hub, then links
 `~/.claude/skills/<name>` → `~/.agents/skills/<name>`. The mirror is created
 only when `~/.claude` already exists (i.e. Claude Code is installed).
 
+### Install gate
+
+Platform integration skills (`lark/dingtalk/wecom-integration`) install only
+when that platform is enabled (`backends.<platform>.enabled: true` in
+`~/.kgent/config.yaml`); the lanes and `local-fs-integration` always install.
+After enabling a backend run `bash tools/install-skills.sh --sync` (it also
+removes skills whose platform you later disable; `--keep` opts out).
+`--agents claude` scopes the mirror hops — see
+[the install gate](README.md#the-install-gate). `kgent doctor` reports an
+enabled backend whose integration skill is missing.
+
 ## Manual fallback (no script)
 
 ```bash

@@ -27,6 +27,17 @@ bash tools/install-skills.sh
 That's the whole story for Codex: the script builds `$HOME/.agents/skills`,
 which Codex scans natively.
 
+### Install gate
+
+Platform integration skills (`lark/dingtalk/wecom-integration`) install only
+when that platform is enabled (`backends.<platform>.enabled: true` in
+`~/.kgent/config.yaml`); the lanes and `local-fs-integration` always install.
+After enabling a backend run `bash tools/install-skills.sh --sync` (it also
+removes skills whose platform you later disable; `--keep` opts out).
+`kgent doctor` reports an enabled backend whose integration skill is missing.
+Codex is hub-native, so it is not a valid `--agents` value — the hub serves
+it unconditionally (see [the install gate](README.md#the-install-gate)).
+
 ## Manual fallback (no script)
 
 Populate the hub yourself (junction on Windows needs no admin):
