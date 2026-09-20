@@ -402,3 +402,11 @@ Implementation is production-ready for kgent packaging.
 ## local-fs backend (2026-09-12)
 
 Spec `specs/2026-09-10-local-fs-backend-design.md` (rev 6, ADR 0006–0009). Full evidence: `specs/2026-09-10-local-fs-backend-evidence.md`. **GAUNTLET PASS**: 674 passed / 7 skipped / 0 failed; diff-cover 100%; mypy strict clean (53 files); artifact-smoke 18/18; local-fs flow conformance green in both store modes (git-backed 32 + snapshot 22 assertions). Agent-execution discipline (URI/CAS refusal, tmp+mv) pinned at docs layer, behaviorally enforced at the agent-evals release gate per ADR 0006.
+
+## 安装门 (install gate) — 2026-09-20
+
+Spec `specs/2026-09-19-install-gate-design.md` v1.1 (ADR 0010; CONTEXT.md 新词：安装门、skill 同步). Full evidence: `specs/2026-09-19-install-gate-evidence.md`. **GAUNTLET PASS**: 697 passed / 0 failed / 4 skipped / 10 deselected (`real` 真机腿按 2026-09-11 ruling 排除)；diff-cover 100%（`detect.py`/`cli.py`/`validate.py`，31 变更行）；mypy clean (53 files)；artifact-smoke 18/18；local-fs flow 双模式绿。语义：平台 integration skill 按 `backends.<platform>.enabled` 门控安装（config 是唯一门信号，永不探测原生 skill 在盘）；普通安装只装不删，`--sync` 双向收敛（`--keep` 豁免），`--force` 越门，`--agents` 经镜像注册表选 hop（hub 恒装，hub-native agent 非法值）；发现回路三腿 = doctor finding + setup 尾注 + 车道 prose。新增持久化手动 mutation harness `tools/mutate-install-gate.sh`——**8/8 killed**，其中 M6 逼出真缺陷（`Path.is_file()` 内吞 ENOENT/ENOTDIR 使 fail-closed 分支不可达 → 探测改显式 `os.stat`）。
+
+**遗留（如实声明）**: 5 个 wecom 真机 e2e 失败（`test_wecom_snapshot_real.py` B5/B8 五测）观测于裸全量跑，定谳与本分支零交集（该文件仅 subprocess 直驱 wecom-cli，无导入边），符合 640459 日配额窗，按 baseline 规则未代修、gauntlet 默认排除。agent evals 属独立 release gate，本次未跑。本机环境隐患已存档：ambient python 的 kgent editable 指向陈旧 worktree `decision-navigator-spec`——裸 `python -m pytest` 会测旧代码；gauntlet 走仓库 `.venv` 不受影响，裸跑需 `PYTHONPATH=src`。
+
+**Reproduce**: `PYTEST_ADDOPTS='-m "not real"' bash tools/gauntlet.sh`；`bash tools/mutate-install-gate.sh`；安装器契约 `pytest tests/test_install_skills.py -q`（36 passed）；doctor 门 `pytest tests/test_discovery_doctor.py -q`（20 passed）。

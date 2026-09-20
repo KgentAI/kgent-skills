@@ -114,6 +114,14 @@ mutate_and_test "M7 hub-native rejection disabled" "$SCRIPT" \
   'if false; then' \
   "$INSTALL::test_i13b_agents_hub_native_name_rejected_with_explanation" || fail=1
 
+# M8: the installer writes to the config (the read-only-config invariant
+# canary) -> the byte-equality armor test must fire
+mutate_and_test "M8 config write-injection" "$SCRIPT" \
+  '  hub_mode=link' \
+  '  hub_mode=link
+  printf "# mutated\n" >> "$CONFIG_FILE"' \
+  "$INSTALL::test_i17_config_file_never_touched" || fail=1
+
 if git diff --quiet -- "$SCRIPT" "$DETECT"; then
   :
 else
@@ -125,4 +133,4 @@ if [ "$fail" -ne 0 ]; then
   echo "MUTATION RESULT: FAILURES ABOVE" >&2
   exit 1
 fi
-echo "MUTATION RESULT: 7/7 killed"
+echo "MUTATION RESULT: 8/8 killed"
