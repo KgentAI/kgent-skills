@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -196,16 +197,19 @@ def skill_dirs(user_home: Path) -> list[Path]:
 
 def integration_skill_installed(user_home: Path, backend: str) -> bool:
     """True when ``<backend>-integration/SKILL.md`` exists in any known agent
-    skill dir. Read-only; an unreadable location reads as NOT installed
-    (fail-closed — a probe that cannot answer must never report healthy).
+    skill dir. Read-only. ``os.stat`` is probed explicitly (``Path.is_file``
+    would swallow ENOENT/ENOTDIR internally): absent AND unreadable both flow
+    through the handler and read as NOT installed — fail-closed, a probe that
+    cannot answer "yes" must never report healthy.
     """
     for skills_dir in skill_dirs(user_home):
         probe = skills_dir / f"{backend}-integration" / "SKILL.md"
         try:
-            if probe.is_file():
-                return True
+            st = os.stat(probe)
         except OSError:
             continue
+        if stat.S_ISREG(st.st_mode):
+            return True
     return False
 
 
