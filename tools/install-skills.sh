@@ -8,22 +8,46 @@
 #   - backend commands (uv/python) are resolved via PATH
 #   - exit 0 = installed & healthy; non-zero = failure or usage error
 #
-# Flags (implemented slices): --copy --backup --uninstall --no-cli. Unknown
-# flags are a usage error (exit 2).
+# Flags (implemented slices): --copy --backup --uninstall --no-cli --sync
+# --keep --force --agents <name[,name...]>. Unknown flags are a usage error
+# (exit 2).
+#
+# Install gate (spec 2026-09-19-install-gate-design.md; ADR 0010): platform
+# integration skills install only when backends.<platform>.enabled is true in
+# the kgent config - the config is the single gate signal, NEVER native-skill
+# presence. The installer only READS the config. Plain install never prunes;
+# --sync converges both ways (gate-closed skills are removed, --keep opts
+# out); --force opens every gate with a warning; --agents scopes the mirror
+# hops (the hub is unconditional).
 set -euo pipefail
 
 BACKUP=0
 COPY=0
 UNINSTALL=0
 NO_CLI=0
+SYNC=0
+KEEP=0
+FORCE=0
+AGENTS_ARG=""
 while [ $# -gt 0 ]; do
   case "$1" in
   --backup) BACKUP=1 ;;
   --copy) COPY=1 ;;
   --uninstall) UNINSTALL=1 ;;
   --no-cli) NO_CLI=1 ;;
+  --sync) SYNC=1 ;;
+  --keep) KEEP=1 ;;
+  --force) FORCE=1 ;;
+  --agents)
+    if [ $# -lt 2 ] || [ -z "${2:-}" ]; then
+      echo "usage: --agents requires a non-empty value" >&2
+      exit 2
+    fi
+    AGENTS_ARG="$2"
+    shift
+    ;;
   *)
-    echo "usage: install-skills.sh [--copy] [--backup] [--uninstall] [--no-cli]" >&2
+    echo "usage: install-skills.sh [--copy] [--backup] [--uninstall] [--no-cli] [--sync] [--keep] [--force] [--agents <name[,name...]>]" >&2
     exit 2
     ;;
   esac
@@ -37,12 +61,198 @@ HUB="${KGENT_SKILLS_HUB:-$HOME/.agents/skills}"
 CLAUDE_DIR="$HOME/.claude/skills"
 CODEBUDDY_DIR="$HOME/.codebuddy/skills"
 
+KGENT_DIR="${KGENT_HOME:-$HOME/.kgent}"
+CONFIG_FILE="$KGENT_DIR/config.yaml"
+TARGETS_FILE="$KGENT_DIR/skills-targets.txt"
+GATED_SKILL_RE='^(lark|dingtalk|wecom)-integration$'
+
+# Mirror registry: agents that keep their OWN skills dir and need a hop from
+# the hub. A new own-dir agent is one entry here - no logic change. Hub-native
+# agents (codex opencode openclaw pi) natively scan the hub, so they are NOT
+# valid --agents values: the hub is installed unconditionally and cannot be
+# scoped per agent.
+mirror_dir() {
+  case "$1" in
+  claude) echo "$HOME/.claude/skills" ;;
+  codebuddy) echo "$HOME/.codebuddy/skills" ;;
+  *) return 1 ;;
+  esac
+}
+mirror_root() { dirname "$(mirror_dir "$1")"; }
+MIRROR_NAMES="claude codebuddy"
+HUB_NATIVE_AGENTS="codex opencode openclaw pi"
+
+is_gated() { [[ "$1" =~ $GATED_SKILL_RE ]]; }
+
 is_windows=0
 case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*) is_windows=1 ;;
 esac
 
 TS="$(date +%Y%m%d%H%M%S)"
+
+# gate_state <backend> -> "open" | "closed"
+# Fail-closed: anything unreadable or unparseable reads CLOSED, never open.
+# Leg 1: `kgent config show-effective --json` (the CLI's effective view - the
+# same scripting surface the skills consume). Leg 2: a pinned grep over the
+# machine-written YAML - block header exactly "  <backend>:", key line exactly
+# "    enabled: <value>"; only the literal "true" (inline comment stripped)
+# opens the gate. A block that exists in some other shape warns and reads
+# closed; a missing key reads closed silently.
+gate_state() {
+  local backend="$1" state
+  state="$(gate_via_cli "$backend")" || state=""
+  if [ "$state" = "open" ] || [ "$state" = "closed" ]; then
+    echo "$state"
+    return 0
+  fi
+  gate_via_grep "$backend"
+}
+
+gate_via_cli() {
+  local backend="$1" json py state
+  command -v kgent >/dev/null 2>&1 || return 1
+  py="$(command -v python || command -v python3)" || return 1
+  json="$(kgent config show-effective --json 2>/dev/null)" || return 1
+  [ -n "$json" ] || return 1
+  state="$("$py" - "$backend" "$json" <<'PYEOF'
+import json
+import sys
+
+backend, raw = sys.argv[1], sys.argv[2]
+try:
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError("effective config is not an object")
+    # a backend the effective view does not report is not enabled in it -
+    # leg 1 is authoritative, so absence reads closed (only an unparseable
+    # payload falls back to leg 2)
+    enabled = data.get("backends", {}).get(backend, {}).get("enabled", False)
+except Exception:
+    print("error")
+    raise SystemExit(0)
+print("open" if enabled else "closed")
+PYEOF
+)" || return 1
+  echo "$state"
+}
+
+gate_via_grep() {
+  local backend="$1" val
+  if [ ! -f "$CONFIG_FILE" ]; then
+    echo "closed"
+    return 0
+  fi
+  if grep -Eq "^  ${backend}:[[:space:]]*$" "$CONFIG_FILE"; then
+    val="$(awk -v b="$backend" '
+      $0 == "  " b ":" {inblk = 1; next}
+      /^[^ #]/ {inblk = 0}
+      inblk && $0 ~ "^[[:space:]]+enabled:" {
+        if ($0 ~ "^    enabled:") {
+          v = $2
+          sub(/#.*/, "", v)
+          gsub(/[[:space:]]/, "", v)
+          print "VALUE:" v
+        } else {
+          print "MALFORMED" # an enabled line the pinned shape cannot read
+        }
+        exit
+      }
+    ' "$CONFIG_FILE")"
+    if [ "$val" = "MALFORMED" ]; then
+      echo "install-gate WARNING: ${backend} block in ${CONFIG_FILE} not parseable - treating as closed" >&2
+      echo "closed"
+      return 0
+    fi
+    val="${val#VALUE:}"
+    if [ "$val" = "true" ]; then
+      echo "open"
+    else
+      echo "closed"
+    fi
+    return 0
+  fi
+  # the block exists in some shape, but not the pinned one - never guess open
+  if grep -Eq "^[[:space:]]+${backend}:[[:space:]]*$" "$CONFIG_FILE"; then
+    echo "install-gate WARNING: ${backend} block in ${CONFIG_FILE} not parseable - treating as closed" >&2
+  fi
+  echo "closed"
+}
+
+# gate_of <backend> -> the per-run gate state from GATE_STATES ("open|closed").
+# States are computed ONCE per run (precompute block in the main flow), so the
+# gate is read a single time per backend: diagnostics print exactly once and
+# no consumer re-reads the config. Unknown backends read closed.
+GATE_STATES=""
+gate_of() {
+  local gs
+  for gs in $GATE_STATES; do
+    if [ "${gs%%=*}" = "$1" ]; then
+      echo "${gs#*=}"
+      return 0
+    fi
+  done
+  echo "closed"
+}
+
+# validate_targets <sel> <strict|lenient>
+# sel is space-separated mirror names or the literal "all". strict (explicit
+# --agents) turns an unknown name or a hub-native name into a usage error
+# (exit 2, reason named); lenient (persisted targets file) just reports
+# invalid so the caller can warn and widen to all.
+validate_targets() {
+  local sel="$1" strict="$2" piece
+  if [ -z "$sel" ]; then return 1; fi
+  if [ "$sel" = "all" ]; then return 0; fi
+  for piece in $sel; do
+    if mirror_dir "$piece" >/dev/null 2>&1; then continue; fi
+    if echo " $HUB_NATIVE_AGENTS " | grep -q " $piece "; then
+      if [ "$strict" = "strict" ]; then
+        echo "'$piece' is a hub-native agent - the hub is installed unconditionally and cannot be scoped per agent (registry: $MIRROR_NAMES)" >&2
+        exit 2
+      fi
+      return 1
+    fi
+    if [ "$strict" = "strict" ]; then
+      echo "unknown agent '$piece' (registry: $MIRROR_NAMES)" >&2
+      exit 2
+    fi
+    return 1
+  done
+  return 0
+}
+
+# resolve_targets: precedence --agents <list> (persisted) > persisted targets
+# file > all detected. Prints the "targets:" line and sets ACTIVE_MIRRORS.
+ACTIVE_MIRRORS=""
+resolve_targets() {
+  local sel="" piece comma
+  if [ -n "$AGENTS_ARG" ]; then
+    sel="${AGENTS_ARG//,/ }"
+    validate_targets "$sel" strict
+    comma="${sel// /,}"
+    mkdir -p "$KGENT_DIR"
+    printf '%s\n' "$comma" >"$TARGETS_FILE"
+  elif [ -f "$TARGETS_FILE" ]; then
+    sel="$(head -n 1 "$TARGETS_FILE")"
+    if ! validate_targets "$sel" lenient; then
+      echo "install-gate WARNING: invalid targets file ${TARGETS_FILE} - using all detected mirrors" >&2
+      sel="all"
+    fi
+  else
+    sel="all"
+  fi
+  if [ -z "$sel" ]; then sel="all"; fi
+  ACTIVE_MIRRORS="$MIRROR_NAMES"
+  if [ "$sel" != "all" ]; then ACTIVE_MIRRORS="$sel"; fi
+  local line="targets: hub"
+  for piece in $ACTIVE_MIRRORS; do
+    if [ -d "$(mirror_root "$piece")" ]; then
+      line="$line, $piece"
+    fi
+  done
+  echo "$line"
+}
 
 # remove_entry <path>
 # Distinguishes links from real content: on Windows a junction/symlink is a
@@ -282,7 +492,8 @@ install_cli() {
 
 # uninstall_all: skills entries first (safe removal - never traverses links),
 # then the CLI through the recorded backend. Without recorded provenance the
-# CLI is left in place (we did not install it).
+# CLI is left in place (we did not install it). Uninstall ignores the gate and
+# the targets selection - it tears down everything this repo installed.
 uninstall_all() {
   sweep_dangling_self
   for skill_dir in "$SKILLS_SRC"/*/; do
@@ -291,12 +502,12 @@ uninstall_all() {
     if [ -e "$HUB/$name" ] || [ -L "$HUB/$name" ]; then
       remove_entry "$HUB/$name"
     fi
-    if [ -e "$CLAUDE_DIR/$name" ] || [ -L "$CLAUDE_DIR/$name" ]; then
-      remove_entry "$CLAUDE_DIR/$name"
-    fi
-    if [ -e "$CODEBUDDY_DIR/$name" ] || [ -L "$CODEBUDDY_DIR/$name" ]; then
-      remove_entry "$CODEBUDDY_DIR/$name"
-    fi
+    for m in $MIRROR_NAMES; do
+      mdir="$(mirror_dir "$m")"
+      if [ -e "$mdir/$name" ] || [ -L "$mdir/$name" ]; then
+        remove_entry "$mdir/$name"
+      fi
+    done
   done
   local state="$HOME/.kgent/install-backend.txt"
   if [ ! -f "$state" ]; then
@@ -331,38 +542,40 @@ if [ "$UNINSTALL" -eq 1 ]; then
   exit 0
 fi
 
-# verify: the health check (S7). Verifies the whole chain through public
-# behavior - hub entry SKILL.md resolvable, claude hop resolvable, and (unless
-# --no-cli) a kgent binary on PATH whose help mentions the wiki subcommand.
-# Prints a pass/fail summary and returns non-zero on any failure, which gates
-# the script's exit code.
+# verify: the health check (S7). Verifies the gate-adjusted expectation set
+# through public behavior - hub entry SKILL.md resolvable, active mirror hops
+# resolvable, and (unless --no-cli) a kgent binary on PATH whose help mentions
+# the wiki subcommand. Gate-closed skills are skipped (not installed by
+# design); a missing entry in an active mirror is a failure. Prints a
+# pass/fail summary and returns non-zero on any failure, which gates the
+# script's exit code.
 verify() {
-  local ok=1 name
+  local ok=1 name m mdir
   for skill_dir in "$SKILLS_SRC"/*/; do
     [ -f "${skill_dir}SKILL.md" ] || continue
     name="$(basename "$skill_dir")"
+    if is_gated "$name" && [ "$FORCE" -eq 0 ]; then
+      if [ "$(gate_of "${name%-integration}")" = "closed" ]; then
+        continue
+      fi
+    fi
     if [ -f "$HUB/$name/SKILL.md" ]; then
       echo "OK   $name (hub)"
     else
       echo "FAIL $name: hub entry broken" >&2
       ok=0
     fi
-    if [ -d "$HOME/.claude" ]; then
-      if [ -f "$CLAUDE_DIR/$name/SKILL.md" ]; then
-        echo "OK   $name (claude)"
-      else
-        echo "FAIL $name: claude entry broken" >&2
-        ok=0
+    for m in $ACTIVE_MIRRORS; do
+      if [ -d "$(mirror_root "$m")" ]; then
+        mdir="$(mirror_dir "$m")"
+        if [ -f "$mdir/$name/SKILL.md" ]; then
+          echo "OK   $name ($m)"
+        else
+          echo "FAIL $name: $m entry broken" >&2
+          ok=0
+        fi
       fi
-    fi
-    if [ -d "$HOME/.codebuddy" ]; then
-      if [ -f "$CODEBUDDY_DIR/$name/SKILL.md" ]; then
-        echo "OK   $name (codebuddy)"
-      else
-        echo "FAIL $name: codebuddy entry broken" >&2
-        ok=0
-      fi
-    fi
+    done
   done
   if [ "$NO_CLI" -eq 1 ]; then
     echo "SKIP kgent CLI (--no-cli)"
@@ -383,24 +596,81 @@ echo "verify: bash tools/artifact-smoke.sh  (install OK does not check freshness
 
 sweep_dangling_self
 
+resolve_targets
+
+# evaluate every gated backend exactly once per run (single gate read)
 for skill_dir in "$SKILLS_SRC"/*/; do
   [ -f "${skill_dir}SKILL.md" ] || continue
   name="$(basename "$skill_dir")"
+  if is_gated "$name"; then
+    backend="${name%-integration}"
+    state="$(gate_state "$backend")"
+    GATE_STATES="$GATE_STATES $backend=$state"
+  fi
+done
+
+if [ "$FORCE" -eq 1 ]; then
+  forced=""
+  for skill_dir in "$SKILLS_SRC"/*/; do
+    [ -f "${skill_dir}SKILL.md" ] || continue
+    name="$(basename "$skill_dir")"
+    if is_gated "$name"; then
+      if [ -z "$forced" ]; then forced="$name"; else forced="$forced, $name"; fi
+    fi
+  done
+  echo "install-gate forced for: $forced"
+elif [ ! -f "$CONFIG_FILE" ]; then
+  echo "install-gate: no config at ${CONFIG_FILE} - platform integration skills stay uninstalled (run 'kgent setup', then 'bash tools/install-skills.sh --sync')"
+fi
+
+for skill_dir in "$SKILLS_SRC"/*/; do
+  [ -f "${skill_dir}SKILL.md" ] || continue
+  name="$(basename "$skill_dir")"
+  if is_gated "$name" && [ "$FORCE" -eq 0 ]; then
+    if [ "$(gate_of "${name%-integration}")" = "closed" ]; then
+      echo "skip ${name} (install gate closed)"
+      continue
+    fi
+  fi
   hub_mode=link
   if [ "$COPY" -eq 1 ]; then hub_mode=copy; fi
   mkdir -p "$HUB"
-  # the hub carries the chosen mode; the claude hop always links to the hub
+  # the hub carries the chosen mode; mirror hops always link to the hub
   # entry, so a frozen copy still has a single source of truth
   install_entry "${skill_dir%/}" "$HUB/$name" "$name" "$hub_mode"
-  if [ -d "$HOME/.claude" ]; then
-    mkdir -p "$CLAUDE_DIR"
-    install_entry "$HUB/$name" "$CLAUDE_DIR/$name" "$name" link
-  fi
-  if [ -d "$HOME/.codebuddy" ]; then
-    mkdir -p "$CODEBUDDY_DIR"
-    install_entry "$HUB/$name" "$CODEBUDDY_DIR/$name" "$name" link
-  fi
+  for m in $ACTIVE_MIRRORS; do
+    if [ -d "$(mirror_root "$m")" ]; then
+      mdir="$(mirror_dir "$m")"
+      mkdir -p "$mdir"
+      install_entry "$HUB/$name" "$mdir/$name" "$name" link
+    fi
+  done
 done
+
+# --sync's prune leg (skill 同步, ADR 0010): converge the installed set DOWN
+# to the gate - remove gate-closed platform integration skills from the hub
+# and the active mirrors. Plain install never prunes; --keep and --force
+# suppress the prune leg.
+if [ "$SYNC" -eq 1 ] && [ "$KEEP" -eq 0 ] && [ "$FORCE" -eq 0 ]; then
+  for skill_dir in "$SKILLS_SRC"/*/; do
+    [ -f "${skill_dir}SKILL.md" ] || continue
+    name="$(basename "$skill_dir")"
+    if ! is_gated "$name"; then continue; fi
+    if [ "$(gate_of "${name%-integration}")" != "closed" ]; then continue; fi
+    if [ -e "$HUB/$name" ] || [ -L "$HUB/$name" ]; then
+      remove_entry "$HUB/$name"
+      echo "removed ${name} from hub"
+    fi
+    for m in $ACTIVE_MIRRORS; do
+      mdir="$(mirror_dir "$m")"
+      if [ -e "$mdir/$name" ] || [ -L "$mdir/$name" ]; then
+        remove_entry "$mdir/$name"
+        echo "removed ${name} from $m"
+      fi
+    done
+  done
+  sweep_dangling_self
+fi
 
 if [ "$NO_CLI" -eq 1 ]; then
   echo "SKIP kgent CLI install (--no-cli)"

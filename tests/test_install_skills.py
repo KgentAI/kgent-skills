@@ -459,3 +459,495 @@ def test_s8d_uninstall_removes_codebuddy_entries(tmp_path: Path, fake_uv: Path) 
         assert not (home / ".codebuddy" / "skills" / name).exists()
     for name in EXPECTED_SKILLS:
         assert (REPO_ROOT / "skills" / name / "SKILL.md").exists(), f"repo skill {name} damaged!"
+
+
+# ---------------------------------------------------------------------------
+# Install gate (spec 2026-09-19-install-gate-design.md, scenarios I1-I17).
+#
+# Gate signal = backends.<platform>.enabled in ~/.kgent/config.yaml, NEVER
+# native-skill presence. Fail-closed read chain: `kgent config show-effective
+# --json` when a kgent is on PATH, else a pinned grep over the machine-written
+# YAML; both unavailable -> every gate closed + one notice. Platform
+# integration skills (lark/dingtalk/wecom-integration) are gated; the lanes
+# and local-fs-integration install unconditionally. --sync converges both
+# ways (--keep opt-out); plain install never prunes. --agents scopes mirror
+# hops via a data registry (hub is unconditional; hub-native agents are not
+# valid values). --force opens every gate with a warning.
+#
+# Determinism: every gate test strips kgent from PATH (the _path_without_kgent
+# precedent from S5b) so the grep leg is exercised unless a fake kgent stub is
+# deliberately injected (leg-1 tests). All runs use --no-cli: the gate is
+# independent of the CLI leg.
+# ---------------------------------------------------------------------------
+
+PLATFORM_SKILLS = ("lark-integration", "dingtalk-integration", "wecom-integration")
+ALWAYS_SKILLS = EXPECTED_SKILLS + ("local-fs-integration",)
+CONFIG_REL = Path(".kgent") / "config.yaml"
+TARGETS_REL = Path(".kgent") / "skills-targets.txt"
+
+
+def _no_kgent_env() -> dict[str, str]:
+    return {"PATH": _path_without_kgent()}
+
+
+def _write_config(home: Path, body: str) -> Path:
+    cfg = home / CONFIG_REL
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(body, encoding="utf-8")
+    return cfg
+
+
+def _write_fake_kgent(bin_dir: Path, json_body: str) -> Path:
+    """A kgent stub whose `config show-effective --json` prints json_body.
+
+    Anything else (notably --help) answers like the real CLI's help line so
+    verify()'s grep stays honest if a test ever lets it run. Returns the log
+    dir for extra_path.
+    """
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    json_file = bin_dir / "effective.json"
+    json_file.write_text(json_body, encoding="utf-8")
+    kgent = bin_dir / "kgent"
+    lines = [
+        "#!/usr/bin/env bash",
+        'if [ "$1" = "config" ] && [ "$2" = "show-effective" ]; then',
+        f'  cat "{json_file.as_posix()}"',
+        "  exit 0",
+        "fi",
+        "echo 'usage: kgent wiki search create'",
+        "exit 0",
+    ]
+    kgent.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+    return bin_dir
+
+
+def _assert_platform_absent(hub: Path, extra_dirs: tuple[Path, ...] = ()) -> None:
+    for name in PLATFORM_SKILLS:
+        assert not (hub / name).exists(), f"{name} must not install with the gate closed"
+        for d in extra_dirs:
+            assert not (d / name).exists(), f"{name} must not install into {d}"
+
+
+def _assert_always_present(hub: Path) -> None:
+    for name in ALWAYS_SKILLS:
+        _assert_live_link(hub / name, REPO_ROOT / "skills" / name)
+
+
+# --- I1: no config -> fail closed + exactly one notice, lanes still install ---
+
+
+def test_i1_no_config_fails_closed_with_notice(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    hub = home / ".agents" / "skills"
+
+    result = _run(home, "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    _assert_always_present(hub)
+    _assert_platform_absent(hub, (home / ".claude" / "skills",))
+    out = result.stdout
+    notice_lines = [line for line in out.splitlines() if "install-gate: no config" in line]
+    assert len(notice_lines) == 1, f"expected exactly one gate notice, got: {notice_lines}"
+    assert "kgent setup" in notice_lines[0]
+    assert "--sync" in notice_lines[0]
+
+
+# --- I2/I2b/I2c: gate open per backend; leg-1 (show-effective) precedence ---
+
+
+def test_i2_lark_enabled_installs_lark_integration_only(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    _write_config(home, "backends:\n  lark:\n    enabled: true\n")
+    hub = home / ".agents" / "skills"
+
+    result = _run(home, "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    _assert_live_link(hub / "lark-integration", REPO_ROOT / "skills" / "lark-integration")
+    _assert_live_link(
+        home / ".claude" / "skills" / "lark-integration", REPO_ROOT / "skills" / "lark-integration"
+    )
+    assert not (hub / "dingtalk-integration").exists()
+    assert not (hub / "wecom-integration").exists()
+    assert "install OK" in result.stdout  # verify() passes on the gated set
+
+
+def test_i2b_showeffective_leg_wins_over_config_file(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    # the file says lark; the CLI's effective view says only dingtalk -> leg 1 wins
+    _write_config(home, "backends:\n  lark:\n    enabled: true\n")
+    fake_bin = _write_fake_kgent(tmp_path / "fakekgent", '{"backends": {"dingtalk": {"enabled": true}}}')
+
+    result = _run(home, "--no-cli", extra_path=str(fake_bin))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    hub = home / ".agents" / "skills"
+    assert (hub / "dingtalk-integration").exists(), "leg-1 JSON must gate dingtalk open"
+    assert not (hub / "lark-integration").exists(), "leg-1 must take precedence over the file"
+
+
+def test_i2c_unparseable_showeffective_falls_back_to_grep(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    _write_config(home, "backends:\n  lark:\n    enabled: true\n")
+    fake_bin = _write_fake_kgent(tmp_path / "fakekgent", "this is not json")
+
+    result = _run(home, "--no-cli", extra_path=str(fake_bin))
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    _assert_live_link(
+        (home / ".agents" / "skills") / "lark-integration", REPO_ROOT / "skills" / "lark-integration"
+    )
+
+
+# --- I3/I4: closed-without-notice variants ---
+
+
+def test_i3_all_disabled_no_notice(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    _write_config(
+        home,
+        "backends:\n"
+        "  lark:\n    enabled: false\n"
+        "  dingtalk:\n    enabled: false\n"
+        "  wecom:\n    enabled: false\n",
+    )
+    hub = home / ".agents" / "skills"
+
+    result = _run(home, "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    _assert_always_present(hub)
+    _assert_platform_absent(hub)
+    assert "install-gate: no config" not in result.stdout, "gates were readable - no absence notice"
+
+
+def test_i4_missing_enabled_key_is_closed(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    _write_config(home, "backends:\n  lark:\n    type: skill\n")
+    hub = home / ".agents" / "skills"
+
+    result = _run(home, "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (hub / "lark-integration").exists(), "missing enabled key must read closed"
+
+
+# --- I5/I6/I7/I8: sync convergence; plain install never prunes ---
+
+
+def _install_with_lark_open(home: Path) -> None:
+    _write_config(home, "backends:\n  lark:\n    enabled: true\n")
+    result = _run(home, "--no-cli", extra_env=_no_kgent_env())
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_i5_plain_install_never_prunes(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    _install_with_lark_open(home)
+    _write_config(home, "backends:\n  lark:\n    enabled: false\n")
+
+    result = _run(home, "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (home / ".agents" / "skills" / "lark-integration").exists(), (
+        "plain install must not prune a gate-closed skill"
+    )
+
+
+def test_i6_sync_prunes_closed_skill_and_hops(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    (home / ".codebuddy").mkdir()
+    _install_with_lark_open(home)
+    _write_config(home, "backends:\n  lark:\n    enabled: false\n")
+
+    result = _run(home, "--sync", "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    for d in (
+        home / ".agents" / "skills",
+        home / ".claude" / "skills",
+        home / ".codebuddy" / "skills",
+    ):
+        assert not (d / "lark-integration").exists(), f"lark-integration must be pruned from {d}"
+        assert not (d / "lark-integration").is_symlink() and not os.path.lexists(
+            d / "lark-integration"
+        ), f"dangling entry left in {d}"
+    _assert_always_present(home / ".agents" / "skills")
+    assert "removed lark-integration" in result.stdout
+
+
+def test_i7_keep_suppresses_prune(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    _install_with_lark_open(home)
+    _write_config(home, "backends:\n  lark:\n    enabled: false\n")
+
+    result = _run(home, "--sync", "--keep", "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (home / ".agents" / "skills" / "lark-integration").exists()
+    assert "removed" not in result.stdout
+
+
+def test_i8_sync_with_gate_open_is_idempotent(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    _install_with_lark_open(home)
+
+    result = _run(home, "--sync", "--no-cli", extra_env=_no_kgent_env())
+    assert result.returncode == 0, result.stdout + result.stderr
+    result = _run(home, "--sync", "--no-cli", extra_env=_no_kgent_env())
+    assert result.returncode == 0, result.stdout + result.stderr
+    _assert_live_link(
+        (home / ".agents" / "skills") / "lark-integration", REPO_ROOT / "skills" / "lark-integration"
+    )
+    assert "removed" not in result.stdout
+
+
+# --- I9: --force opens every gate with a warning; --force + --sync never prunes ---
+
+
+def test_i9_force_installs_all_platform_skills_with_warning(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    hub = home / ".agents" / "skills"
+
+    result = _run(home, "--force", "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    for name in PLATFORM_SKILLS:
+        _assert_live_link(hub / name, REPO_ROOT / "skills" / name)
+    warning_lines = [line for line in result.stdout.splitlines() if "install-gate forced" in line]
+    assert len(warning_lines) == 1, f"expected exactly one force warning, got: {warning_lines}"
+    for name in PLATFORM_SKILLS:
+        assert name in warning_lines[0]
+
+
+def test_i9b_force_with_sync_skips_prune(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    _install_with_lark_open(home)
+    _write_config(home, "backends:\n  lark:\n    enabled: false\n")
+
+    result = _run(home, "--sync", "--force", "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (home / ".agents" / "skills" / "lark-integration").exists(), (
+        "--force must skip the prune leg entirely"
+    )
+    assert "removed" not in result.stdout
+
+
+# --- I10-I12: --agents scopes mirror hops, persists, resets ---
+
+
+def _install_all_open(home: Path) -> None:
+    _write_config(
+        home,
+        "backends:\n"
+        "  lark:\n    enabled: true\n"
+        "  dingtalk:\n    enabled: true\n"
+        "  wecom:\n    enabled: true\n",
+    )
+
+
+def test_i10_agents_scopes_hops_and_persists(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    (home / ".codebuddy").mkdir()
+    _install_all_open(home)
+
+    result = _run(home, "--agents", "codebuddy", "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    hub = home / ".agents" / "skills"
+    for name in ALWAYS_SKILLS + PLATFORM_SKILLS:
+        _assert_live_link(hub / name, REPO_ROOT / "skills" / name)
+        _assert_live_link(
+            home / ".codebuddy" / "skills" / name, hub / name
+        )  # hop links to the HUB entry
+    # claude is out of scope: nothing new lands there, hub stays untouched
+    assert not (home / ".claude" / "skills" / "wecom-integration").exists()
+    assert not (home / ".claude" / "skills" / "query-knowledge").exists()
+    assert (home / TARGETS_REL).read_text(encoding="utf-8").strip() == "codebuddy"
+    assert "targets:" in result.stdout
+    assert "codebuddy" in result.stdout
+
+
+def test_i11_sync_reuses_persisted_targets(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    (home / ".codebuddy").mkdir()
+    _install_all_open(home)
+    first = _run(home, "--agents", "codebuddy", "--no-cli", extra_env=_no_kgent_env())
+    assert first.returncode == 0, first.stdout + first.stderr
+
+    second = _run(home, "--sync", "--no-cli", extra_env=_no_kgent_env())
+
+    assert second.returncode == 0, second.stdout + second.stderr
+    # codebuddy stays in scope (persisted), claude stays out
+    assert (home / ".codebuddy" / "skills" / "wecom-integration").exists()
+    assert not (home / ".claude" / "skills" / "wecom-integration").exists()
+    assert (home / TARGETS_REL).read_text(encoding="utf-8").strip() == "codebuddy"
+
+
+def test_i12_agents_all_resets(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    (home / ".codebuddy").mkdir()
+    _install_all_open(home)
+    first = _run(home, "--agents", "codebuddy", "--no-cli", extra_env=_no_kgent_env())
+    assert first.returncode == 0, first.stdout + first.stderr
+
+    second = _run(home, "--agents", "all", "--no-cli", extra_env=_no_kgent_env())
+
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert (home / TARGETS_REL).read_text(encoding="utf-8").strip() == "all"
+    for name in ALWAYS_SKILLS:
+        _assert_live_link(home / ".claude" / "skills" / name, REPO_ROOT / "skills" / name)
+
+
+# --- I13: invalid --agents values are usage errors ---
+
+
+def test_i13_agents_unknown_name_rejected(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+
+    result = _run(home, "--agents", "nosuch", "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 2
+    assert "nosuch" in (result.stdout + result.stderr)
+
+
+def test_i13b_agents_hub_native_name_rejected_with_explanation(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+
+    result = _run(home, "--agents", "codex", "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 2
+    combined = result.stdout + result.stderr
+    assert "hub" in combined.lower(), "rejection must explain hub-native agents are always served"
+
+
+# --- I14: the grep leg's pinned contract (checker negative controls) ---
+
+
+def test_i14a_grep_leg_ignores_comments_and_inline_noise(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    _write_config(
+        home,
+        "# enabled: true\n"
+        "backends:\n"
+        "  lark:\n"
+        "    enabled: true # inline comment should not break the parse\n"
+        "  dingtalk:\n"
+        "    enabled: false\n",
+    )
+    hub = home / ".agents" / "skills"
+
+    result = _run(home, "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (hub / "lark-integration").exists(), "inline comment must not break the open read"
+    assert not (hub / "dingtalk-integration").exists()
+
+
+def test_i14b_unparseable_block_warns_and_reads_closed(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    _write_config(
+        home,
+        "backends:\n"
+        "  lark:\n"
+        "    enabled: true\n"
+        "  wecom:\n"
+        "      enabled: true\n",  # 6-space indent: violates the pinned shape
+    )
+    hub = home / ".agents" / "skills"
+
+    result = _run(home, "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (hub / "lark-integration").exists()
+    assert not (hub / "wecom-integration").exists(), "unparseable block must read closed, never open"
+    # the warning is a diagnostic: stderr, exactly once per run (single gate read)
+    warning_lines = [
+        line for line in (result.stdout + result.stderr).splitlines() if "not parseable" in line
+    ]
+    assert len(warning_lines) == 1, f"expected exactly one parse warning, got: {warning_lines}"
+    assert "wecom" in warning_lines[0]
+
+
+# --- I15: the prune whitelist is exactly the three platform skills ---
+
+
+def test_i15_prune_whitelist_spares_lanes_and_local(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    hub = home / ".agents" / "skills"
+    _run(home, "--force", "--no-cli", extra_env=_no_kgent_env())
+    before = sorted(p.name for p in hub.iterdir())
+    _write_config(
+        home,
+        "backends:\n"
+        "  lark:\n    enabled: false\n"
+        "  dingtalk:\n    enabled: false\n"
+        "  wecom:\n    enabled: false\n",
+    )
+
+    result = _run(home, "--sync", "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    after = sorted(p.name for p in hub.iterdir())
+    assert set(before) - set(after) == set(PLATFORM_SKILLS), (
+        f"prune removed more than the platform set: {set(before) - set(after)}"
+    )
+    _assert_always_present(hub)
+
+
+# --- I17: read-only config promise + regression armor ---
+
+
+def test_i17_config_file_never_touched(tmp_path: Path) -> None:
+    """Regression armor (passes today - the script never wrote config). Kept as
+    the invariant's canary; proven non-vacuous by mutation at gauntlet time
+    (mutant: append a marker line to the config -> this must fail)."""
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude").mkdir()
+    cfg = _write_config(home, "backends:\n  lark:\n    enabled: true\n")
+    before = cfg.read_bytes()
+
+    result = _run(home, "--no-cli", extra_env=_no_kgent_env())
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert cfg.read_bytes() == before, "the installer must never write the config"
