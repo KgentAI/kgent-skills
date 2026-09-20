@@ -94,14 +94,17 @@ mutate_and_test "M5 leg-1 absence reads open" "$SCRIPT" \
   'enabled = data.get("backends", {}).get(backend, {}).get("enabled", True)' \
   "$INSTALL::test_i2b_showeffective_leg_wins_over_config_file" || fail=1
 
-# M6: the doctor probe fails open -> an unreadable location reports healthy
+# M6: the doctor probe fails open -> an absent/unreadable location reports
+# installed, silencing the alignment finding
 mutate_and_test "M6 doctor probe fails open" "$DETECT" \
   '        except OSError:
             continue
-    return False' \
+        if stat.S_ISREG(st.st_mode):
+            return True' \
   '        except OSError:
             return True
-    return False' \
+        if stat.S_ISREG(st.st_mode):
+            return True' \
   "$DOCTOR::test_d5_unreadable_probe_location_fails_closed" || fail=1
 
 # M7: the hub-native --agents rejection branch disabled -> codex falls
