@@ -39,7 +39,13 @@ def _full_caps() -> dict[str, Any]:
     ),
 )
 @settings(
-    max_examples=100, derandomize=True, suppress_health_check=[HealthCheck.function_scoped_fixture]
+    max_examples=100,
+    derandomize=True,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+    # 200ms 默认 deadline 会被 Windows 冷启动抖动误报（2026-09-20 gauntlet 实测：
+    # 首例 291.5ms → 复跑 8.6ms，Journal 初始化 + 函数内首次 import repair）。
+    # 幂等断言不变，只去掉墙钟上限——hypothesis 对 timing variability 的官方处方。
+    deadline=None,
 )
 def test_p2_repair_idempotence(tmp_path: Path, op_id: str) -> None:
     """P2: repair(op) ∘ repair(op) leaves state identical to repair(op) once."""

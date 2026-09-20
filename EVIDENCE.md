@@ -418,3 +418,17 @@ Implementation is production-ready for kgent packaging.
 ## local-fs backend (2026-09-12)
 
 Spec `specs/2026-09-10-local-fs-backend-design.md` (rev 6, ADR 0008–0011). Full evidence: `specs/2026-09-10-local-fs-backend-evidence.md`. **GAUNTLET PASS**: 674 passed / 7 skipped / 0 failed; diff-cover 100%; mypy strict clean (53 files); artifact-smoke 18/18; local-fs flow conformance green in both store modes (git-backed 32 + snapshot 22 assertions). Agent-execution discipline (URI/CAS refusal, tmp+mv) pinned at docs layer, behaviorally enforced at the agent-evals release gate per ADR 0008.
+
+## decision-navigator 评审门 — 2026-09-20（ADR 0014 · spec 2026-09-20-decision-navigator-review-gate-design）
+
+逐轮评审门：每次用户面呈报（§1 澄清批 / 每轮收敛 / §4 准则提议 / 终局简报前）先过独立审查——事实接地（引用逐条申报解析 + 抽样 ≤3 实证复核）+ 逻辑审查；执行方式三态 `派发评审`/`内联复查`/`评审未执行`（无派发能力宿主内联复查并标注，永不静默跳过）；maker/checker 分离（评审者不修正，修正归导航者，致命→复用排序挂起）。统一语言 +3 词条（评审门/独立评审/评审结论）；裁决落 ADR 0014；文法细节的 spec 修订（结构记号固定中文、语言跟随适用于正文）以日期 blockquote 记在 spec 头部。
+
+**实现物**: `skills/decision-navigator/SKILL.md`（新 §6 方案评审，决策简报顺延 §7，交叉引用同步）+ 评审包/清单/结论文法节 + 评审纪律节；`tools/dn_review_check.py`（stdlib-only、fail-closed 三态、`--max-spot-checks`）；`tests/test_dn_review_check.py`（27 黑盒用例）+ `tests/properties/test_dn_review_props.py`（2 property）——RED 25 failed 目睹 → 29/29 绿；evals 7→9 案例（案例 8 评审捕获前后矛盾、案例 9 英文评审语言）+ 既有案例评审门 expectations；`tools/dn_brief_check.py` 零改动（评审未决折入既有章节，简报文法不动）。
+
+**验收数字**（final recorded run `PYTHONPATH=src bash tools/gauntlet.sh` exit 0，GAUNTLET PASS）: **731 passed / 0 failed / 4 skipped**；mypy 53 文件 0 错；artifact-smoke 18/18；properties 19；adversarial 39；local-fs flow 双模式绿；coverage TOTAL 87%；diff-cover **vacuous pass 如实申报**（本 diff 零 src 变更，checker 经 subprocess 在 coverage 钩子外）；lint/mutation 层 report-only 债务全为既有项，三个新文件 ruff 0 错 format 稳定。分层细节、R1–R12 映射与 6 轮失败/修复日志见 `specs/2026-09-20-decision-navigator-review-gate-evidence.md`。
+
+**环境注意**: 本机 gauntlet **必须 `PYTHONPATH=src`**——ambient editable install 指向陈旧 worktree（错包会让 doctor 类用例报本分支不存在的检查）；`test_p2_repair_idempotence` 按 hypothesis 官方处方加 `deadline=None` 治 Windows 冷启动抖动（断言零改动）。另：并发会话做安装态手术期间 gauntlet 会出现跨层瞬时失败（当日 run4 实录 42 failed，数分钟后自愈），录证据前先跑一遍 suite 确认环境安静。
+
+**发布前余一脚**: agent evals `--execute` 真租户轮（案例 8/9 已就位）——本 close 未跑：当日并发会话共享租户与 journal 态（撞车 + 配额风险）、后台 10 分钟上限、runner 无 Task 工具使评审门断言力与单元/结构层重叠（内联路径天然覆盖）。命令与理由详见 evidence §4。
+
+**Reproduce**: `PYTHONPATH=src bash tools/gauntlet.sh`；`PYTHONPATH=src python -m pytest tests/test_dn_review_check.py tests/properties/test_dn_review_props.py -p no:randomly -q`；`python tools/dn_review_check.py <结论.md>`；eval 腿 `python tools/run-agent-evals.py --execute --file decision-navigator-evals --parallel 3 --timeout 600`。

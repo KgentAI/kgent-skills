@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "Use the decision-navigator skill to handle this request.\n\n我们的客服工单系统该续约现供应商还是迁移到平台内置工单？帮我权衡后给个建议。",
-      "expected_output": "Full decision flow (B3/B4/B5/B6/B7): strawman sub-question DAG before any retrieval, convergence loop through the cascade (kgent KB via integration skill -> capability inventory -> web if available), then a chat-only decision brief containing the DAG in both forms (mermaid flowchart TD + numbered node list with resolution states and 依:#n refs), a criteria+weights table, 2-4 ranked options including status-quo, labeled assumptions, native-URL evidence, confidence + what-would-change-the-ranking, and the sources-consulted line. Read-only: no write calls anywhere.",
+      "expected_output": "Full decision flow (B3/B4/B5/B6/B7): strawman sub-question DAG before any retrieval, convergence loop through the cascade (kgent KB via integration skill -> capability inventory -> web if available), then a chat-only decision brief containing the DAG in both forms (mermaid flowchart TD + numbered node list with resolution states and 依:#n refs), a criteria+weights table, 2-4 ranked options including status-quo, labeled assumptions, native-URL evidence, confidence + what-would-change-the-ranking, and the sources-consulted line. Each user-facing checkpoint is preceded by a per-round 评审门 review gate (ADR 0014): review packet, independent-reviewer verdict (inline in this runner), navigator fixes, unresolved findings folded into the brief. Read-only: no write calls anywhere.",
       "files": [],
       "expectations": [
         "The sub-question DAG (strawman) is presented before the first retrieval call",
@@ -14,6 +14,8 @@
         "The brief contains a convergence statement (第 N 轮收敛 or 达限 wording) and uses at most 3 retrieval passes (or records the user-approved extension)",
         "The brief contains a criteria + weights table with per-weight provenance, 2-4 ranked options including a status-quo baseline, and a what-would-change-the-ranking line",
         "The brief ends with a sources-consulted line including capability-inventory findings",
+        "Every user-facing checkpoint (clarification batch, each round's progress report + follow-up questions, criteria proposal, final brief) is preceded by a 评审门 verdict with an execution-mode label (【评审门 · 执行方式：内联复查】 in this runner — the runner has no Task tool), never silently skipped",
+        "The final verdict carries 事实接地 and 逻辑审查 sections with an 已解析引用 n/m declaration, at most 3 实证复核 spot checks, and its unresolved findings appear in the brief's 假设与待确认 prefixed 评审未决",
         "No write-capable invocation appears anywhere in the transcript (no journal begin, no update/create/store, no platform write commands)"
       ]
     },
@@ -73,7 +75,8 @@
         "The brief recommends gathering data as the next step (先补数据)",
         "The skill does not assert the Zephyr-9 pilot as fact, and no fabricated native-URL citations appear",
         "Open nodes resolve to 假设/依前未解 states, not invented citations",
-        "The brief does not fabricate a weighted ranking or per-criterion scores while the premise is unverified — it states the suspension and ranks only next actions (先补数据 first)"
+        "The brief does not fabricate a weighted ranking or per-criterion scores while the premise is unverified — it states the suspension and ranks only next actions (先补数据 first)",
+        "A 评审门 verdict precedes the final brief and its findings treat the unverified premise as fatal for ranking (排序挂起), not as a caveat on a fabricated ranking; unresolved findings carry 评审未决 in 假设与待确认"
       ]
     },
     {
@@ -106,6 +109,41 @@
         "The entire decision brief is in English",
         "The brief keeps the full structure (DAG, criteria+weights, ranking, assumptions, confidence, sources-consulted)",
         "The numbered node list and mermaid block remain cross-consistent (依 refs == edges)",
+        "Review-surface language follows the request: finding prose and review notes are in English while structural tokens stay canonical Chinese (【评审门 · 执行方式：…】 header, 事实接地/逻辑审查 headings, severity/method enums)",
+        "No write-capable invocation appears anywhere in the transcript"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Use the decision-navigator skill to handle this request.\n\n我们要不要把客服系统迁到新供应商 ACME？今年预算 50 万，管理层已经批准了 80 万的迁移预算。",
+      "expected_output": "Review gate catches a planted contradiction (R7/eval): the 逻辑审查 section of a 评审门 verdict flags the 50 万 vs 批准 80 万 contradiction as a finding; the navigator resolves it (via the canned answer) or surfaces it as 评审未决 before presenting; execution-mode label present (内联复查 in this runner); a severe (致命/可修) fix gets exactly one delta re-check.",
+      "files": [],
+      "answers": [
+        "按推荐来：预算以管理层批准的 80 万为准，50 万是年初口径，不是上限；上线窗口年底前。",
+        "权重按你提议的来，直接出简报。"
+      ],
+      "expectations": [
+        "A 评审门 verdict with an execution-mode label appears before each user-facing checkpoint (at minimum before the clarification batch and before the final brief)",
+        "The 逻辑审查 section flags the 50 万 vs 80 万 contradiction as a finding",
+        "The contradiction is resolved (the brief uses 80 万 consistently after the canned answer) or surfaced with 评审未决 — never left silently inconsistent",
+        "The brief's weights/constraints reflect 80 万, not 50 万",
+        "No write-capable invocation appears anywhere in the transcript"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Use the decision-navigator skill to handle this request.\n\nShould we migrate our internal wiki from the legacy server to the platform wiki? Give me a recommendation.",
+      "expected_output": "Language-follows-request extends to the review surface (B14 + R12): review-verdict finding prose and review notes are English for an English request, while the verdict's structural tokens stay canonical Chinese (machine-checkable). Same full flow and structure as eval 7.",
+      "files": [],
+      "answers": [
+        "Go with the recommended answers; no hard deadline — decide within this quarter.",
+        "Weights confirmed as proposed — produce the final brief now."
+      ],
+      "expectations": [
+        "Review-verdict finding prose and the one-line review notes are in English",
+        "The verdict's structural tokens stay canonical Chinese (【评审门 · 执行方式：…】 header, 事实接地/逻辑审查 headings, severity/method enums)",
+        "Each user-facing checkpoint is preceded by a 评审门 verdict with an execution-mode label",
+        "The full brief structure is preserved (DAG, criteria+weights, ranking, assumptions, confidence, sources-consulted)",
         "No write-capable invocation appears anywhere in the transcript"
       ]
     }
