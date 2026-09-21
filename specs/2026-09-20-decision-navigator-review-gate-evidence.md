@@ -50,9 +50,9 @@
 - **mutation**：平台限制，report-only（既有，非本次新免）。
 - **agent evals（release gate）——已于 2026-09-20/21 真跑（9/9 案例，serial ~6h45m；随附一次作废腿与一次案例 5 重跑）**：
   - **作废腿（如实入档）**：首轮 launch 未验证 skill 装载面——runner 派生裸 `claude -p`，本机无任何 kgent skill 安装点，headless 会话凭 prompt 自行发挥（transcript 零 SKILL.md 读取、零评审门标记）。修复：worktree 建 `.claude/skills/`（项目级 skill 发现，8 个 kgent skill 镜像，不入库）；作废 transcript 归档 `evals/transcripts/backup-20260911-pre-review-gate/void-run-*-stale-skill.md`。教训：**runner 不接线 skill 目录是结构缺口**（follow-up 候选：runner 显式接线或安装校验）。
-  - **结果**：9 案例 heuristic 全 0 hits（双语 prose 断言的文档化局限，与前例一致）；verdict 依人工 transcript 复核：**8/9 实质 PASS（预签，待案例 5 重跑落定）**——案例 2 反触发零门正确；案例 4 申报真实 `评审未决`；案例 6 逐门恰一次 delta 且自陈 R10 上限推理；案例 8 评审门抓出预置的无出处动机（1 致命）并关闭假二选一；案例 9 英文评审正文 + canonical 门标记。**案例 5 候选 R9 缺口**：产出完整加权排序、无 排序挂起、无 `低——纯假设推演` 置信钉、终局评审 无致命 → 维护者裁决 `--ids 5 --force` 重跑（首跑归档 `candidate-r9-miss-leg1.md`）。
+  - **结果**：9 案例 heuristic 全 0 hits（双语 prose 断言的文档化局限，与前例一致）；verdict 依人工 transcript 复核：**9/9 PASS**——案例 2 反触发零门正确；案例 4 申报真实 `评审未决`；案例 6 逐门恰一次 delta 且自陈 R10 上限推理；案例 8 评审门抓出预置的无出处动机（1 致命）并关闭假二选一；案例 9 英文评审正文 + canonical 门标记。**案例 5 首跑候选 R9 缺口**（完整加权排序、无排序挂起、终局评审无致命）→ 维护者裁决 `--ids 5 --force` 重跑（首跑归档 `candidate-r9-miss-leg1.md`）。**重跑裁决（2026-09-21）：转 PASS，判定为运行方差而非系统缺口**——同一 prompt 下正确走零证据降级（「本轮不排序」+ 挂起加权排序 + `低——…纯假设推演` 置信钉 + 何者会改变排序的恢复条件）；评审门 派发评审 ×2、`dn_review_check` ×3 份结论与 `dn_brief_check` 简报**首次机器执行各 0 violations**（python 入 allowlist，2ebc898），无 turn 超时。
   - **FM-R9 修正（关键发现）**：headless 会话**实际派发了子代理**（live session 6 个 subagents、多个 subagent transcript 含 评审结论；各案门标记均 执行方式=派发评审）——spec Q13/FM-R9 的「runner 无 Task 工具 → 只能走内联路径」假设**不成立**，真派发路径已被 evals 实证覆盖；原「真派发以人工审查覆盖一次」的分期约束作废（runner allowlist 的显式 Task 断言补齐仍属 follow-up）。
-  - **发现清单（人工签署材料，7 项）**：① 案例 5 R9（重跑中）；② 案例 6/7/8 将工件写入 `.dn-scratch/`——B12「永不写盘」候选违规，支持 #14 遗留建议（read-only eval 腿收回 Write/Edit）；③ 门标记 4 种渲染变体（【评审门 · 执行方式：…】/ `**评审门：（派发评审）**` / `**评审门 · 执行方式：…**` / `**评审门**（派发评审）`）——SKILL.md 应钉死一种；④ 案例 7 自陈对评审者输出做 line-form normalization 后再跑 checker——checker 必须审 as-emitted 结论；⑤ runner allowlist 无 `python`——skill 自检钩子在 evals 中不可执行（各案均如实申报并人工代核文法）；⑥ 即上述 FM-R9 修正；⑦ 案例 8 预算矛盾经澄清道化解而非作为评审发现条目——预期措辞与路径等价之争。
+  - **发现清单（人工签署材料，7 项）**：① 案例 5 R9 —— **已关闭：运行方差（重跑 PASS，leg 9/9）**；② 案例 6/7/8 将工件写入 `.dn-scratch/`——B12「永不写盘」候选违规，支持 #14 遗留建议（read-only eval 腿收回 Write/Edit）；③ 门标记 4 种渲染变体（【评审门 · 执行方式：…】/ `**评审门：（派发评审）**` / `**评审门 · 执行方式：…**` / `**评审门**（派发评审）`）——SKILL.md 应钉死一种；④ 案例 7 自陈对评审者输出做 line-form normalization 后再跑 checker——checker 必须审 as-emitted 结论；⑤ runner allowlist 无 `python`——**已修复（2ebc898）：`Bash(python:*)` 入列，案例 5 重跑即首次机器执行双 checker 各 0 violations**；⑥ 即上述 FM-R9 修正；⑦ 案例 8 预算矛盾经澄清道化解而非作为评审发现条目——预期措辞与路径等价之争。另：eval 长跑运维教训——per-turn timeout 必须保留（一次 `--timeout 86400` 的案例 5 重跑停滞 9.5h 被杀，1800s 重跑 ~80min 完成）；`--parallel` 分区单位是 eval 文件（单文件串行），多 case 并行需按 `--ids` 拆多进程。
 
 ## 5. 环境注意（含失败/修复日志——6 轮 gauntlet 全记）
 
@@ -67,7 +67,7 @@
 
 ## 6. Conclusion + Reproduce
 
-评审门（ADR 0014）实现完成且全量绿：SKILL.md 新 §6 方案评审（简报顺延 §7）+ 评审包/独立评审清单/评审结论文法（与断言器逐字对齐）+ 评审纪律节；`tools/dn_review_check.py`（stdlib-only、fail-closed 三态、`--max-spot-checks` 可调）；29 黑盒用例 + 2 property（RED→GREEN 全程目睹）；evals 7→9 案例 + 既有案例增补；CONTEXT.md +3 词条与 ADR 0014 随 grill 落。两次全量 GAUNTLET PASS（run3/run6，同一最终代码态以 run6 为录制轮）。agent evals release gate 已于 2026-09-20/21 真跑 9/9（含真派发实证，见 §4 与 FM-R9 修正）；余：案例 5 重跑裁决 + §4 发现清单处置（runner 接线/allowlist、门标记钉死、checker as-emitted 均为 follow-up）。
+评审门（ADR 0014）实现完成且全量绿：SKILL.md 新 §6 方案评审（简报顺延 §7）+ 评审包/独立评审清单/评审结论文法（与断言器逐字对齐）+ 评审纪律节；`tools/dn_review_check.py`（stdlib-only、fail-closed 三态、`--max-spot-checks` 可调）；29 黑盒用例 + 2 property（RED→GREEN 全程目睹）；evals 7→9 案例 + 既有案例增补；CONTEXT.md +3 词条与 ADR 0014 随 grill 落。两次全量 GAUNTLET PASS（run3/run6，同一最终代码态以 run6 为录制轮）。agent evals release gate 已于 2026-09-20/21 真跑并签署：**leg 9/9**（案例 5 经重跑裁决为运行方差，见 §4；真派发实证见 FM-R9 修正）；runner allowlist 已补 python（2ebc898，双 checker 首次机器执行 0 violations）。余：§4 发现清单的 follow-up 处置（runner skill 接线、门标记钉死、checker as-emitted、Write/Edit 收回）。
 
 **Reproduce**：
 
