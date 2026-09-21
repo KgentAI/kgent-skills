@@ -195,9 +195,11 @@ def main() -> int:
             argv = ["claude", "-p", prompt, "--output-format", "text"]
             if cont:
                 argv.append("--continue")
-            # eval 要真实执行 skill 流：只放行 kgent/lark-cli/dws/wecom-cli 与本地文件工具
+            # eval 要真实执行 skill 流：只放行 kgent/lark-cli/dws/wecom-cli 与本地文件工具；
+            # python 放行使 skill 自检钩子（dn_brief_check / dn_review_check）可执行
+            # （2026-09-21 eval leg 发现：无 python 时 agent 只能手读 checker 源码代核）
             argv += ["--allowedTools", "Bash(kgent:*)", "Bash(lark-cli:*)", "Bash(dws:*)",
-                     "Bash(wecom-cli:*)", "Bash(dir:*)", "Read", "Write", "Edit"]
+                     "Bash(wecom-cli:*)", "Bash(dir:*)", "Bash(python:*)", "Read", "Write", "Edit"]
             try:
                 done = subprocess.run(
                     argv, capture_output=True, text=True, encoding="utf-8",
