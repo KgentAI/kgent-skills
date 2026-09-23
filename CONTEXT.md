@@ -5,11 +5,11 @@ kgent 是联邦知识管理层：把 Lark、DingTalk、WeCom 等平台的知识�
 ## Language
 
 **平台 (platform)**:
-被接入的外部知识系统。当前：Lark/Feishu、DingTalk、WeCom。
+被接入的外部知识系统。当前：Lark/Feishu、DingTalk、WeCom、Confluence。
 _Avoid_: 服务、渠道
 
 **integration skill**:
-打包进 kgent-skills 的后端唯一接口层；对该后端的一切 search / read / write / undo 补偿执行 / 原生 URL 构造都必须经它，由它委派原生 skill、平台 CLI，或（本地后端）shell 原语。命名 `<backend>-integration`。
+打包进 kgent-skills 的后端唯一接口层；对该后端的一切 search / read / write / undo 补偿执行 / 原生 URL 构造都必须经它，由它委派原生 skill、平台 CLI、MCP 工具，或（本地后端）shell 原语。命名 `<backend>-integration`。
 _Avoid_: 平台 skill、平台适配器
 
 **原生 skill (native skill)**:
@@ -17,7 +17,7 @@ _Avoid_: 平台 skill、平台适配器
 _Avoid_: 官方 skill
 
 **后端 (backend)**:
-kgent config/router 层的存储抽象，带 trust_zone。平台后端与平台一一对应（lark、dingtalk、wecom）；本地后端按 `local-` 家族扩展（local-fs，见下）。
+kgent config/router 层的存储抽象，带 trust_zone。平台后端与平台一一对应（lark、dingtalk、wecom、confluence）；本地后端按 `local-` 家族扩展（local-fs，见下）。
 _Avoid_: 存储
 
 **知识库 (knowledge base)**:
@@ -25,11 +25,11 @@ _Avoid_: 存储
 _Avoid_: 文档库
 
 **知识空间 (wiki space)**:
-平台侧的知识空间容器（Lark wiki space、DingTalk workspace），平台概念而非 kgent 抽象。
+平台侧的知识空间容器（Lark wiki space、DingTalk workspace、Confluence space），平台概念而非 kgent 抽象。
 _Avoid_: 空间
 
 **本地后端 (local backend)**:
-存储在本机的后端家族，与 SaaS 平台后端（lark / dingtalk / wecom）相对，也与 kgent hosted backend（云端托管）相区分。成员以 `local-` 前缀命名，各自由 `<member>-integration` skill 承载操作。
+存储在本机的后端家族，与 SaaS 平台后端（lark / dingtalk / wecom / confluence）相对，也与 kgent hosted backend（云端托管）相区分。成员以 `local-` 前缀命名，各自由 `<member>-integration` skill 承载操作。
 _Avoid_: 本地存储、离线后端
 
 **local-fs backend（本地文件后端）**:
@@ -43,6 +43,18 @@ _Avoid_: git 模式/非 git 模式、auto 档（档位固定为 git-backed / sna
 **kgent hosted backend**:
 kgent 自有的云端托管知识库后端，与 lark / dingtalk / wecom 并列的另一种后端选择（尚未实现）；kgent CLI 平台操作（store / wiki / update / create / read / search）的唯一保留对象。三大平台的操作不经它。
 _Avoid_: 本地后端、内置后端、主后端
+
+**confluence backend**:
+Atlassian Confluence Cloud 平台后端：config 名 `confluence`，URI `kgent://confluence/<page-id>`（数字 page id），trust_zone internal；一切操作经 `confluence-integration` skill，传输依传输阶梯（acli 主 / MCP 兜底），内容经格式桥（markdown ↔ 最小 storage XHTML）。空间范围由 `backends.confluence.spaces` allowlist 约束（空 = 全部可达空间）。
+_Avoid_: wiki 后端、Atlassian 后端
+
+**传输阶梯 (transport ladder)**:
+平台后端在平台 CLI 缺失时降级到 MCP 工具的固定顺序：acli → MCP 工具 → 优雅禁用；`kgent setup` 阶段探测并报告有效传输，integration skill 的 Gate 每次运行复核，同一环境内不逐调用切换。confluence 首用（ADR 0015）。
+_Avoid_: 自动切换、双通道并行、transport fallback（泛称）
+
+**格式桥 (format bridge)**:
+跨格式后端的内容转换约定：markdown 是 kgent 通用语，与平台原生格式互转取最小公共子集，有损方向显式声明（fidelity 声明），不支持的结构（宏、媒体、锚点）列为已知限制，不静默丢弃。confluence（markdown ↔ Confluence storage XHTML）首用（ADR 0016）。
+_Avoid_: 格式转换器、渲染、富文本同步
 
 **台账 (ledger)**:
 op 级写操作账本；一个逻辑操作一条 entry，只记变更不记读。对应 CLI 命令 `journal`。
