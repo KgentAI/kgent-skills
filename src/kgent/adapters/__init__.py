@@ -17,6 +17,7 @@ Fidelity declarations and lossy-conversion warnings (§6.9, S49/N11/P1) live in
 from kgent.adapters import registry
 from kgent.adapters.base import Adapter, RetryBudget, escape_query
 from kgent.adapters.cli_adapter import CliCapabilityAdapter, SubprocessResult, run_cli
+from kgent.adapters.confluence import ConfluenceAdapter
 from kgent.adapters.dingtalk import DingTalkAdapter
 from kgent.adapters.fidelity import (
     FIDELITY_REGISTRY,
@@ -34,11 +35,13 @@ from kgent.adapters.wecom import WeComAdapter
 registry.register("lark", LarkAdapter())
 registry.register("dingtalk", DingTalkAdapter())
 registry.register("wecom", WeComAdapter())
+registry.register("confluence", ConfluenceAdapter())
 
 __all__ = [
     "FIDELITY_REGISTRY",
     "Adapter",
     "CliCapabilityAdapter",
+    "ConfluenceAdapter",
     "DingTalkAdapter",
     "LarkAdapter",
     "RetryBudget",

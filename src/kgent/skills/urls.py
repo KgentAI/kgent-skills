@@ -9,6 +9,10 @@ must MATCH the node type (N23): a wiki node rendered with a ``/docx/`` path
 - **Lark wiki nodes**: ``https://<workspace_domain>/wiki/<node_token>``
 - **DingTalk**: ``https://<workspace_domain>/document/<id>``
 - **WeCom**: ``https://<workspace_domain>/docs/<id>``
+- **Confluence** (``workspace_domain`` = ``backends.confluence.site``): with a
+  space key the pretty form ``https://<site>/wiki/spaces/<key>/pages/<id>/``
+  (empty slug — the server 301s to the slugged URL); without one the id-only
+  ``viewpage.action?pageId=`` form, so a broken link is never constructed.
 
 ``node_type`` (``"doc"`` | ``"wiki_node"``) is read from the search result /
 read metadata (§7.2) — never inferred by parsing the token (§3.6).
@@ -23,14 +27,21 @@ __all__ = ["native_url"]
 _LARK_PATH = {"doc": "docx", "wiki_node": "wiki"}
 
 
-def native_url(doc_uri: str, workspace_domain: str, *, node_type: str = "doc") -> str:
+def native_url(
+    doc_uri: str,
+    workspace_domain: str,
+    *,
+    node_type: str = "doc",
+    space_key: str | None = None,
+) -> str:
     """Render ``doc_uri`` as a native platform URL honoring the node type (§1.7).
 
     ``workspace_domain`` comes from ``defaults.workspace_domain`` in
-    ``~/.kgent/config.yaml``; when it is not configured, skills prompt the
-    user to set it (S75). A wiki node always renders under ``/wiki/`` and a
-    flat doc under ``/docx/`` — the path is chosen by ``node_type``, never by
-    token shape (N23).
+    ``~/.kgent/config.yaml`` (lark/dingtalk/wecom) or
+    ``backends.confluence.site`` (confluence); when it is not configured,
+    skills prompt the user to set it (S75). A wiki node always renders under
+    ``/wiki/`` and a flat doc under ``/docx/`` — the path is chosen by
+    ``node_type``, never by token shape (N23). ``space_key`` is confluence-only.
     """
     backend, native_id = parse_uri(doc_uri)
     if backend == "lark":
@@ -40,5 +51,9 @@ def native_url(doc_uri: str, workspace_domain: str, *, node_type: str = "doc") -
         return f"https://{workspace_domain}/document/{native_id}"
     if backend == "wecom":
         return f"https://{workspace_domain}/docs/{native_id}"
+    if backend == "confluence":
+        if space_key:
+            return f"https://{workspace_domain}/wiki/spaces/{space_key}/pages/{native_id}/"
+        return f"https://{workspace_domain}/wiki/pages/viewpage.action?pageId={native_id}"
     # Unknown backend: fall back to a plain domain link with the native id.
     return f"https://{workspace_domain}/{native_id}"

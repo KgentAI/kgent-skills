@@ -65,6 +65,11 @@ _UNSUPPORTED_PLACEHOLDER = re.compile(r"\[unsupported:\s*([^\]]+?)\s*\]")
 
 _LARK_DEGRADED = ["vote block", "diagram", "comment thread"]
 
+#: Confluence storage XHTML carries macros / attachments / anchors with no
+#: markdown equivalent (ADR 0016): read degrades them to placeholders, write
+#: refuses bridge-external structures — both directions declared lossy.
+_CONFLUENCE_DEGRADED = ["macro", "attachment", "anchor", "emoji"]
+
 
 def _lossless() -> FidelityDecl:
     return {"fidelity": "lossless", "degraded_elements": []}
@@ -92,6 +97,10 @@ FIDELITY_REGISTRY: dict[str, dict[Direction, FidelityDecl]] = {
     "wecom": {
         "native_to_canonical": _lossless(),
         "canonical_to_native": _lossless(),
+    },
+    "confluence": {
+        "native_to_canonical": _lossy(_CONFLUENCE_DEGRADED),
+        "canonical_to_native": _lossy(_CONFLUENCE_DEGRADED),
     },
 }
 

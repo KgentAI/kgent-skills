@@ -1064,6 +1064,21 @@ def _cmd_config(args: argparse.Namespace) -> int:
     return 1
 
 
+def _cmd_formats(args: argparse.Namespace) -> int:
+    """Format bridge (ADR 0016): convert stdin → stdout in the given direction."""
+    import sys
+
+    from kgent.formats import markdown_to_storage, storage_to_markdown
+
+    data = sys.stdin.read()
+    if args.formats_action == "to-markdown":
+        result = storage_to_markdown(data)
+    else:
+        result = markdown_to_storage(data)
+    _text_out(result)
+    return 0
+
+
 def _cmd_config_set_workspace_domain(args: argparse.Namespace) -> int:
     """Set ``defaults.workspace_domain`` — surgically, one key only (S75)."""
     from kgent.config.workspace_domain import discover_and_set, set_workspace_domain, validate_domain
@@ -1344,6 +1359,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Explicit workspace domain (omit to auto-discover via lark-cli probe)",
     )
 
+    # formats（格式桥，ADR 0016：markdown ↔ 最小 storage XHTML，stdin → stdout）
+    p_formats = sub.add_parser(
+        "formats",
+        help="Format bridge: markdown <-> minimal Confluence storage XHTML (stdin/stdout)",
+        parents=[common],
+    )
+    p_formats.add_argument(
+        "formats_action",
+        choices=["to-markdown", "to-storage-xhtml"],
+        help="Conversion direction; reads stdin, writes stdout",
+    )
+
     # status (alias for auth status)
     sub.add_parser("status", help="Show status (alias for auth status)", parents=[common])
 
@@ -1374,6 +1401,7 @@ _DISPATCH: dict[str, Callable[[argparse.Namespace], int]] = {
     "trust": _cmd_trust,
     "doctor": _cmd_doctor,
     "config": _cmd_config,
+    "formats": _cmd_formats,
 }
 
 

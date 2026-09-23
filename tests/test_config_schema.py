@@ -111,3 +111,41 @@ def test_existing_backends_unaffected_by_mode_remote_keys():
     assert entry["remote"] is None
     assert entry["trust_zone"] == "internal"
     assert entry["enabled"] is True
+
+
+# --- confluence backend: spaces allowlist (spec 2026-09-22, A2) -------------
+
+
+def _confluence_entry(**extra):
+    entry = {"type": "skill", "skill_name": "confluence-integration", "trust_zone": "internal"}
+    entry.update(extra)
+    return {"version": 1, "backends": {"confluence": entry}}
+
+
+def test_confluence_entry_defaults_spaces_empty_list():
+    cfg = load_config_dict(_confluence_entry())
+    entry = cfg.backends["confluence"]
+    assert entry["spaces"] == []
+
+
+def test_confluence_spaces_allowlist_accepted():
+    cfg = load_config_dict(_confluence_entry(spaces=["ENG", "HR"]))
+    assert cfg.backends["confluence"]["spaces"] == ["ENG", "HR"]
+
+
+def test_confluence_spaces_non_list_rejected():
+    with pytest.raises(ConfigError, match=r"backends\.confluence\.spaces"):
+        load_config_dict(_confluence_entry(spaces="ENG"))
+
+
+def test_confluence_spaces_non_string_elements_rejected():
+    with pytest.raises(ConfigError, match=r"backends\.confluence\.spaces"):
+        load_config_dict(_confluence_entry(spaces=["ENG", 2]))
+
+
+def test_confluence_accepts_mode_remote_keys_harmlessly():
+    # backend defaults are shared; mode/remote are local-fs semantics and merely
+    # default to inert values on platform backends (same as lark/dingtalk/wecom).
+    cfg = load_config_dict(_confluence_entry(mode="snapshot", remote=None))
+    assert cfg.backends["confluence"]["mode"] == "snapshot"
+    assert cfg.backends["confluence"]["spaces"] == []

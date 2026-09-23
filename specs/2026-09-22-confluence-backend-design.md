@@ -58,7 +58,11 @@ backends:
     skill_name: confluence-integration
     trust_zone: internal
     spaces: []             # allowlist；空 = 全部可达空间
+    site: null             # Atlassian 站点 host（如 org.atlassian.net）；native URL 引用用
 ```
+
+（`site` 键为实现期补遗（2026-09-22）：native URL 引用（N20）需要站点 host，
+schema 校验同 `remote`（str|None）。）
 
 ## 数据模型映射
 

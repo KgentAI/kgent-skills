@@ -54,6 +54,7 @@ _SKILL_PREFIXES: tuple[tuple[str, str], ...] = (
     ("lark", "lark"),
     ("dingtalk", "dingtalk"),
     ("wecom", "wecom"),
+    ("confluence", "confluence"),
 )
 
 #: Structured manifest files accepted during skill discovery (never prose).
@@ -64,6 +65,7 @@ _CLI_BACKENDS: tuple[tuple[str, str], ...] = (
     ("lark-cli", "lark"),
     ("dingtalk-cli", "dingtalk"),
     ("wecom-cli", "wecom"),
+    ("acli", "confluence"),  # official Atlassian CLI (ADR 0015 primary transport)
 )
 
 #: local-fs capability declaration (spec 2026-09-10: search/read/write true,
@@ -109,7 +111,76 @@ def discover(home: Path, env: Mapping[str, str]) -> DiscoveryReport:
     for name, entry in _discover_mcp(Path(home_env), env).items():
         backends.setdefault(name, entry)
     backends.update(_discover_local_fs(env))
+    backends.update(_discover_confluence(Path(home_env), path_env, env, backends))
     return DiscoveryReport(backends=backends)
+
+
+# ---------------------------------------------------------------------------
+# confluence transport ladder (spec 2026-09-22; ADR 0015)
+# ---------------------------------------------------------------------------
+
+#: MCP server names/URLs that count as the Atlassian fallback leg.
+_ATLASSIAN_MARKERS: tuple[str, ...] = ("atlassian",)
+
+
+def confluence_transport(env: Mapping[str, str]) -> str:
+    """Resolve the transport ladder: ``acli`` → ``mcp`` → ``unavailable`` (ADR 0015).
+
+    acli on PATH wins; else any Atlassian server in the host MCP config
+    (``~/.claude.json`` / Claude Desktop). Pure environment read — never
+    prompts, never writes.
+    """
+    if shutil.which("acli", path=env.get("PATH", "") or None) is not None:
+        return "acli"
+    home_env = env.get("HOME") or env.get("USERPROFILE") or ""
+    for path in _mcp_config_paths(Path(home_env), env):
+        for name, url in _read_mcp_servers(path).items():
+            haystack = f"{name} {url or ''}".lower()
+            if any(marker in haystack for marker in _ATLASSIAN_MARKERS):
+                return "mcp"
+    return "unavailable"
+
+
+def _discover_confluence(
+    home_env: Path,
+    path_env: str,
+    env: Mapping[str, str],
+    backends: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Attach the resolved transport to the confluence entry (ladder, ADR 0015).
+
+    acli presence merges the full CLI-probe entry (``_discover_clis``);
+    MCP fallback fabricates a minimal entry when nothing else found the
+    backend; unavailable only annotates an existing (skill-derived) entry —
+    with no evidence at all there is nothing to report.
+    """
+    transport = confluence_transport(env)
+    result: dict[str, dict[str, Any]] = {}
+    if transport == "acli":
+        for name, entry in _discover_clis(path_env).items():
+            if name == "confluence":
+                entry["transport"] = transport
+                result[name] = entry
+        return result
+    existing = backends.get("confluence")
+    if transport == "mcp":
+        if existing is None:
+            existing = {
+                "auth": "deferred",
+                "capabilities": {},
+                "found_via": "mcp",
+                "adapter_name": None,
+                "unverified": ["capabilities", "tls"],
+            }
+        entry = dict(existing)
+        entry["transport"] = transport
+        result["confluence"] = entry
+        return result
+    if existing is not None:
+        entry = dict(existing)
+        entry["transport"] = transport
+        result["confluence"] = entry
+    return result
 
 
 def setup(home: Path) -> tuple[DiscoveryReport, int]:
