@@ -145,6 +145,44 @@ def test_plan_dingtalk_mechanism_version_revert(tmp_home):
     assert plan["plan"]["history_hint"] == "dws doc +version-list"
 
 
+def test_plan_confluence_mechanism_version_revert(tmp_home):
+    """confluence 补偿机制：version-revert（dingtalk 家族；重写=新版本，spec 决策表）。"""
+    fb = FakeBackend(name="confluence", trust_zone="internal", capabilities=_full_caps())
+    fb.docs["kgent://confluence/4718"] = _doc("kgent://confluence/4718", 4)
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="confluence",
+        target_uri="kgent://confluence/4718",
+        revision_before=3,
+    )
+    end(journal, entry["op_id"], status="ok", revision_after=4)
+    plan = compensation_plan(entry["op_id"], backends={"confluence": fb}, journal=journal)
+    assert plan["status"] == "ok"
+    assert plan["plan"]["mechanism"] == "version-revert"
+    assert plan["integration_skill"] == "confluence-integration"
+    assert "history" in plan["plan"]["history_hint"].lower()
+
+
+def test_plan_confluence_freshness_refusal_on_version_drift(tmp_home):
+    """当前 version ≠ 台账 version_after → rejected（FM2，fail closed）。"""
+    fb = FakeBackend(name="confluence", trust_zone="internal", capabilities=_full_caps())
+    fb.docs["kgent://confluence/4718"] = _doc("kgent://confluence/4718", 7)
+    journal = Journal(tmp_home)
+    entry = begin(
+        journal,
+        operation="update",
+        backend="confluence",
+        target_uri="kgent://confluence/4718",
+        revision_before=3,
+    )
+    end(journal, entry["op_id"], status="ok", revision_after=4)
+    plan = compensation_plan(entry["op_id"], backends={"confluence": fb}, journal=journal)
+    assert plan["status"] == "rejected"
+    assert plan["integration_skill"] == "confluence-integration"
+
+
 def test_plan_unknown_backend_rejected(tmp_home):
     """没有补偿机制的后端 → fail closed 拒绝，不产可执行计划。"""
     fb = FakeBackend(name="gdoc", trust_zone="internal", capabilities=_full_caps())

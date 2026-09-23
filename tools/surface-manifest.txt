@@ -23,3 +23,6 @@ unarchive --help
 wiki spaces list --help
 wiki spaces create --help
 doctor --help
+formats --help
+formats to-markdown --help
+formats to-storage-xhtml --help

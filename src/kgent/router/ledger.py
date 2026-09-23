@@ -38,6 +38,9 @@ MECHANISM_BY_BACKEND: dict[str, str] = {
     "lark": "history-revert",
     "dingtalk": "version-revert",
     "wecom": "snapshot-restore",
+    # confluence：无原地恢复端点——补偿=取 revision_before 历史正文按当前
+    # version+1 条件重写（产生新版本，历史保留；spec 2026-09-22 决策表）
+    "confluence": "version-revert",
 }
 
 #: 平台 → 定位补偿版本的 history 查询提示（integration skill 吃这个字段）。
@@ -45,6 +48,8 @@ MECHANISM_BY_BACKEND: dict[str, str] = {
 HISTORY_HINT_BY_BACKEND: dict[str, str] = {
     "lark": "docs +history-list → history_version_id(revision_before)",
     "dingtalk": "dws doc +version-list",
+    # acli 的 Confluence 页面历史腿（A1 探针对账后如命令漂移只改此提示）
+    "confluence": "acli page history (<pageId>) → revision_before body storage",
 }
 
 #: 拥有 integration skill 的后端：undo 对它们只产计划、不直接执行

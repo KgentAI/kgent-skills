@@ -56,6 +56,8 @@ _BACKEND_DEFAULTS: dict[str, Any] = {
     "priority": None,
     "mode": "git-backed",  # local-fs store mode (ADR 0011); platform backends ignore it
     "remote": None,  # optional git remote URL; local-fs only (ADR 0010 rev 3)
+    "spaces": [],  # confluence spaceKey allowlist (spec 2026-09-22); [] = all reachable
+    "site": None,  # confluence Atlassian site host (e.g. org.atlassian.net); citations
 }
 
 
@@ -240,6 +242,12 @@ def _validate_backend(name: str, merged: dict[str, Any]) -> None:
     remote = merged.get("remote")
     if remote is not None and not isinstance(remote, str):
         raise ConfigError(f"invalid backends.{name}.remote: must be a string or null")
+    spaces = merged.get("spaces")
+    if not isinstance(spaces, list) or not all(isinstance(k, str) for k in spaces):
+        raise ConfigError(f"invalid backends.{name}.spaces: must be a list of space keys")
+    site = merged.get("site")
+    if site is not None and not isinstance(site, str):
+        raise ConfigError(f"invalid backends.{name}.site: must be a string or null")
 
 
 def _build_routing_rules(raw_rules: Any) -> list[dict[str, Any]]:

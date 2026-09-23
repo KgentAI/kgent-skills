@@ -28,9 +28,10 @@ DOC_FILES = [
     SKILLS_DIR / "dingtalk-integration" / "SKILL.md",
     SKILLS_DIR / "wecom-integration" / "SKILL.md",
     SKILLS_DIR / "local-fs-integration" / "SKILL.md",
+    SKILLS_DIR / "confluence-integration" / "SKILL.md",
 ]
 
-_LINE = re.compile(r"^\s*(?:[-*]\s+|>\s*|\$\s+)?((?:kgent|lark-cli|dws|wecom-cli)\b.+)")
+_LINE = re.compile(r"^\s*(?:[-*]\s+|>\s*|\$\s+)?((?:kgent|lark-cli|dws|wecom-cli|acli)\b.+)")
 
 requires_artifact = pytest.mark.skipif(
     shutil.which("kgent") is None or shutil.which("lark-cli") is None,
@@ -38,7 +39,7 @@ requires_artifact = pytest.mark.skipif(
 )
 
 
-_SPAN = re.compile(r"`((?:kgent|lark-cli|dws|wecom-cli)\b[^`]+)`")
+_SPAN = re.compile(r"`((?:kgent|lark-cli|dws|wecom-cli|acli)\b[^`]+)`")
 
 
 def _extract_examples(path: Path) -> list[str]:
@@ -116,6 +117,13 @@ def test_documented_cli_examples_parse(doc: Path) -> None:
             binary = dws_bin
         elif tokens[0] == "wecom-cli":
             binary = wecom_bin
+        elif tokens[0] == "acli":
+            # confluence 的 acli 腿是 A1 探针 gated（spec 2026-09-22 / ADR 0015）：
+            # acli 缺席 → 显式跳过这些示例（记录在案，非静默——A1 探针过验后这条
+            # 分支自然消失，示例照常校验）；在场 → 与其他 CLI 同规格校验。
+            binary = shutil.which("acli")
+            if binary is None:
+                continue
         else:
             continue  # 非命令提及（如 ``kgent://`` URI span），非一致性声明
         rest = tokens[1:]

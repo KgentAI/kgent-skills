@@ -133,8 +133,37 @@ def doctor(home: Path) -> tuple[list[str], int]:
     findings.extend(_capability_cache_findings(home))
     findings.extend(_reachability_findings(cfg))
     findings.extend(_local_fs_findings(cfg))
+    findings.extend(_confluence_findings(cfg))
 
     return findings, 1 if findings else 0
+
+
+def _confluence_findings(cfg: Config) -> list[str]:
+    """confluence transport findings (ADR 0015) — read-only, only when enabled.
+
+    Healthy transports are silent (acli present / MCP fallback resolved —
+    no news is good news); only the fully-unavailable ladder surfaces, as an
+    actionable degradation notice (configuration exists ≠ availability
+    promised, but the user should know the skill will refuse to run).
+    """
+    entry = cfg.backends.get("confluence")
+    if not isinstance(entry, dict) or entry.get("enabled") is not True:
+        return []
+    from kgent.capabilities.detect import confluence_transport
+
+    transport = confluence_transport(dict(os.environ))
+    if transport == "unavailable":
+        return [
+            "backends.confluence: transport unavailable (acli not on PATH, no Atlassian MCP "
+            "server detected) — confluence-integration will degrade; install acli or add the "
+            "Atlassian MCP server"
+        ]
+    if transport == "mcp":
+        return [
+            "backends.confluence: transport mcp (acli not found; falling back to the Atlassian "
+            "MCP server) — informational"
+        ]
+    return []
 
 
 def _forbidden_key_findings(raw: dict[str, Any]) -> list[str]:

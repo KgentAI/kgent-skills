@@ -432,3 +432,15 @@ Spec `specs/2026-09-10-local-fs-backend-design.md` (rev 6, ADR 0008–0011). Ful
 **agent evals release gate 已跑并签署（2026-09-20/21）**: leg 9/9 PASS（serial ~6h45m；worktree `.claude/skills` 项目级接线后——runner 裸 `claude -p` 不接线 skill 目录的缺口已如实入档）；heuristic 0 hits 属文档化预期，人工复核通过。**关键发现：headless 会话真派发了子代理**——spec Q13/FM-R9 的「runner 无 Task 工具 → 只能走内联路径」假设不成立，真派发路径已被 evals 实证覆盖（evidence §4 FM-R9 修正）。案例 5 首跑未走排序挂起，重跑 PASS 判定为**运行方差**；runner allowlist 已补 `Bash(python:*)`（2ebc898）——双 checker 在案例 5 重跑中**首次机器执行各 0 violations**。余留 follow-up（evidence §4 发现清单）：`.dn-scratch` 写盘（B12 候选，支持收回 read-only 腿 Write/Edit）、门标记 4 种渲染变体、checker as-emitted、runner skill 接线、案例 8 路径等价注记。
 
 **Reproduce**: `PYTHONPATH=src bash tools/gauntlet.sh`；`PYTHONPATH=src python -m pytest tests/test_dn_review_check.py tests/properties/test_dn_review_props.py -p no:randomly -q`；`python tools/dn_review_check.py <结论.md>`；eval 腿 `python tools/run-agent-evals.py --execute --file decision-navigator-evals --parallel 3 --timeout 600`。
+
+## confluence backend — 2026-09-23（ADR 0015/0016 · spec 2026-09-22-confluence-backend-design）
+
+第四个平台后端（Atlassian Confluence Cloud）：传输阶梯（官方 `acli` 主 → Atlassian MCP 兜底 → 优雅禁用，`kgent setup` 探测 + skill Gate 复核）；格式桥（markdown ↔ 最小 storage XHTML，`kgent formats` 共享实现，有损双向声明进 fidelity registry）；`ConfluenceAdapter` 只读车道 + wiki 块（dingtalk/wecom 先例），写车道归 `confluence-integration` skill（journal + `version.number` CAS，409 冲突停）；undo 机制 `confluence → version-revert`（重写=新版本非原地还原；create→回收站/delete→回收站恢复）；config 增 `spaces` allowlist 与 `site` 键；统一语言 +3 词条（confluence backend/传输阶梯/格式桥）。 grill 三轮定稿，传输阶梯为用户裁决修订。
+
+**实现物**: `src/kgent/formats.py`（新，stdlib-only 转换器，对抗语料 17 支）、`src/kgent/adapters/confluence.py`（新，`_cmd_*`/`_extract_*` A1 对账锚点）、`kgent formats` CLI 组（surface manifest +3 探针）、detect/validate/schema/ledger/urls/fidelity 各一腿、`skills/confluence-integration/SKILL.md`（新）+ docs-pin 10 支、`tools/confluence-probe.sh`（A1 gated）、docs-conformance 增 `acli` dispatch（A1-gated 显式跳过）。
+
+**验收数字**（final recorded run：分层 foreground 序列，层序与 gauntlet.sh 一致，exit 等价 GAUNTLET PASS）: **856 passed / 0 failed / 4 skipped**；diff-cover **100%**（branch diff 538 行 Missing 0；TOTAL 88%）；mypy strict 55 文件 0 错；artifact-smoke **21/21**（新探针首跑 3 FAIL 拦下 ambient 过期安装——gate 有效性实证，重装后全绿）；properties 20；adversarial 53；secret scan clean；local-fs flow 双模式绿；lint report-only（新增 9 文件 ruff/format 零债务）。两次 background 整跑被杀 + 同型跨层瞬时失败的完整取证叙述见分层证据文件。
+
+**gated 未宣称（如实）**: A1 acli 探针与 A7 real e2e 未运行（本机无 acli/凭据未备，用户裁决 spec 先行）——探针通过前 confluence e2e 可用性**不作宣称**（ADR 0015 后果条款）；agent evals 增 confluence 腿为 release-gate follow-up。
+
+**Reproduce**: `bash tools/install-skills.sh && bash tools/gauntlet.sh`；`CONFLUENCE_SANDBOX_SPACE=<key> bash tools/confluence-probe.sh`（A1，凭据可得时）；分层明细与行为→测试映射见 `specs/2026-09-22-confluence-backend-evidence.md`。
