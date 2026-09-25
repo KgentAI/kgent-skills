@@ -25,22 +25,24 @@ Credentials never leak: API tokens live in acli's own store, MCP auth lives in t
 
 `kgent` 的 search 对 Confluence 内容一律改走本 skill（ADR 0004）。步骤：
 
-1. acli 腿：`acli search --cql "<cql>" --limit <top_k> --json`，其中 cql 由
-   `type=page AND space in ("<KEY>", ...) AND text ~ "<query>"` 构成——查询串与空间键
-   都必须走带引号的 CQL 字面量并转义 `"` 与 `\`（**CQL 转义是硬规则**：未转义的查询
-   能破坏 space 子句越权检索）。allowlist 子句由代码从 config 注入，不手拼。
-2. MCP 腿：调 Atlassian MCP 的站点搜索工具，等效 CQL 语义；空间范围同样按 allowlist 裁剪。
-3. 每条 hit 记录 pageId、title、spaceKey、snippet；引用转原生 URL（见 Native URL）。
-4. 命中数缩量（超时/失败）必须显式声明，不静默。检索仅 keywords 语义——Confluence
+1. 调 Atlassian MCP 的 CQL 搜索工具（`searchConfluence`，宿主已连接 `mcp.atlassian.com`
+   时可用），cql 由 `type=page AND space in ("<KEY>", ...) AND text ~ "<query>"` 构成——
+   查询串与空间键都必须走带引号的 CQL 字面量并转义 `"` 与 `\`（**CQL 转义是硬规则**：
+   未转义的查询能破坏 space 子句越权检索）。allowlist 子句由代码从 config 注入，不手拼。
+2. 每条 hit 记录 pageId、title、spaceKey、snippet；引用转原生 URL（见 Native URL）。
+3. 命中数缩量（超时/失败）必须显式声明，不静默。检索仅 keywords 语义——Confluence
    Cloud 无语义端点，不要向用户暗示结果经过语义排序。
+
+> 传输注记（2026-09-25 live 探针）：官方 `acli` 1.3.39 的 Confluence 面仅 `page view`
+> + space 族，无搜索无页面写；搜索与写入以 Atlassian MCP 工具为准（ADR 0017 修订中）。
 
 ## Read
 
 对 Confluence 内容的一切读取经本 skill。页面读取两步：
 
-1. 取页面：acli 腿 `acli page get --id <page_id> --body-format storage --json`（或 MCP 等效
-   工具），拿 `title`、`version.number`、`body.storage`（storage XHTML）。
-2. 格式桥 read 方向（ADR 0016，共享实现，stdin → stdout）：
+1. 取页面：Atlassian MCP `getConfluenceContent`（`detail: full` + `content_format`），拿
+   `title`、`metadata.version.number`、正文（storage XHTML 或 markdown/html 表示）。
+2. 格式桥 read 方向（ADR 0016，共享实现，stdin → stdout；正文为 XHTML/HTML 表示时）：
 
 ```bash
 kgent formats to-markdown < body-storage.xhtml
@@ -65,12 +67,10 @@ kgent journal begin --operation update --backend confluence --doc-uri kgent://co
 kgent journal begin --operation create --backend confluence --doc-uri kgent://confluence/new --json
 # 3. 格式桥 write 方向：markdown → 最小子集 storage XHTML（桥外结构 → 拒绝构造，不静默丢弃）
 kgent formats to-storage-xhtml < draft.md > body-storage.xhtml
-# 4a. 更新（条件写：version.number 必须 = 当前 + 1；409/冲突 = 版本冲突 → 停止报告，页面未动）
-acli page update --id <page_id> --version <current_version_plus_1> --content @body-storage.xhtml --json
-# 4b. 创建（--parent 缺省 = 空间顶层）
-acli page create --space <spaceKey> --title "<标题>" --content @body-storage.xhtml --parent <parent_page_id> --json
-# 4c. 删除（进回收站；purge 永不执行）
-acli page delete --id <page_id> --json
+# 4a. 更新（条件写：snapshotToken = 写前读到的版本令牌；MCP 工具 updateConfluenceContent）
+# 4b. 创建（MCP 工具 createConfluenceContent，parent {"spaceId": "<数字空间id>"}）
+# 4c. 删除：MCP 目录现无页面删除工具——用 archiveConfluenceContent（可逆，unarchive 存在）
+#     或显式申报人工删除；purge 永不执行
 # 5. 落账（revision_after = 写后读回的 version.number；create 腿回填真实 URI）
 kgent journal end --op-id <op_id> --status ok --doc-uri kgent://confluence/<real_page_id> --revision-after <new_version> --json
 # 6. 读回校验（经本 skill Read）→ 内容一致才向用户确认
@@ -80,8 +80,8 @@ kgent journal end --op-id <op_id> --status ok --doc-uri kgent://confluence/<real
   `version.number = 当前 + 1`；服务端冲突（409）→ 停止、重新读取、向用户报告——绝不盲写。
 - **确认门禁**：update/delete 是破坏性方向——先向用户说明对象、动作与影响，未获明示
   确认前禁止执行。
-- **MCP 腿**：等效页面更新工具同样必须在 journal begin/end 之间执行，同样带版本条件；
-  acli 与 MCP 不在同一操作内混用。
+- **MCP 腿**：等效页面更新工具（`updateConfluenceContent` / `createConfluenceContent`）同样
+  必须在 journal begin/end 之间执行，同样带版本条件；两类传输不在同一操作内混用。
 - **知识空间/节点**：`kgent wiki spaces list --backends confluence --json`、
   `kgent wiki spaces create --name "<名称>" --backends confluence --json`、页面节点创建带
   `--wiki-space <spaceKey>` 与 `--parent-node-token <parent_page_id>`（adapter wiki 块承载）。
