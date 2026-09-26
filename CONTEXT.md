@@ -45,12 +45,12 @@ kgent 自有的云端托管知识库后端，与 lark / dingtalk / wecom 并列�
 _Avoid_: 本地后端、内置后端、主后端
 
 **confluence backend**:
-Atlassian Confluence Cloud 平台后端：config 名 `confluence`，URI `kgent://confluence/<page-id>`（数字 page id），trust_zone internal；一切操作经 `confluence-integration` skill，传输依传输阶梯（acli 主 / MCP 兜底），内容经格式桥（markdown ↔ 最小 storage XHTML）。空间范围由 `backends.confluence.spaces` allowlist 约束（空 = 全部可达空间）。
+Atlassian Confluence Cloud 平台后端：config 名 `confluence`，URI `kgent://confluence/<page-id>`（数字 page id），trust_zone internal；一切操作经 `confluence-integration` skill 直调 Atlassian MCP 工具（唯一传输，见 MCP 传输），内容经格式桥（markdown ↔ 最小 storage XHTML）。空间范围由 `backends.confluence.spaces` allowlist 约束（空 = 全部可达空间）。
 _Avoid_: wiki 后端、Atlassian 后端
 
-**传输阶梯 (transport ladder)**:
-平台后端在平台 CLI 缺失时降级到 MCP 工具的固定顺序：acli → MCP 工具 → 优雅禁用；`kgent setup` 阶段探测并报告有效传输，integration skill 的 Gate 每次运行复核，同一环境内不逐调用切换。confluence 首用（ADR 0015）。
-_Avoid_: 自动切换、双通道并行、transport fallback（泛称）
+**MCP 传输 (MCP transport)**:
+confluence 后端的唯一传输：宿主连接的 Atlassian Remote MCP（OAuth 2.1，`mcp.atlassian.com`）；`kgent setup`/`doctor` 探测宿主 `mcpServers` 是否含 atlassian 并报告，integration skill 的 Gate 每次运行复核，未连接即优雅禁用。凭据只在宿主 OAuth 一处（ADR 0017，替代 0015 的传输阶梯）。
+_Avoid_: 传输阶梯（已废）、acli 车道、双通道并行
 
 **格式桥 (format bridge)**:
 跨格式后端的内容转换约定：markdown 是 kgent 通用语，与平台原生格式互转取最小公共子集，有损方向显式声明（fidelity 声明），不支持的结构（宏、媒体、锚点）列为已知限制，不静默丢弃。confluence（markdown ↔ Confluence storage XHTML）首用（ADR 0016）。

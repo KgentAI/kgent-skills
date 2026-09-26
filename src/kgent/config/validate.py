@@ -62,8 +62,7 @@ def _workspace_domain_findings(cfg: Config) -> list[str]:
     """An enabled lark backend without ``defaults.workspace_domain`` cannot
     render native citation URLs (N20) — point at the discovery command (S75)."""
     lark_enabled = any(
-        str(name) == "lark" and spec.get("enabled")
-        for name, spec in cfg.backends.items()
+        str(name) == "lark" and spec.get("enabled") for name, spec in cfg.backends.items()
     )
     if not lark_enabled:
         return []
@@ -139,12 +138,11 @@ def doctor(home: Path) -> tuple[list[str], int]:
 
 
 def _confluence_findings(cfg: Config) -> list[str]:
-    """confluence transport findings (ADR 0015) — read-only, only when enabled.
+    """confluence transport findings (ADR 0017) — read-only, only when enabled.
 
-    Healthy transports are silent (acli present / MCP fallback resolved —
-    no news is good news); only the fully-unavailable ladder surfaces, as an
-    actionable degradation notice (configuration exists ≠ availability
-    promised, but the user should know the skill will refuse to run).
+    The MCP transport being present is the healthy case (silent — no news is
+    good news); a fully-unavailable transport surfaces as an actionable
+    degradation notice (the skill will refuse to run).
     """
     entry = cfg.backends.get("confluence")
     if not isinstance(entry, dict) or entry.get("enabled") is not True:
@@ -154,14 +152,11 @@ def _confluence_findings(cfg: Config) -> list[str]:
     transport = confluence_transport(dict(os.environ))
     if transport == "unavailable":
         return [
-            "backends.confluence: transport unavailable (acli not on PATH, no Atlassian MCP "
-            "server detected) — confluence-integration will degrade; install acli or add the "
-            "Atlassian MCP server"
-        ]
-    if transport == "mcp":
-        return [
-            "backends.confluence: transport mcp (acli not found; falling back to the Atlassian "
-            "MCP server) — informational"
+            (
+                "backends.confluence: transport unavailable (no Atlassian MCP server in the host "
+                "config) — confluence-integration will degrade; connect the Atlassian MCP server "
+                "(mcp.atlassian.com) in your agent host"
+            )
         ]
     return []
 

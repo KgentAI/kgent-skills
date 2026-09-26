@@ -1,44 +1,63 @@
-"""Setup/doctor confluence legs (spec 2026-09-22, A2-adjacent): transport ladder.
+"""Setup/doctor confluence legs (ADR 0017): MCP-only transport.
 
-Discovery reports the confluence entry with its resolved transport
-(``acli`` | ``mcp`` | ``unavailable``, ADR 0015): acli on PATH wins; else an
-Atlassian server in the host MCP config; else unavailable (reported, not an
-enable blocker — the skill degrades). Doctor surfaces the same read-only.
+confluence has exactly one transport — the Atlassian Remote MCP server in the
+host config (single auth = host OAuth; ADR 0017 supersedes the ADR 0015
+ladder). Discovery reports ``transport: "mcp" | "unavailable"``; acli on PATH
+is irrelevant (the acli lane is retired). Doctor surfaces the same read-only:
+a connected server is healthy-silent, unavailable degrades with a finding.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import sys
 from pathlib import Path
 
-from kgent.capabilities.detect import discover
+from kgent.capabilities.detect import confluence_transport, discover
 from kgent.config.validate import doctor
-
-WIN = sys.platform == "win32"
-
-
-def _fake_acli_dir(tmp_path: Path) -> str:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir(exist_ok=True)
-    stub = bin_dir / ("acli.cmd" if WIN else "acli")
-    if WIN:
-        stub.write_text("@echo off\r\nexit /b 0\r\n", encoding="ascii")
-    else:
-        stub.write_text("#!/bin/sh\nexit 0\n", encoding="ascii")
-        stub.chmod(0o755)
-    return str(bin_dir)
 
 
 def _write_atlassian_mcp(home: Path) -> None:
     (home / ".claude.json").write_text(
-        json.dumps({"mcpServers": {"atlassian": {"url": "https://mcp.atlassian.com/mcp"}}}),
+        json.dumps({"mcpServers": {"atlassian": {"url": "https://mcp.atlassian.com/v2/mcp"}}}),
         encoding="utf-8",
     )
 
 
-class TestDiscoveryTransportLadder:
+def _write_other_mcp(home: Path) -> None:
+    (home / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"context7": {"url": "https://mcp.context7.com/mcp"}}}),
+        encoding="utf-8",
+    )
+
+
+class TestTransportMcpOnly:
+    def test_mcp_when_atlassian_server_configured(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        home.mkdir()
+        _write_atlassian_mcp(home)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("PATH", "")
+        assert confluence_transport(dict(os.environ)) == "mcp"
+
+    def test_unavailable_without_atlassian_server(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        home.mkdir()
+        _write_other_mcp(home)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("PATH", "")
+        assert confluence_transport(dict(os.environ)) == "unavailable"
+
+    def test_acli_on_path_is_irrelevant(self, tmp_path, monkeypatch):
+        # ADR 0017: the acli lane is retired — its presence must not flip the
+        # transport, even though the official binary may sit on PATH.
+        home = tmp_path / "home"
+        home.mkdir()
+        _write_other_mcp(home)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("PATH", "")
+        assert confluence_transport(dict(os.environ)) == "unavailable"
+
     def test_skill_prefix_discovers_confluence_integration(self, tmp_path, monkeypatch):
         skills = tmp_path / "home" / ".claude" / "skills" / "confluence-integration"
         skills.mkdir(parents=True)
@@ -50,21 +69,10 @@ class TestDiscoveryTransportLadder:
         assert entry["found_via"] == "skill"
         assert entry["adapter_name"] == "confluence-integration"
 
-    def test_transport_acli_when_on_path(self, tmp_path, monkeypatch):
+    def test_discovery_attaches_mcp_transport(self, tmp_path, monkeypatch):
         home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setenv("HOME", str(home))
-        monkeypatch.setenv(
-            "PATH", _fake_acli_dir(tmp_path) + os.pathsep + os.environ.get("PATH", "")
-        )
-        report = discover(tmp_path, dict(os.environ))
-        entry = report.backends.get("confluence")
-        assert entry is not None
-        assert entry["transport"] == "acli"
-
-    def test_transport_mcp_fallback(self, tmp_path, monkeypatch):
-        home = tmp_path / "home"
-        home.mkdir()
+        skills = home / ".claude" / "skills" / "confluence-integration"
+        skills.mkdir(parents=True)
         _write_atlassian_mcp(home)
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("PATH", "")
@@ -73,18 +81,24 @@ class TestDiscoveryTransportLadder:
         assert entry is not None
         assert entry["transport"] == "mcp"
 
-    def test_transport_unavailable_when_neither(self, tmp_path, monkeypatch):
+    def test_discovery_marks_unavailable_when_no_server(self, tmp_path, monkeypatch):
+        home = tmp_path / "home"
+        skills = home / ".claude" / "skills" / "confluence-integration"
+        skills.mkdir(parents=True)
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("PATH", "")
+        report = discover(tmp_path, dict(os.environ))
+        entry = report.backends.get("confluence")
+        assert entry is not None
+        assert entry["transport"] == "unavailable"
+
+    def test_no_confluence_entry_without_skill_or_server(self, tmp_path, monkeypatch):
         home = tmp_path / "home"
         home.mkdir()
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("PATH", "")
         report = discover(tmp_path, dict(os.environ))
-        # no skill dir either → backend absent entirely; ladder value is unavailable
-        entry = report.backends.get("confluence")
-        if entry is not None:
-            assert entry["transport"] == "unavailable"
-        # and no acli entry may leak in from the bare PATH
-        assert report.backends.get("acli") is None
+        assert report.backends.get("confluence") is None
 
 
 class TestDoctorFindings:
@@ -109,26 +123,13 @@ class TestDoctorFindings:
         findings, _code = doctor(home)
         assert any("confluence" in f and "unavailable" in f for f in findings)
 
-    def test_enabled_with_mcp_reports_informational_fallback(self, tmp_path, monkeypatch):
+    def test_enabled_with_mcp_is_silent(self, tmp_path, monkeypatch):
         home = tmp_path / "home"
         home.mkdir()
         self._config_with_confluence(home, enabled=True)
         _write_atlassian_mcp(home)
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("PATH", "")
-        findings, _code = doctor(home)
-        assert any("confluence" in f and "transport mcp" in f for f in findings)
-
-    def test_enabled_with_acli_is_silent(self, tmp_path, monkeypatch):
-        import os
-
-        home = tmp_path / "home"
-        home.mkdir()
-        self._config_with_confluence(home, enabled=True)
-        monkeypatch.setenv("HOME", str(home))
-        monkeypatch.setenv(
-            "PATH", _fake_acli_dir(tmp_path) + os.pathsep + os.environ.get("PATH", "")
-        )
         findings, _code = doctor(home)
         assert not any("confluence" in f for f in findings)
 
