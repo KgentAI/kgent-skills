@@ -48,8 +48,11 @@ MECHANISM_BY_BACKEND: dict[str, str] = {
 HISTORY_HINT_BY_BACKEND: dict[str, str] = {
     "lark": "docs +history-list → history_version_id(revision_before)",
     "dingtalk": "dws doc +version-list",
-    # acli 的 Confluence 页面历史腿（A1 探针对账后如命令漂移只改此提示）
-    "confluence": "acli page history (<pageId>) → revision_before body storage",
+    # confluence：MCP 版本族（ADR 0017）——取 revision_before 正文后按当前 version+1 条件重写
+    "confluence": (
+        "MCP listConfluenceContentVersions / getConfluenceContentVersion(<pageId>) "
+        "→ revision_before body → conditional rewrite"
+    ),
 }
 
 #: 拥有 integration skill 的后端：undo 对它们只产计划、不直接执行

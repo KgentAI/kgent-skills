@@ -2,10 +2,10 @@
 
 **Behavioral assurance lives at the agent-evals release gate, not here** (the
 local-fs pins docstring precedent). What CAN be asserted hermetically is that
-the skill prose keeps carrying: the transport ladder, the journal/CAS write
-discipline, the CQL escaping rule, the format-bridge lossy disclosure, the
-allowlist narrowing semantics, the native-URL citation rule, the undo
-compensation semantics, and the platform-side known limitations.
+the skill prose keeps carrying: the MCP-only transport gate (ADR 0017), the
+journal/CAS write discipline, the CQL escaping rule, the format-bridge lossy
+disclosure, the allowlist narrowing semantics, the native-URL citation rule,
+the undo compensation semantics, and the platform-side known limitations.
 """
 
 # pyright: basic
@@ -20,11 +20,17 @@ def _skill_text() -> str:
     return SKILL_PATH.read_text(encoding="utf-8")
 
 
-def test_skill_documents_gate_and_transport_ladder() -> None:
+def test_skill_documents_gate_and_mcp_only_transport() -> None:
     text = _skill_text()
     assert "backends.confluence.enabled: true" in text, "gate phrase missing"
-    assert "acli" in text and "MCP" in text, "ladder legs missing"
-    assert "优雅禁用" in text, "graceful-disable ladder leg missing"
+    assert "mcp.atlassian.com" in text, "Atlassian MCP transport missing"
+    assert "优雅禁用" in text, "graceful-disable behavior missing"
+
+
+def test_skill_pins_no_cli_lane() -> None:
+    """ADR 0017: the skill must tell the agent NOT to use a CLI for confluence."""
+    text = _skill_text()
+    assert "不要为 confluence 调用 acli" in text, "acli-retirement rule missing"
 
 
 def test_skill_documents_credentials_rule() -> None:
@@ -44,7 +50,7 @@ def test_skill_documents_version_cas() -> None:
     text = _skill_text()
     assert "version" in text, "version axis missing"
     assert "+ 1" in text or "+1" in text, "version+1 conditional write missing"
-    assert "409" in text, "conflict-status refusal missing"
+    assert "版本冲突" in text and "停止" in text, "conflict-stop rule missing"
 
 
 def test_skill_documents_cql_escaping() -> None:
@@ -78,13 +84,14 @@ def test_skill_documents_undo_compensation() -> None:
     text = _text_or_fail()
     assert "version-revert" in text, "mechanism name missing"
     assert "新版本" in text, "rewrite-as-new-version disclosure missing"
-    assert "回收站" in text, "trash semantics missing"
     assert "rejected" in text, "plan-rejection stop rule missing"
+    # create-compensation is archive (MCP has no trash-delete, ADR 0017)
+    assert "archive" in text and "人工删除" in text, "archive-not-delete semantics missing"
 
 
 def test_skill_documents_known_limitations() -> None:
     text = _text_or_fail()
-    for phrase in ("blog", "whiteboard", "database", "附件", "archive", "purge"):
+    for phrase in ("blog", "whiteboard", "database", "附件", "purge"):
         assert phrase in text, f"known-limitation phrase {phrase!r} missing"
     assert "宏" in text, "macro limitation missing"
 

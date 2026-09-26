@@ -162,7 +162,7 @@ def test_plan_confluence_mechanism_version_revert(tmp_home):
     assert plan["status"] == "ok"
     assert plan["plan"]["mechanism"] == "version-revert"
     assert plan["integration_skill"] == "confluence-integration"
-    assert "history" in plan["plan"]["history_hint"].lower()
+    assert "version" in plan["plan"]["history_hint"].lower()  # MCP version family (ADR 0017)
 
 
 def test_plan_confluence_freshness_refusal_on_version_drift(tmp_home):
