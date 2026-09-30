@@ -228,3 +228,16 @@ class TestCli:
 
     def test_formats_unknown_action_rejected(self):
         assert cli_main(["formats", "to-rtf"]) == 1
+
+    def test_formats_stdin_decodes_utf8(self, monkeypatch, capsys):
+        # Windows pipes default to the legacy codepage (cp1252); the bridge
+        # contract is UTF-8 in/out regardless of console locale (live finding
+        # 2026-09-25: emoji arrived mojibake'd through a cp1252 stdin).
+        import io as _io
+
+        monkeypatch.setattr(
+            "sys.stdin",
+            _io.TextIOWrapper(_io.BytesIO("<h2>📘 背景</h2>".encode()), encoding="cp1252"),
+        )
+        assert cli_main(["formats", "to-markdown"]) == 0
+        assert capsys.readouterr().out.strip() == "## 📘 背景"

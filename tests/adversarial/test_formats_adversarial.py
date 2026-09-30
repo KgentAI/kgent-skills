@@ -74,3 +74,35 @@ class TestWriteDirectionHostile:
     def test_crlf_normalised(self):
         xhtml = markdown_to_storage("# T\r\n\r\nbody\r\n")
         assert "<h1>T</h1>" in xhtml and "<p>body</p>" in xhtml
+
+
+class TestRealConfluenceBody:
+    """Live-captured regression (2026-09-25, KKB space): an unterminated quoted
+    attribute value (truncated/malformed markup) makes html.parser give up on
+    the start tag and emit it as DATA — raw markup must never leak into read
+    output regardless of how malformed the source is."""
+
+    # verbatim open tag of the KKB "DACI: Decision documentation" page as it
+    # flowed through the live pipeline: data-parameters opens with a single
+    # quote that is never terminated, so the stdlib parser treats the whole
+    # tag as text.
+    LEAKING_DIV = (
+        '<div data-local-id="92593a07-15f6-31be-87cb-46ffb5976234" data-type="bodied-extension" '
+        'data-extension-key="details" data-extension-type="com.atlassian.confluence.macro.core" '
+        'data-parameters=\'{"macroParams":{"_parentId":{"value":"327863"}},'
+        '"macroMetadata":{"schemaVersion":{"value":"1"},"title":"Page Properties"}}">'
+        "<table><thead><tr><th><p><strong>Status</strong></p></th>"
+        "<td><p>Not started</p></td></tr></thead></table></div>"
+    )
+
+    def test_unterminated_attr_start_tag_never_leaks_as_text(self):
+        md = storage_to_markdown(self.LEAKING_DIV)
+        assert "<div" not in md
+        assert "data-parameters" not in md
+        assert "macro.core" not in md
+        assert "| **Status** | Not started |" in md  # inner table still converts
+
+    def test_mid_text_angle_bracket_text_survives(self):
+        # non-tag-like stray `<` in prose must NOT be eaten by the leak guard
+        md = storage_to_markdown("<p>a &lt; b and x &lt;y</p>")
+        assert "a < b and x <y" in md

@@ -36,6 +36,9 @@ _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 
 _FENCE = "```"
 
+#: A data chunk that is really a (malformed) start tag the parser gave up on.
+_TAG_BLOB = re.compile(r"</?[a-zA-Z]")
+
 
 # ---------------------------------------------------------------------------
 # storage XHTML → markdown (read direction)
@@ -58,8 +61,23 @@ class _TreeBuilder(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.root = _Node("#root", {})
         self.stack: list[_Node] = [self.root]
+        self.pre_depth = 0
+
+    def handle_data(self, data: str) -> None:
+        # Invariant: raw markup never leaks into read output (live finding
+        # 2026-09-25). When the tolerant tag scan gives up on a malformed
+        # start tag (e.g. an unterminated quoted attribute), the stdlib emits
+        # the WHOLE tag as a data chunk — such chunks always START with
+        # tag-like text; mid-text `<` in prose is untouched. Inside <pre> the
+        # guard is OFF: escaped HTML samples (`&lt;a href=…&gt;`) are legit
+        # code content, not leakage.
+        if not self.pre_depth and data.startswith("<") and _TAG_BLOB.match(data):
+            return
+        self.stack[-1].children.append(data)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "pre":
+            self.pre_depth += 1
         if tag in _SKIP_SUBTREE:
             self.stack.append(_Node("#skip", {}))
             return
@@ -74,6 +92,8 @@ class _TreeBuilder(HTMLParser):
         self.stack[-1].children.append(_Node(tag, {k: v or "" for k, v in attrs}))
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == "pre" and self.pre_depth:
+            self.pre_depth -= 1
         if tag in _SKIP_SUBTREE:
             if len(self.stack) > 1 and self.stack[-1].tag == "#skip":
                 self.stack.pop()
@@ -83,9 +103,6 @@ class _TreeBuilder(HTMLParser):
             if self.stack[i].tag == tag:
                 del self.stack[i:]
                 return
-
-    def handle_data(self, data: str) -> None:
-        self.stack[-1].children.append(data)
 
 
 def _inline(nodes: list[_Node | str]) -> str:

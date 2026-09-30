@@ -2,8 +2,10 @@
 
 Generated markdown documents built only from bridge-subset structures must
 survive markdown → storage XHTML → markdown unchanged. The generator emits
-the CANONICAL form directly (stripped blocks; leading list/heading markers
-excluded from free text — those constructs ARE lists/headings in markdown).
+the CANONICAL form directly (stripped blocks; interior space-runs collapsed —
+markdown renders both identically and the read direction canonicalizes them;
+leading list/heading markers excluded from free text — those constructs ARE
+lists/headings in markdown).
 """
 
 import re
@@ -14,11 +16,16 @@ from hypothesis import strategies as st
 
 from kgent.formats import markdown_to_storage, storage_to_markdown
 
+
+def _canonical(text: str) -> str:
+    return re.sub(r" {2,}", " ", text)
+
+
 _text = st.text(
     alphabet=string.ascii_letters + string.digits + " ,.;:!?()äöü中文",
     min_size=1,
     max_size=40,
-).filter(
+).map(_canonical).filter(
     lambda s: (
         s.strip()
         and "`" not in s

@@ -443,4 +443,16 @@ Spec `specs/2026-09-10-local-fs-backend-design.md` (rev 6, ADR 0008–0011). Ful
 
 **gated 未宣称（如实）**: A1 acli 探针与 A7 real e2e 未运行（本机无 acli/凭据未备，用户裁决 spec 先行）——探针通过前 confluence e2e 可用性**不作宣称**（ADR 0015 后果条款）；agent evals 增 confluence 腿为 release-gate follow-up。
 
+## confluence MCP-only amendment — 2026-09-25（ADR 0017 · spec 2026-09-22 rev 2）
+
+首次真机实测（`kgent.atlassian.net` KKB，Atlassian MCP / 宿主 OAuth）证伪 ADR 0015 阶梯并兑现 e2e：官方 `acli` 1.3.39 Confluence 面实测仅 `page view` + space 族（无搜索无页面写，文档领先于二进制）；MCP 全车道真机全绿——CQL 搜索、读、格式桥（抓出并修复 2 个真 bug：stdin cp1252 mojibake、未闭合属性的裸标签泄漏，`444e86b`）、journal 守护 create→update（v1→v2，op_id 进 Atlassian 版本历史）、undo 计划 fail-closed。用户裁决收敛为 **MCP 唯一传输**（单认证=宿主 OAuth）。
+
+**实现物**: ADR 0017（替代 0015）；`ConfluenceAdapter` + acli 锚点 + wire 测试 + `tools/confluence-probe.sh` 整体退役——confluence 成为首个 **adapter-less 平台后端**（config-only route 参与，I/O 全经 skill 直调 MCP 工具）；`confluence_transport` MCP-only（atlassian server 有无二值）；doctor mcp=静默/unavailable=申报；`HISTORY_HINT` 改指 MCP 版本族（list/get/restoreConfluenceContentVersion——undo 全机械化）；skill Gate 重写（优雅禁用单通道；删除车道=archive+申报，MCP 目录暂无回收站删除）；CONTEXT.md「传输阶梯」废为「MCP 传输」；spec rev 2 修订节。
+
+**验收数字**（分层序列，层序同 gauntlet.sh，GAUNTLET PASS 等价）: **831 passed**（+1 property flake 修复后三连跑绿）/ 4 skipped；diff-cover **100%**（18 行 src）；mypy strict 54 文件；artifact-smoke 21/21；properties 20；adversarial 55；secret clean；local-fs flow 双模式绿。真机逐车道读数与 acli 探针结论见 `specs/2026-09-25-confluence-mcp-amendment-evidence.md`。
+
+**残留（如实）**: 页面删除（回收站）MCP 目录暂缺——archive 替代 + 申报，purge 永不执行；探针页 98311 留 KKB（archived）；confluence eval 腿为 release-gate follow-up。
+
+**Reproduce**: `bash tools/gauntlet.sh`；真机序列见 `skills/confluence-integration/SKILL.md`。
+
 **Reproduce**: `bash tools/install-skills.sh && bash tools/gauntlet.sh`；`CONFLUENCE_SANDBOX_SPACE=<key> bash tools/confluence-probe.sh`（A1，凭据可得时）；分层明细与行为→测试映射见 `specs/2026-09-22-confluence-backend-evidence.md`。

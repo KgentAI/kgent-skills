@@ -22,8 +22,9 @@ import contextlib
 import json
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from kgent.adapters import registry
 from kgent.capabilities.detect import setup as detect_setup
@@ -1070,6 +1071,12 @@ def _cmd_formats(args: argparse.Namespace) -> int:
 
     from kgent.formats import markdown_to_storage, storage_to_markdown
 
+    # Windows pipes default to the legacy codepage (cp1252); the bridge
+    # contract is UTF-8 in/out regardless of console locale.
+    reconfigure = getattr(sys.stdin, "reconfigure", None)
+    if reconfigure is not None:
+        with contextlib.suppress(ValueError, OSError):
+            reconfigure(encoding="utf-8")
     data = sys.stdin.read()
     if args.formats_action == "to-markdown":
         result = storage_to_markdown(data)
@@ -1081,16 +1088,18 @@ def _cmd_formats(args: argparse.Namespace) -> int:
 
 def _cmd_config_set_workspace_domain(args: argparse.Namespace) -> int:
     """Set ``defaults.workspace_domain`` — surgically, one key only (S75)."""
-    from kgent.config.workspace_domain import discover_and_set, set_workspace_domain, validate_domain
+    from kgent.config.workspace_domain import (
+        discover_and_set,
+        set_workspace_domain,
+        validate_domain,
+    )
 
     home = _home()
     config_path = home / "config.yaml"
     domain = getattr(args, "domain", None)
     try:
         if domain:
-            previous, workspace_domain = set_workspace_domain(
-                config_path, validate_domain(domain)
-            )
+            previous, workspace_domain = set_workspace_domain(config_path, validate_domain(domain))
             source = "explicit --domain"
         else:
             previous, workspace_domain = discover_and_set(config_path)

@@ -1,10 +1,40 @@
 # Design Spec: confluence backend — Atlassian Confluence Cloud 平台后端（acli 为主，MCP 兜底）
 
-- **Date:** 2026-09-22（grill 三轮定稿：传输阶梯为用户裁决修订——acli 不可用且 MCP 可得时用 MCP；其余全按推荐）
-- **Status:** draft（design 已逐节过审 + 用户确认；实现未开始；A1 探针 gated）
+- **Date:** 2026-09-22（**rev 2，2026-09-25：传输收敛为 MCP 唯一（ADR 0017 替代 0015），依据首次真机实测 + 用户裁决，见下方修订节**；grill 三轮定稿：传输阶梯为用户裁决修订——acli 不可用且 MCP 可得时用 MCP；其余全按推荐）
+- **Status:** implemented（PR #18 落地；2026-09-25 真机实测通过并驱动 rev 2 修订；A1 探针使命完成——acli 面实测不足，已由 MCP 真机全绿取代）
 - **Priority:** medium-high — README 早已把 Confluence 列入联邦后端承诺（README.md:333/351，零代码兑现）；组织工程文档若在 Confluence 则是 query-knowledge 联邦的真实缺口；同时补全「平台后端全走 integration skill」矩阵的第四格
-- **ADRs:** 0015（传输：acli 主 / MCP 环境兜底）、0016（内容格式桥：markdown ↔ 最小 storage XHTML）
-- **语言:** CONTEXT.md 新增 confluence backend / 传输阶梯 (transport ladder) / 格式桥 (format bridge)；「平台」「后端」「integration skill」「知识空间」「本地后端」条目已同步
+- **ADRs:** 0017（传输：Atlassian MCP 唯一，替代 0015）、0016（内容格式桥：markdown ↔ 最小 storage XHTML）
+- **语言:** CONTEXT.md 新增 confluence backend / MCP 传输（原传输阶梯，已废）/ 格式桥 (format bridge)；「平台」「后端」「integration skill」「知识空间」「本地后端」条目已同步
+
+> ## 修订 rev 2（2026-09-25）：MCP 唯一传输（ADR 0017）
+>
+> 首次真机实测（`kgent.atlassian.net` KKB 空间，Atlassian MCP 已连接）证伪了本 spec 的
+> 传输阶梯，用户裁决收敛为 **MCP 唯一传输**。逐项修订：
+>
+> 1. **传输**：删除「acli 主 / MCP 兜底」阶梯。官方 `acli` 1.3.39 实测 Confluence 面
+>    仅 `page view` + space 族（无搜索、无页面写），阶梯主腿对 search/write 不成立；
+>    confluence 成为**首个 adapter-less 平台后端**（`ConfluenceAdapter` 及其 acli 锚点、
+>    wire fake、adapter 测试整体删除；`tools/confluence-probe.sh` 退役——探针使命由
+>    真机实测完成）。一切 I/O 经 `confluence-integration` skill 直调 MCP 工具；
+>    `kgent setup`/`doctor` 探测宿主 `mcpServers` 是否含 atlassian。
+> 2. **认证**：单一凭据面 = 宿主 OAuth；`kgent` 零 token 接触（原 spec 的「凭据在
+>    acli 自有 store」作废）。
+> 3. **删除车道**：MCP 目录现无页面删除（进回收站）工具——v1.1 删除车道 = 不支持；
+>    skill 提供 `archiveConfluenceContent`（可逆，unarchive 存在）或显式申报人工删除。
+>    create 的 undo 补偿由「DELETE 进回收站」修订为「archive（可逆）+ 人工删除提示」。
+> 4. **archive 车道恢复**：spec 原文「Confluence 无页面级 archive API」系 acli 时代
+>    观察，实测 MCP 目录含页面级 archive/unarchive——backend 恢复 archive 能力声明
+>    （经 MCP，skill 层）。
+> 5. **undo**：机制仍 `version-revert`（ADR 0005）；新鲜度读与补偿全 MCP 机械化
+>    （`getConfluenceContent` 版本读 / `listConfluenceContentVersions` /
+>    `getConfluenceContentVersion` / `restoreConfluenceContentVersion`）；
+>    `HISTORY_HINT_BY_BACKEND["confluence"]` 改指 MCP 版本族。
+> 6. **真机证据**：2026-09-25 KKB 全绿（搜索 / 读 / 格式桥 / journal 守护 create→update
+>    v1→v2（op_id 进 Atlassian 版本历史）/ undo 计划 fail-closed / archive 清扫）——
+>    详见 `specs/2026-09-25-confluence-mcp-amendment-evidence.md`。
+>
+> 未修订的部分（数据模型映射、journal 写纪律、CAS、格式桥、allowlist、Tier 失败模型、
+> A2/A4/A5/A6 验收）继续有效；「操作流」「kgent CLI 侧改动」中 acli 相关条目以本节为准。
 
 ## 背景与目标
 
